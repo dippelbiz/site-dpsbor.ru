@@ -11,30 +11,78 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
+// ==================== YOUGILE ИНТЕГРАЦИЯ ====================
+const YOUGILE_API_KEY = process.env.YOUGILE_API_KEY;
+const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;
 
-// ==================== ГЛАВНАЯ СТРАНИЦА САЙТА ====================
-// Отдаем красивую витрину из папки website
+// Функция отправки заказа в YouGile
+async function sendOrderToYougile(orderData) {
+  if (!YOUGILE_API_KEY || !YOUGILE_COLUMN_ID) {
+    console.log('⚠️ YouGile не настроен (отсутствуют ключи)');
+    return;
+  }
+
+  try {
+    const itemsList = orderData.items.map(item => 
+      `• ${item.name} (${item.variantName || 'уп.'}) x${item.quantity} = ${item.price * item.quantity} руб.`
+    ).join('\n');
+    
+    const description = `
+НОВЫЙ ЗАКАЗ С САЙТА dpsbor.ru
+
+👤 Клиент: ${orderData.contact.name}
+📞 Телефон: ${orderData.contact.phone}
+🚚 Доставка: ${orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером'}
+📍 Адрес: ${orderData.contact.address}
+💳 Оплата: ${orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}
+
+📦 СОСТАВ ЗАКАЗА:
+${itemsList}
+
+💰 ИТОГО: ${orderData.total} руб.
+    `;
+    
+    const response = await fetch('https://ru.yougile.com/api-v2/tasks', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${YOUGILE_API_KEY}`
+      },
+      body: JSON.stringify({
+        title: `Заказ №${orderData.orderNumber || 'новый'}`,
+        description: description,
+        columnId: YOUGILE_COLUMN_ID
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('❌ Ошибка YouGile API:', response.status, errorData);
+    } else {
+      const result = await response.json();
+      console.log('✅ Заказ отправлен в YouGile, ID задачи:', result.id);
+    }
+  } catch (error) {
+    console.error('❌ Ошибка при отправке в YouGile:', error);
+  }
+}
+
+// ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
 });
 
-// ==================== API ====================
+// ==================== API ТОВАРОВ И КОРЗИНЫ ====================
 
-// Получение всех товаров с вариантами
+// Получение всех товаров
 app.get('/api/products', async (req, res) => {
   try {
-    // Получаем все продукты
     const products = await pool.query(`
       SELECT id, name, description, image, category 
       FROM products 
       ORDER BY id
     `);
     
-    // Получаем все варианты с дополнительной информацией
     const variants = await pool.query(`
       SELECT 
         v.id, 
@@ -51,19 +99,16 @@ app.get('/api/products', async (req, res) => {
       ORDER BY v.product_id, v.sort_order
     `);
     
-    // Группируем варианты по product_id и рассчитываем price_seller
     const variantsByProduct = {};
     variants.rows.forEach(v => {
       if (!variantsByProduct[v.product_id]) {
         variantsByProduct[v.product_id] = [];
       }
       
-      // Рассчитываем price_seller по формуле
       const base_cost = (v.purchase_price_kg * v.weight_kg) + (v.packaging_cost || 0);
       const avg_price = (v.price + base_cost) / 2;
       const price_seller = Math.ceil(avg_price / 10) * 10;
       
-      // Добавляем рассчитанное поле к варианту
       variantsByProduct[v.product_id].push({
         id: v.id,
         name: v.name,
@@ -76,7 +121,6 @@ app.get('/api/products', async (req, res) => {
       });
     });
 
-    // Формируем результат
     const result = products.rows.map(p => ({
       id: p.id,
       name: p.name,
@@ -127,7 +171,7 @@ app.get('/api/cart/:userId', async (req, res) => {
   }
 });
 
-// Добавление товара в корзину
+// Добавление в корзину
 app.post('/api/cart/add', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
   const numUserId = parseInt(userId, 10);
@@ -136,7 +180,6 @@ app.post('/api/cart/add', async (req, res) => {
   const numQuantity = parseInt(quantity, 10);
 
   try {
-    // Проверяем существование и активность варианта
     const variant = await pool.query(
       'SELECT price, is_active FROM product_variants WHERE id = $1 AND product_id = $2',
       [numVariantId, numProductId]
@@ -237,30 +280,6 @@ app.put('/api/order/:orderId', async (req, res) => {
     }
 
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, orderId]);
-    
-    // Если заказ отменён, уведомляем бота
-    if (status === 'Отменен') {
-      const orderData = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
-      const orderInfo = orderData.rows[0];
-      
-      if (process.env.BOT_URL) {
-        try {
-          await fetch(`${process.env.BOT_URL}/api/order-cancelled`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              orderId: orderId,
-              orderNumber: orderInfo.order_number,
-              userId: orderInfo.user_id,
-              sellerId: orderInfo.seller_id
-            })
-          });
-          console.log(`✅ Уведомление об отмене заказа ${orderInfo.order_number} отправлено в бот`);
-        } catch (err) {
-          console.error('❌ Ошибка отправки уведомления об отмене в бот:', err);
-        }
-      }
-    }
 
     res.json({ success: true });
   } catch (err) {
@@ -289,7 +308,6 @@ async function generateOrderNumber(prefix) {
     prefix = 'X';
   }
   
-  // Обрезаем до 3 символов
   if (prefix.length > 3) {
     prefix = prefix.substring(0, 3);
   }
@@ -311,11 +329,11 @@ async function generateOrderNumber(prefix) {
     }
   } catch (err) {
     console.error('Ошибка при генерации номера заказа:', err);
-    return prefix + '1'; // Запасной вариант
+    return prefix + '1';
   }
 }
 
-// Создание заказа
+// СОЗДАНИЕ ЗАКАЗА
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -331,21 +349,17 @@ app.post('/api/order', async (req, res) => {
     }
 
     const userId = data.userId;
-    const buyer_name = data.contact?.name || 'Покупатель';
     const items = data.items;
     const total = data.total;
-    const address = data.contact?.address;
-    const payment = data.contact?.paymentMethod;
-    const delivery = data.contact?.deliveryType;
     const contact = data.contact;
     const request_id = data.requestId;
 
     console.log(`👤 Пользователь: ${userId}`);
-    console.log(`🏠 Адрес: ${address}`);
-    console.log(`🚚 Тип доставки: ${delivery}`);
+    console.log(`🏠 Адрес: ${contact?.address}`);
+    console.log(`🚚 Тип доставки: ${contact?.deliveryType}`);
     console.log(`💰 Сумма: ${total}`);
 
-    if (!userId || !items || !total || !address) {
+    if (!userId || !items || !total || !contact?.address) {
       console.error('❌ Отсутствуют обязательные поля');
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -366,14 +380,14 @@ app.post('/api/order', async (req, res) => {
     let address_id = null;
     let prefix = null;
     
-    if (delivery === 'pickup') {
-      console.log(`🔍 Поиск точки самовывоза: ${address}`);
+    if (contact.deliveryType === 'pickup') {
+      console.log(`🔍 Поиск точки самовывоза: ${contact.address}`);
       const addrResult = await pool.query(
         'SELECT id, seller_id, prefix FROM pickup_locations WHERE address = $1', 
-        [address]
+        [contact.address]
       );
       if (addrResult.rows.length === 0) {
-        console.error(`❌ Адрес не найден: ${address}`);
+        console.error(`❌ Адрес не найден: ${contact.address}`);
         return res.status(400).json({ error: 'Invalid pickup address' });
       }
       address_id = addrResult.rows[0].id;
@@ -382,7 +396,6 @@ app.post('/api/order', async (req, res) => {
       
       console.log(`✅ Точка найдена: ID=${address_id}, продавец=${seller_id}, префикс=${prefix}`);
       
-      // Если префикс не задан, используем первую букву имени продавца
       if (!prefix) {
         const seller = await pool.query('SELECT name FROM sellers WHERE id = $1', [seller_id]);
         const seller_name = seller.rows[0]?.name || 'X';
@@ -390,7 +403,6 @@ app.post('/api/order', async (req, res) => {
         console.log(`⚠️ Префикс не задан, использовано имя продавца: ${prefix}`);
       }
     } else {
-      // Для доставки - администратор (id=6)
       seller_id = 6;
       prefix = 'D';
       console.log(`🚚 Доставка: продавец-админ ID=6, префикс=D`);
@@ -443,7 +455,7 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // Вставляем заказ
+    // Сохраняем заказ в БД
     console.log('💾 Сохранение заказа в БД...');
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, user_id, seller_id, address_id, items, total, contact, status, request_id)
@@ -454,71 +466,22 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
+    // 🚀 ОТПРАВКА В YOUGILE
+    sendOrderToYougile({
+      orderNumber: order_number,
+      contact: contact,
+      items: orderItems,
+      total: total_sum
+    }).catch(e => console.error('Ошибка YouGile:', e));
+
     // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
     console.log('✅ Корзина очищена');
-
-    console.log('📋 Итоговая информация о заказе:', { 
-      id: orderId, 
-      userId, 
-      items: orderItems, 
-      total: total_sum, 
-      contact, 
-      seller_id, 
-      address_id, 
-      request_id, 
-      order_number 
-    });
-
-    // Отправка заказа в бота
-    let orderNumberFromBot = null;
-    if (process.env.BOT_URL) {
-      const botOrderData = {
-        userId: userId,
-        name: buyer_name,
-        items: orderItems,
-        total: total_sum,
-        address: address,
-        paymentMethod: payment,
-        deliveryType: delivery,
-        contact: contact,
-        requestId: request_id
-      };
-      try {
-        const botUrl = process.env.BOT_URL;
-        console.log(`📤 Отправка заказа в бота: ${botUrl}/api/new-order`);
-        
-        const botResponse = await fetch(`${botUrl}/api/new-order`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(botOrderData)
-        });
-        
-        if (botResponse.ok) {
-          const botData = await botResponse.json();
-          if (botData.orderNumber) {
-            orderNumberFromBot = botData.orderNumber;
-            await pool.query('UPDATE orders SET order_number = $1 WHERE id = $2', [orderNumberFromBot, orderId]);
-            console.log(`✅ Заказ отправлен в бота, получен номер: ${orderNumberFromBot}`);
-          } else {
-            console.log(`⚠️ Бот не вернул номер заказа`);
-          }
-        } else {
-          const errorText = await botResponse.text();
-          console.error(`❌ Бот вернул ошибку ${botResponse.status}: ${errorText.substring(0, 200)}`);
-        }
-      } catch (err) {
-        console.error(`❌ Ошибка отправки в бота: ${err.message}`);
-      }
-    } else {
-      console.log('⚠️ BOT_URL не задан, пропускаем отправку в бота');
-    }
 
     console.log('='.repeat(60));
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
-    // Возвращаем клиенту номер заказа (строку с префиксом)
     res.json({ orderNumber: order_number });
 
   } catch (err) {
@@ -527,6 +490,19 @@ app.post('/api/order', async (req, res) => {
     console.error('='.repeat(60));
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Старые страницы для совместимости (можно удалить позже)
+app.get('/cart.html', (req, res) => {
+  res.sendFile(__dirname + '/public/cart.html');
+});
+
+app.get('/orders.html', (req, res) => {
+  res.sendFile(__dirname + '/public/orders.html');
+});
+
+app.get('/checkout.html', (req, res) => {
+  res.sendFile(__dirname + '/public/checkout.html');
 });
 
 const PORT = process.env.PORT || 3000;
