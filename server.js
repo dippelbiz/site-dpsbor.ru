@@ -7,7 +7,6 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // ==================== CORS ====================
-// Разрешаем запросы с вашего сайта
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
@@ -39,11 +38,17 @@ async function sendOrderToYougile(orderData) {
       `• ${item.name} (${item.variantName || 'уп.'}) x${item.quantity} = ${item.price * item.quantity} руб.`
     ).join('\n');
     
+    // Определяем название мессенджера для отображения
+    let messengerName = 'Не указан';
+    if (orderData.contact.messenger === 'telegram') messengerName = 'Telegram';
+    else if (orderData.contact.messenger === 'vk') messengerName = 'ВКонтакте';
+    
     const description = `
 НОВЫЙ ЗАКАЗ С САЙТА dpsbor.ru
 
 👤 Клиент: ${orderData.contact.name}
 📞 Телефон: ${orderData.contact.phone}
+💬 Предпочтительный мессенджер: ${messengerName}
 🚚 Доставка: ${orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером'}
 📍 Адрес: ${orderData.contact.address}
 💳 Оплата: ${orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}
@@ -478,7 +483,7 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE (в фоне, не влияет на ответ)
+    // 🚀 ОТПРАВКА В YOUGILE
     sendOrderToYougile({
       orderNumber: order_number,
       contact: contact,
@@ -494,7 +499,6 @@ app.post('/api/order', async (req, res) => {
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
-    // ВАЖНО: Всегда возвращаем 200 OK и простой JSON
     res.status(200).json({ 
       orderNumber: order_number 
     });
