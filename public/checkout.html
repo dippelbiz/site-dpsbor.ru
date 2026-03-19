@@ -182,20 +182,11 @@
             background: #5a6268;
         }
         
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            text-align: center;
-            font-weight: bold;
-        }
-        
         .order-number {
             font-size: 1.2em;
             color: #28a745;
             margin: 10px 0;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -275,12 +266,32 @@
         let pickupLocations = [];
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
+        let currentOrderData = null;
 
-        // Ссылки на мессенджеры
-        const MESSENGER_LINKS = {
-            telegram: 'https://t.me/dpsbor_site_bot',
-            vk: 'https://vk.com/im/convo/-236751492'
-        };
+        // Функция для создания текста сообщения с деталями заказа
+        function createOrderMessage(orderData) {
+            const itemsText = orderData.items.map(item => {
+                const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                return `${item.name} (${variantDisplay}) - ${item.quantity} шт`;
+            }).join('\n');
+            
+            const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером';
+            const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличными' : 'Переводом';
+            
+            return `✅ ЗАКАЗ ОФОРМЛЕН ✅
+
+Номер заказа: ${orderData.orderNumber}
+Способ получения: ${deliveryText}
+Адрес: ${orderData.contact.address}
+Оплата: ${paymentText}
+
+📦 СОСТАВ ЗАКАЗА:
+${itemsText}
+
+💰 ИТОГО: ${orderData.total} руб.
+
+Наш менеджер скоро свяжется с вами!`;
+        }
 
         async function loadData() {
             await loadProducts();
@@ -382,9 +393,10 @@
         updateDeliveryBlocks();
 
         // Функции для модального окна
-        function showModal(orderNumber) {
-            currentOrderNumber = orderNumber;
-            document.getElementById('success-order-number').innerHTML = `№${orderNumber}`;
+        function showModal(orderData) {
+            currentOrderNumber = orderData.orderNumber;
+            currentOrderData = orderData;
+            document.getElementById('success-order-number').innerHTML = `№${orderData.orderNumber}`;
             document.getElementById('messenger-modal').style.display = 'block';
         }
 
@@ -394,10 +406,25 @@
         }
 
         function goToMessenger(messenger) {
-            const link = MESSENGER_LINKS[messenger];
-            if (link) {
-                window.location.href = link;
+            if (!currentOrderData) return;
+            
+            const message = createOrderMessage(currentOrderData);
+            const encodedMessage = encodeURIComponent(message);
+            
+            if (messenger === 'telegram') {
+                // Для Telegram используем параметр start с номером заказа
+                // Бот сам отправит приветственное сообщение с деталями
+                window.location.href = `https://t.me/dpsbor_site_bot?start=order_${currentOrderData.orderNumber}`;
+            } else if (messenger === 'vk') {
+                // Для ВКонтакте подставляем сообщение в параметр message
+                window.location.href = `https://vk.me/public236751492?message=${encodedMessage}`;
             }
+            
+            // Закрываем модальное окно и переходим на страницу заказов через 2 секунды
+            setTimeout(() => {
+                document.getElementById('messenger-modal').style.display = 'none';
+                window.location.href = 'orders.html';
+            }, 2000);
         }
 
         const confirmBtn = document.getElementById('confirm-button');
@@ -433,7 +460,7 @@
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: 'not_selected', // По умолчанию не выбран
+                    messenger: 'not_selected',
                     username: user?.username,
                     userId: user?.id
                 };
@@ -463,8 +490,14 @@
                 if (response.ok) {
                     const result = await response.json();
                     
+                    // Сохраняем данные заказа для передачи в мессенджер
+                    const fullOrderData = {
+                        ...orderData,
+                        orderNumber: result.orderNumber
+                    };
+                    
                     // Показываем модальное окно с выбором мессенджера
-                    showModal(result.orderNumber);
+                    showModal(fullOrderData);
                     
                     // Очищаем корзину локально
                     cart.items = [];
