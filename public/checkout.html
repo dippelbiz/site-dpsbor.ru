@@ -333,22 +333,8 @@
                 });
 
                 if (response.ok) {
-                    const result = await response.json();
-                    const orderNumber = result.orderNumber;
-
-                    tg.showPopup({
-                        title: 'Заказ оформлен',
-                        message: 'Ваше общение с продавцом будет происходить в боте. Нажмите кнопку ниже, чтобы открыть бота и начать диалог.',
-                        buttons: [
-                            { id: 'open', type: 'default', text: 'Открыть бота' },
-                            { id: 'close', type: 'cancel', text: 'Позже' }
-                        ]
-                    }, (buttonId) => {
-                        if (buttonId === 'open') {
-                            tg.openTelegramLink('https://t.me/DpSborKatalogBot?start=order_' + orderNumber);
-                        }
-                        window.location.href = 'orders.html';
-                    });
+                    // УСПЕХ: просто переходим на страницу заказов
+                    window.location.href = 'orders.html';
                 } else {
                     const error = await response.json();
                     console.error('Ошибка при оформлении заказа:', error);
