@@ -108,6 +108,10 @@
             font-size: 14px;
             font-weight: bold;
         }
+        .required-star {
+            color: red;
+            margin-left: 4px;
+        }
     </style>
 </head>
 <body>
@@ -131,6 +135,15 @@
             <label><input type="radio" name="payment" value="cash" checked> Наличные (приоритет)</label>
             <label><input type="radio" name="payment" value="transfer"> Перевод по номеру</label>
         </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Выберите мессенджер для связи <span class="required-star">*</span></div>
+        <div class="radio-group-vertical" id="messenger-group">
+            <label><input type="radio" name="messenger" value="telegram" required> Telegram</label>
+            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
+        </div>
+        <div class="notice">На этот мессенджер будут приходить уведомления о статусе заказа</div>
     </div>
 
     <div class="section">
@@ -276,6 +289,15 @@
             e.target.disabled = true;
 
             try {
+                // Проверяем, выбран ли мессенджер
+                const messengerElement = document.querySelector('input[name="messenger"]:checked');
+                if (!messengerElement) {
+                    alert('Выберите мессенджер для связи');
+                    e.target.disabled = false;
+                    return;
+                }
+                const messenger = messengerElement.value;
+
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
 
@@ -304,24 +326,23 @@
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
+                    messenger: messenger, // Сохраняем выбранный мессенджер
                     username: user?.username,
                     userId: user?.id
                 };
 
-                // Проверяем, что корзина не пуста
                 if (!cart || !cart.items || cart.items.length === 0) {
                     alert('Корзина пуста');
                     e.target.disabled = false;
                     return;
                 }
 
-                // Формируем данные для отправки
                 const orderData = {
                     userId: userId,
                     contact: contact,
                     requestId: requestId,
                     total: currentOrderTotal,
-                    items: cart.items  // Явно передаём все товары из корзины
+                    items: cart.items
                 };
 
                 console.log('📤 Отправка заказа:', orderData);
@@ -333,7 +354,31 @@
                 });
 
                 if (response.ok) {
-                    // УСПЕХ: просто переходим на страницу заказов
+                    const result = await response.json();
+                    const orderNumber = result.orderNumber;
+                    
+                    // Формируем сообщение для мессенджера
+                    const itemsText = cart.items.map(item => {
+                        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                        return `${item.name} (${variantDisplay}) - ${item.quantity} шт`;
+                    }).join('\n');
+                    
+                    const deliveryText = deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером';
+                    const paymentText = paymentMethod === 'cash' ? 'Наличными' : 'Переводом';
+                    
+                    const message = `Заказ: ${orderNumber}
+${deliveryText}: ${address}
+
+${itemsText}
+
+Сумма заказа: ${currentOrderTotal} руб
+
+Оплата: ${paymentText}`;
+
+                    // Открываем нужный мессенджер с сообщением
+                    openMessenger(messenger, message);
+                    
+                    // Переходим на страницу заказов
                     window.location.href = 'orders.html';
                 } else {
                     const error = await response.json();
@@ -352,6 +397,19 @@
                 e.target.disabled = false;
             }
         });
+
+        // Функция открытия мессенджера
+        function openMessenger(messenger, message) {
+            const encodedMessage = encodeURIComponent(message);
+            
+            if (messenger === 'telegram') {
+                // Открываем Telegram с готовым сообщением
+                window.open(`https://t.me/share/url?url=&text=${encodedMessage}`, '_blank');
+            } else if (messenger === 'vk') {
+                // Открываем ВКонтакте с готовым сообщением
+                window.open(`https://vk.com/im?msg=${encodedMessage}`, '_blank');
+            }
+        }
 
         loadData();
     </script>
