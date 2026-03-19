@@ -63,7 +63,8 @@ ${itemsList}
       console.log('✅ Заказ отправлен в YouGile, ID задачи:', result.id);
     }
   } catch (error) {
-    console.error('❌ Ошибка при отправке в YouGile:', error);
+    console.error('❌ Ошибка при отправке в YouGile:', error.message);
+    // Не выбрасываем ошибку дальше
   }
 }
 
@@ -333,7 +334,7 @@ async function generateOrderNumber(prefix) {
   }
 }
 
-// СОЗДАНИЕ ЗАКАЗА
+// ==================== СОЗДАНИЕ ЗАКАЗА ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -466,13 +467,22 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE
-    sendOrderToYougile({
-      orderNumber: order_number,
-      contact: contact,
-      items: orderItems,
-      total: total_sum
-    }).catch(e => console.error('Ошибка YouGile:', e));
+    // 🚀 ОТПРАВКА В YOUGILE (отдельный try-catch, чтобы не ломать ответ клиенту)
+    try {
+      // Отправляем заказ в YouGile, но не ждём ответа
+      sendOrderToYougile({
+        orderNumber: order_number,
+        contact: contact,
+        items: orderItems,
+        total: total_sum
+      }).catch(e => {
+        // Логируем ошибку, но не влияем на основной поток
+        console.error('⚠️ YouGile: ошибка (заказ сохранён в БД):', e.message);
+      });
+    } catch (e) {
+      // Если что-то пошло совсем не так - просто логируем
+      console.error('⚠️ YouGile: критическая ошибка при вызове:', e.message);
+    }
 
     // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
@@ -482,6 +492,7 @@ app.post('/api/order', async (req, res) => {
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
+    // ВСЕГДА возвращаем успех клиенту, даже если YouGile упал
     res.json({ orderNumber: order_number });
 
   } catch (err) {
@@ -492,7 +503,7 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
-// Старые страницы для совместимости (можно удалить позже)
+// Старые страницы для совместимости
 app.get('/cart.html', (req, res) => {
   res.sendFile(__dirname + '/public/cart.html');
 });
