@@ -110,7 +110,7 @@
             font-weight: bold;
         }
         
-        /* Модальное окно для выбора мессенджера */
+        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -124,62 +124,20 @@
         
         .modal-content {
             background-color: white;
-            margin: 30% auto;
+            margin: 20% auto;
             padding: 20px;
             border-radius: 10px;
-            width: 80%;
-            max-width: 300px;
+            width: 90%;
+            max-width: 350px;
             text-align: center;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            max-height: 80vh;
+            overflow-y: auto;
         }
         
         .modal h3 {
             margin-top: 0;
             color: #333;
-        }
-        
-        .modal-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .modal-button {
-            padding: 15px;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        
-        .modal-button.telegram {
-            background: #0088cc;
-            color: white;
-        }
-        
-        .modal-button.telegram:hover {
-            background: #006699;
-        }
-        
-        .modal-button.vk {
-            background: #4a76a8;
-            color: white;
-        }
-        
-        .modal-button.vk:hover {
-            background: #3a5a80;
-        }
-        
-        .modal-button.cancel {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .modal-button.cancel:hover {
-            background: #5a6268;
         }
         
         .order-number {
@@ -189,31 +147,102 @@
             font-weight: bold;
         }
         
-        /* Уведомление для ВКонтакте */
-        .vk-notification {
-            background: #e7f3ff;
-            border: 1px solid #4a76a8;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-            text-align: left;
-        }
-        
-        .vk-notification p {
-            margin: 5px 0;
-        }
-        
+        /* Блок с сообщением для копирования */
         .message-preview {
-            background: white;
+            background: #f5f5f5;
             border: 1px solid #ddd;
             border-radius: 5px;
-            padding: 10px;
-            margin: 10px 0;
+            padding: 15px;
+            margin: 15px 0;
             font-family: monospace;
             white-space: pre-wrap;
             text-align: left;
-            max-height: 200px;
+            max-height: 250px;
             overflow-y: auto;
+            border-left: 4px solid #28a745;
+        }
+        
+        /* Кнопка копирования */
+        .copy-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .copy-button:hover {
+            background: #218838;
+        }
+        
+        .copy-button.copied {
+            background: #6c757d;
+        }
+        
+        /* Контейнер с кнопками мессенджеров */
+        .messenger-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .messenger-button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .messenger-button.telegram {
+            background: #0088cc;
+            color: white;
+        }
+        
+        .messenger-button.telegram:hover {
+            background: #006699;
+        }
+        
+        .messenger-button.vk {
+            background: #4a76a8;
+            color: white;
+        }
+        
+        .messenger-button.vk:hover {
+            background: #3a5a80;
+        }
+        
+        .close-button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .close-button:hover {
+            background: #5a6268;
+        }
+        
+        .instruction {
+            color: #666;
+            font-size: 0.9em;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -261,36 +290,43 @@
 
     <button id="confirm-button">Подтвердить заказ</button>
 
-    <!-- Модальное окно выбора мессенджера -->
-    <div id="messenger-modal" class="modal">
+    <!-- Модальное окно -->
+    <div id="success-modal" class="modal">
         <div class="modal-content">
-            <h3>Заказ оформлен!</h3>
-            <div id="success-order-number" class="order-number"></div>
+            <h3>✅ Заказ оформлен!</h3>
+            <div id="modal-order-number" class="order-number"></div>
             
-            <!-- Блок для Telegram -->
-            <div id="telegram-choice" style="display: none;">
-                <p>Сейчас вы будете перенаправлены в Telegram-бот.</p>
-                <p>Если вы впервые общаетесь с ботом, нажмите кнопку <b>"Start"</b> или <b>"Запустить"</b>.</p>
-                <p>Бот автоматически покажет детали вашего заказа.</p>
+            <div class="instruction">
+                <p>📋 <b>Что делать дальше:</b></p>
+                <ol style="text-align: left; margin-left: 20px;">
+                    <li>Нажмите кнопку <b>"Копировать информацию о заказе"</b></li>
+                    <li>Выберите удобный мессенджер (Telegram или ВК)</li>
+                    <li>Вставьте скопированный текст в чат и отправьте</li>
+                </ol>
             </div>
             
-            <!-- Блок для ВКонтакте -->
-            <div id="vk-choice" style="display: none;">
-                <div class="vk-notification">
-                    <p>📋 <b>Важная информация:</b></p>
-                    <p>1. Сейчас откроется чат с нашим сообществом</p>
-                    <p>2. <b>Скопируйте сообщение ниже</b> (нажмите и удерживайте текст)</p>
-                    <p>3. Вставьте его в поле ввода сообщения и отправьте</p>
-                </div>
-                <div class="message-preview" id="vk-message-preview"></div>
-                <p style="font-size: 0.9em; color: #666;">👇 Нажмите кнопку ниже, чтобы открыть чат</p>
+            <!-- Предпросмотр сообщения -->
+            <div id="modal-message" class="message-preview"></div>
+            
+            <!-- Кнопка копирования -->
+            <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
+                <span>📋</span> Копировать информацию о заказе
+            </button>
+            
+            <!-- Кнопки мессенджеров -->
+            <div class="messenger-buttons">
+                <button class="messenger-button telegram" onclick="goToTelegram()">
+                    Telegram
+                </button>
+                <button class="messenger-button vk" onclick="goToVK()">
+                    ВКонтакте
+                </button>
             </div>
             
-            <div class="modal-buttons">
-                <button class="modal-button telegram" onclick="goToTelegram()">Перейти в Telegram</button>
-                <button class="modal-button vk" onclick="goToVK()">Перейти в ВКонтакте</button>
-                <button class="modal-button cancel" onclick="closeModal()">Позже</button>
-            </div>
+            <!-- Кнопка "Позже" -->
+            <button class="close-button" onclick="closeModal()">
+                Перейти к заказам
+            </button>
         </div>
     </div>
 
@@ -312,32 +348,36 @@
         let pickupLocations = [];
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
-        let currentOrderData = null;
-        let currentVKMessage = '';
+        let currentOrderMessage = '';
 
-        // Функция для создания текста сообщения с деталями заказа
-        function createOrderMessage(orderData) {
+        // Ссылки на мессенджеры
+        const MESSENGER_LINKS = {
+            telegram: 'https://t.me/dpsbor_site_bot',
+            vk: 'https://vk.me/public236751492'
+        };
+
+        // Функция для создания текста сообщения
+        function createOrderMessage(orderNumber, orderData) {
             const itemsText = orderData.items.map(item => {
                 const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                return `${item.name} (${variantDisplay}) - ${item.quantity} шт`;
+                return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
             }).join('\n');
             
-            const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером';
-            const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличными' : 'Переводом';
+            const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
+            const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
             
-            return `✅ ЗАКАЗ ОФОРМЛЕН ✅
+            return `✅ НОВЫЙ ЗАКАЗ №${orderNumber}
 
-Номер заказа: ${orderData.orderNumber}
-Способ получения: ${deliveryText}
-Адрес: ${orderData.contact.address}
-Оплата: ${paymentText}
+👤 Клиент: ${orderData.contact.name}
+📞 Телефон: ${orderData.contact.phone}
+🚚 Получение: ${deliveryText}
+📍 Адрес: ${orderData.contact.address}
+💳 Оплата: ${paymentText}
 
-📦 СОСТАВ ЗАКАЗА:
+📦 СОСТАВ:
 ${itemsText}
 
-💰 ИТОГО: ${orderData.total} руб.
-
-Наш менеджер скоро свяжется с вами!`;
+💰 ИТОГО: ${orderData.total} руб.`;
         }
 
         async function loadData() {
@@ -440,69 +480,46 @@ ${itemsText}
         updateDeliveryBlocks();
 
         // Функции для модального окна
-        function showModal(orderData) {
-            currentOrderNumber = orderData.orderNumber;
-            currentOrderData = orderData;
+        function showModal(orderNumber, message) {
+            currentOrderNumber = orderNumber;
+            currentOrderMessage = message;
             
-            // Создаем сообщение для ВКонтакте
-            currentVKMessage = createOrderMessage(orderData);
+            document.getElementById('modal-order-number').innerHTML = `№${orderNumber}`;
+            document.getElementById('modal-message').textContent = message;
+            document.getElementById('success-modal').style.display = 'block';
             
-            document.getElementById('success-order-number').innerHTML = `№${orderData.orderNumber}`;
-            document.getElementById('vk-message-preview').textContent = currentVKMessage;
-            
-            // Показываем модальное окно
-            document.getElementById('messenger-modal').style.display = 'block';
-            
-            // По умолчанию показываем блок Telegram (он скрыт)
-            document.getElementById('telegram-choice').style.display = 'none';
-            document.getElementById('vk-choice').style.display = 'none';
+            // Сбрасываем состояние кнопки копирования
+            const copyBtn = document.getElementById('copy-button');
+            copyBtn.innerHTML = '<span>📋</span> Копировать информацию о заказе';
+            copyBtn.classList.remove('copied');
         }
 
         function closeModal() {
-            document.getElementById('messenger-modal').style.display = 'none';
+            document.getElementById('success-modal').style.display = 'none';
             window.location.href = 'orders.html';
         }
 
+        function copyOrderMessage() {
+            navigator.clipboard.writeText(currentOrderMessage).then(() => {
+                const copyBtn = document.getElementById('copy-button');
+                copyBtn.innerHTML = '<span>✅</span> Скопировано!';
+                copyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<span>📋</span> Копировать информацию о заказе';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                alert('Не удалось скопировать. Выделите текст вручную и нажмите Ctrl+C');
+            });
+        }
+
         function goToTelegram() {
-            if (!currentOrderData) return;
-            
-            // Показываем инструкцию для Telegram
-            document.getElementById('telegram-choice').style.display = 'block';
-            document.getElementById('vk-choice').style.display = 'none';
-            
-            // Открываем Telegram
-            window.location.href = `https://t.me/dpsbor_site_bot?start=order_${currentOrderData.orderNumber}`;
-            
-            // Закрываем модальное окно и переходим на страницу заказов через 3 секунды
-            setTimeout(() => {
-                document.getElementById('messenger-modal').style.display = 'none';
-                window.location.href = 'orders.html';
-            }, 3000);
+            window.open(MESSENGER_LINKS.telegram, '_blank');
         }
 
         function goToVK() {
-            if (!currentOrderData) return;
-            
-            // Показываем инструкцию для ВК
-            document.getElementById('telegram-choice').style.display = 'none';
-            document.getElementById('vk-choice').style.display = 'block';
-            
-            // Открываем ВКонтакте
-            window.location.href = 'https://vk.me/public236751492';
-            
-            // Копируем сообщение в буфер обмена
-            navigator.clipboard.writeText(currentVKMessage).then(() => {
-                console.log('✅ Сообщение скопировано в буфер обмена');
-            }).catch(err => {
-                console.error('❌ Ошибка копирования:', err);
-                alert('Не удалось скопировать сообщение автоматически. Пожалуйста, скопируйте его вручную из окна выше.');
-            });
-            
-            // Закрываем модальное окно и переходим на страницу заказов через 3 секунды
-            setTimeout(() => {
-                document.getElementById('messenger-modal').style.display = 'none';
-                window.location.href = 'orders.html';
-            }, 3000);
+            window.open(MESSENGER_LINKS.vk, '_blank');
         }
 
         const confirmBtn = document.getElementById('confirm-button');
@@ -568,14 +585,16 @@ ${itemsText}
                 if (response.ok) {
                     const result = await response.json();
                     
-                    // Сохраняем данные заказа для передачи в мессенджер
+                    // Создаём сообщение для отправки
                     const fullOrderData = {
                         ...orderData,
                         orderNumber: result.orderNumber
                     };
                     
-                    // Показываем модальное окно с выбором мессенджера
-                    showModal(fullOrderData);
+                    const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
+                    
+                    // Показываем модальное окно
+                    showModal(result.orderNumber, orderMessage);
                     
                     // Очищаем корзину локально
                     cart.items = [];
