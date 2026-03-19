@@ -3,11 +3,14 @@ import logging
 import json
 import requests
 import re
+import asyncio
+from threading import Thread
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Настройка логирования
 logging.basicConfig(
@@ -20,6 +23,25 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL')
 SITE_URL = os.getenv('SITE_URL', 'https://dpsbor.ru')
+PORT = int(os.getenv('PORT', 10000))  # Render требует порт
+
+# Простой HTTP-сервер для Render
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+    
+    def log_message(self, format, *args):
+        # Отключаем логи HTTP-сервера
+        pass
+
+def run_http_server():
+    """Запуск HTTP-сервера в отдельном потоке"""
+    server = HTTPServer(('0.0.0.0', PORT), HealthCheckHandler)
+    logger.info(f"✅ HTTP-сервер запущен на порту {PORT}")
+    server.serve_forever()
 
 def get_db_connection():
     """Подключение к базе данных"""
@@ -269,6 +291,12 @@ def main():
         logger.error("❌ Не задан BOT_TOKEN в переменных окружения")
         return
     
+    # Запускаем HTTP-сервер в отдельном потоке
+    http_thread = Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+    logger.info(f"✅ HTTP-сервер запущен в фоне на порту {PORT}")
+    
+    # Запускаем бота
     application = Application.builder().token(BOT_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
