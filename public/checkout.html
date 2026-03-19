@@ -188,6 +188,33 @@
             margin: 10px 0;
             font-weight: bold;
         }
+        
+        /* Уведомление для ВКонтакте */
+        .vk-notification {
+            background: #e7f3ff;
+            border: 1px solid #4a76a8;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: left;
+        }
+        
+        .vk-notification p {
+            margin: 5px 0;
+        }
+        
+        .message-preview {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -239,10 +266,29 @@
         <div class="modal-content">
             <h3>Заказ оформлен!</h3>
             <div id="success-order-number" class="order-number"></div>
-            <p>Выберите мессенджер для связи с поддержкой:</p>
+            
+            <!-- Блок для Telegram -->
+            <div id="telegram-choice" style="display: none;">
+                <p>Сейчас вы будете перенаправлены в Telegram-бот.</p>
+                <p>Если вы впервые общаетесь с ботом, нажмите кнопку <b>"Start"</b> или <b>"Запустить"</b>.</p>
+                <p>Бот автоматически покажет детали вашего заказа.</p>
+            </div>
+            
+            <!-- Блок для ВКонтакте -->
+            <div id="vk-choice" style="display: none;">
+                <div class="vk-notification">
+                    <p>📋 <b>Важная информация:</b></p>
+                    <p>1. Сейчас откроется чат с нашим сообществом</p>
+                    <p>2. <b>Скопируйте сообщение ниже</b> (нажмите и удерживайте текст)</p>
+                    <p>3. Вставьте его в поле ввода сообщения и отправьте</p>
+                </div>
+                <div class="message-preview" id="vk-message-preview"></div>
+                <p style="font-size: 0.9em; color: #666;">👇 Нажмите кнопку ниже, чтобы открыть чат</p>
+            </div>
+            
             <div class="modal-buttons">
-                <button class="modal-button telegram" onclick="goToMessenger('telegram')">Telegram</button>
-                <button class="modal-button vk" onclick="goToMessenger('vk')">ВКонтакте</button>
+                <button class="modal-button telegram" onclick="goToTelegram()">Перейти в Telegram</button>
+                <button class="modal-button vk" onclick="goToVK()">Перейти в ВКонтакте</button>
                 <button class="modal-button cancel" onclick="closeModal()">Позже</button>
             </div>
         </div>
@@ -267,6 +313,7 @@
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
         let currentOrderData = null;
+        let currentVKMessage = '';
 
         // Функция для создания текста сообщения с деталями заказа
         function createOrderMessage(orderData) {
@@ -396,8 +443,19 @@ ${itemsText}
         function showModal(orderData) {
             currentOrderNumber = orderData.orderNumber;
             currentOrderData = orderData;
+            
+            // Создаем сообщение для ВКонтакте
+            currentVKMessage = createOrderMessage(orderData);
+            
             document.getElementById('success-order-number').innerHTML = `№${orderData.orderNumber}`;
+            document.getElementById('vk-message-preview').textContent = currentVKMessage;
+            
+            // Показываем модальное окно
             document.getElementById('messenger-modal').style.display = 'block';
+            
+            // По умолчанию показываем блок Telegram (он скрыт)
+            document.getElementById('telegram-choice').style.display = 'none';
+            document.getElementById('vk-choice').style.display = 'none';
         }
 
         function closeModal() {
@@ -405,26 +463,46 @@ ${itemsText}
             window.location.href = 'orders.html';
         }
 
-        function goToMessenger(messenger) {
+        function goToTelegram() {
             if (!currentOrderData) return;
             
-            const message = createOrderMessage(currentOrderData);
-            const encodedMessage = encodeURIComponent(message);
+            // Показываем инструкцию для Telegram
+            document.getElementById('telegram-choice').style.display = 'block';
+            document.getElementById('vk-choice').style.display = 'none';
             
-            if (messenger === 'telegram') {
-                // Для Telegram используем параметр start с номером заказа
-                // Бот сам отправит приветственное сообщение с деталями
-                window.location.href = `https://t.me/dpsbor_site_bot?start=order_${currentOrderData.orderNumber}`;
-            } else if (messenger === 'vk') {
-                // Для ВКонтакте подставляем сообщение в параметр message
-                window.location.href = `https://vk.me/public236751492?message=${encodedMessage}`;
-            }
+            // Открываем Telegram
+            window.location.href = `https://t.me/dpsbor_site_bot?start=order_${currentOrderData.orderNumber}`;
             
-            // Закрываем модальное окно и переходим на страницу заказов через 2 секунды
+            // Закрываем модальное окно и переходим на страницу заказов через 3 секунды
             setTimeout(() => {
                 document.getElementById('messenger-modal').style.display = 'none';
                 window.location.href = 'orders.html';
-            }, 2000);
+            }, 3000);
+        }
+
+        function goToVK() {
+            if (!currentOrderData) return;
+            
+            // Показываем инструкцию для ВК
+            document.getElementById('telegram-choice').style.display = 'none';
+            document.getElementById('vk-choice').style.display = 'block';
+            
+            // Открываем ВКонтакте
+            window.location.href = 'https://vk.me/public236751492';
+            
+            // Копируем сообщение в буфер обмена
+            navigator.clipboard.writeText(currentVKMessage).then(() => {
+                console.log('✅ Сообщение скопировано в буфер обмена');
+            }).catch(err => {
+                console.error('❌ Ошибка копирования:', err);
+                alert('Не удалось скопировать сообщение автоматически. Пожалуйста, скопируйте его вручную из окна выше.');
+            });
+            
+            // Закрываем модальное окно и переходим на страницу заказов через 3 секунды
+            setTimeout(() => {
+                document.getElementById('messenger-modal').style.display = 'none';
+                window.location.href = 'orders.html';
+            }, 3000);
         }
 
         const confirmBtn = document.getElementById('confirm-button');
