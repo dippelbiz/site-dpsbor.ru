@@ -2,9 +2,10 @@ import os
 import logging
 import json
 import requests
+import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -16,9 +17,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Переменные окружения
-BOT_TOKEN = os.getenv('BOT_TOKEN')  # Токен вашего бота @dpsbor_site_bot
-DATABASE_URL = os.getenv('DATABASE_URL')  # URL базы данных Supabase
-SITE_URL = os.getenv('SITE_URL', 'https://dpsbor.ru')  # Адрес вашего сайта
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+DATABASE_URL = os.getenv('DATABASE_URL')
+SITE_URL = os.getenv('SITE_URL', 'https://dpsbor.ru')
 
 def get_db_connection():
     """Подключение к базе данных"""
@@ -32,7 +33,6 @@ def get_order_by_number(order_number: str):
             cur.execute("SELECT * FROM orders WHERE order_number = %s", (order_number,))
             order = cur.fetchone()
             if order:
-                # Парсим JSON поля
                 order['items'] = json.loads(order['items']) if order['items'] else []
                 order['contact'] = json.loads(order['contact']) if order['contact'] else {}
             return order
@@ -56,26 +56,22 @@ def format_order_message(order):
     if not order:
         return "❌ Заказ не найден"
     
-    # Статус заказа
     status_emoji = {
         'Активный': '🟢',
         'Завершен': '✅',
         'Отменен': '❌'
     }.get(order['status'], '⚪️')
     
-    # Состав заказа
     items_text = ""
     for item in order['items']:
         variant = item.get('variantName', '')
         variant_text = f" ({variant})" if variant else ""
         items_text += f"• {item['name']}{variant_text} x{item['quantity']} = {item['price'] * item['quantity']} руб.\n"
     
-    # Контактная информация
     contact = order['contact']
     delivery_type = "Самовывоз" if contact.get('deliveryType') == 'pickup' else "Доставка"
     payment = "Наличные" if contact.get('paymentMethod') == 'cash' else "Перевод"
     
-    # Формируем сообщение
     message = f"""
 {status_emoji} *Заказ №{order['order_number']}*
 
@@ -96,11 +92,10 @@ def format_order_message(order):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
-    args = context.args  # Параметры после команды /start
+    args = context.args
     
     logger.info(f"👤 Пользователь @{user.username} (id: {user.id}) запустил бота с параметрами: {args}")
     
-    # Приветственное сообщение
     welcome_text = f"""
 👋 *Здравствуйте, {user.first_name}!*
 
@@ -112,13 +107,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔍 Чтобы узнать детали заказа, отправьте мне его номер, например: `А123`
     """
     
-    # Если передан параметр с заказом (например, order_123)
     if args and args[0].startswith('order_'):
-        order_number = args[0][6:]  # Убираем "order_"
+        order_number = args[0][6:]
         order = get_order_by_number(order_number)
         
         if order:
-            # Проверяем, принадлежит ли заказ этому пользователю
             if order['user_id'] == user.id:
                 order_text = format_order_message(order)
                 await update.message.reply_text(
@@ -137,17 +130,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Проверьте номер заказа и попробуйте снова."
             )
     
-    # Отправляем приветствие (если нет заказа или заказ показали)
     await update.message.reply_text(
         welcome_text,
         parse_mode='Markdown'
     )
     
-    # Показываем последние заказы пользователя
     orders = get_user_orders(user.id)
     if orders:
         keyboard = []
-        for order in orders[:3]:  # Показываем только 3 последних
+        for order in orders[:3]:
             button = InlineKeyboardButton(
                 f"📋 Заказ {order['order_number']}",
                 callback_data=f"order_{order['order_number']}"
@@ -167,17 +158,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"💬 Сообщение от @{user.username}: {text}")
     
-    # Проверяем, является ли сообщение номером заказа
-    # Поддерживаем форматы: А123, А1, D45, и т.д.
-    import re
     order_pattern = r'^[A-Za-zА-Яа-я]{1,3}\d+$'
     
     if re.match(order_pattern, text):
-        # Ищем заказ по номеру
         order = get_order_by_number(text)
         
         if order:
-            # Проверяем, принадлежит ли заказ этому пользователю
             if order['user_id'] == user.id:
                 order_text = format_order_message(order)
                 await update.message.reply_text(
@@ -196,13 +182,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Проверьте номер заказа и попробуйте снова."
             )
     else:
-        # Если это не номер заказа, пересылаем сообщение администратору
-        # Здесь можно добавить логику пересылки в CRM или на email
         await update.message.reply_text(
             "✅ Ваше сообщение передано поддержке. Мы ответим вам в ближайшее время."
         )
         
-        # Уведомление администратору (опционально)
         admin_chat_id = os.getenv('ADMIN_CHAT_ID')
         if admin_chat_id:
             try:
@@ -240,15 +223,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
-    help_text = """
+    help_text = f"""
 ℹ️ *Как пользоваться ботом*
 
 • Чтобы узнать детали заказа, отправьте его номер (например, `А123`)
 • Вы также можете нажать на кнопку с заказом в списке
 • Если у вас есть вопросы, просто напишите их в чат — мы ответим
 
-📍 *Наш сайт:* {site_url}
-    """.format(site_url=SITE_URL)
+📍 *Наш сайт:* {SITE_URL}
+    """
     
     await update.message.reply_text(
         help_text,
@@ -262,8 +245,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not orders:
         await update.message.reply_text(
-            "У вас пока нет заказов.\n"
-            f"Посетите наш сайт: {SITE_URL}"
+            f"У вас пока нет заказов.\nПосетите наш сайт: {SITE_URL}"
         )
         return
     
@@ -287,10 +269,8 @@ def main():
         logger.error("❌ Не задан BOT_TOKEN в переменных окружения")
         return
     
-    # Создаем приложение
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("myorders", my_orders))
@@ -299,7 +279,6 @@ def main():
     
     logger.info("✅ Бот запущен и готов к работе")
     
-    # Запускаем бота
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
