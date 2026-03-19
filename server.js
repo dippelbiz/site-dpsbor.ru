@@ -6,6 +6,18 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+// ==================== CORS ====================
+// Разрешаем запросы с вашего сайта
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -64,7 +76,6 @@ ${itemsList}
     }
   } catch (error) {
     console.error('❌ Ошибка при отправке в YouGile:', error.message);
-    // Не выбрасываем ошибку дальше
   }
 }
 
@@ -467,22 +478,13 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE (отдельный try-catch, чтобы не ломать ответ клиенту)
-    try {
-      // Отправляем заказ в YouGile, но не ждём ответа
-      sendOrderToYougile({
-        orderNumber: order_number,
-        contact: contact,
-        items: orderItems,
-        total: total_sum
-      }).catch(e => {
-        // Логируем ошибку, но не влияем на основной поток
-        console.error('⚠️ YouGile: ошибка (заказ сохранён в БД):', e.message);
-      });
-    } catch (e) {
-      // Если что-то пошло совсем не так - просто логируем
-      console.error('⚠️ YouGile: критическая ошибка при вызове:', e.message);
-    }
+    // 🚀 ОТПРАВКА В YOUGILE (в фоне, не влияет на ответ)
+    sendOrderToYougile({
+      orderNumber: order_number,
+      contact: contact,
+      items: orderItems,
+      total: total_sum
+    }).catch(e => console.error('⚠️ YouGile error:', e.message));
 
     // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
@@ -492,8 +494,10 @@ app.post('/api/order', async (req, res) => {
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
-    // ВСЕГДА возвращаем успех клиенту, даже если YouGile упал
-    res.json({ orderNumber: order_number });
+    // ВАЖНО: Всегда возвращаем 200 OK и простой JSON
+    res.status(200).json({ 
+      orderNumber: order_number 
+    });
 
   } catch (err) {
     console.error('❌ КРИТИЧЕСКАЯ ОШИБКА В /api/order:');
@@ -503,7 +507,7 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
-// Старые страницы для совместимости
+// ==================== СТАРЫЕ СТРАНИЦЫ ====================
 app.get('/cart.html', (req, res) => {
   res.sendFile(__dirname + '/public/cart.html');
 });
