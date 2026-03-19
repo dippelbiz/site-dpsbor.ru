@@ -67,6 +67,7 @@
             cursor: pointer;
             width: 100%;
             font-size: 16px;
+            margin-bottom: 10px;
         }
         button:disabled {
             background: #ccc;
@@ -108,9 +109,93 @@
             font-size: 14px;
             font-weight: bold;
         }
-        .required-star {
-            color: red;
-            margin-left: 4px;
+        
+        /* Модальное окно для выбора мессенджера */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 30% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 300px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .modal h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .modal-button {
+            padding: 15px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .modal-button.telegram {
+            background: #0088cc;
+            color: white;
+        }
+        
+        .modal-button.telegram:hover {
+            background: #006699;
+        }
+        
+        .modal-button.vk {
+            background: #4a76a8;
+            color: white;
+        }
+        
+        .modal-button.vk:hover {
+            background: #3a5a80;
+        }
+        
+        .modal-button.cancel {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .modal-button.cancel:hover {
+            background: #5a6268;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .order-number {
+            font-size: 1.2em;
+            color: #28a745;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -138,15 +223,6 @@
     </div>
 
     <div class="section">
-        <div class="section-title">Выберите мессенджер для связи <span class="required-star">*</span></div>
-        <div class="radio-group-vertical" id="messenger-group">
-            <label><input type="radio" name="messenger" value="telegram" required> Telegram</label>
-            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
-        </div>
-        <div class="notice">На этот мессенджер будут приходить уведомления о статусе заказа</div>
-    </div>
-
-    <div class="section">
         <div class="section-title">Способ получения</div>
         <div class="radio-group-vertical">
             <label><input type="radio" name="delivery" value="pickup" checked> Самовывоз</label>
@@ -167,6 +243,20 @@
 
     <button id="confirm-button">Подтвердить заказ</button>
 
+    <!-- Модальное окно выбора мессенджера -->
+    <div id="messenger-modal" class="modal">
+        <div class="modal-content">
+            <h3>Заказ оформлен!</h3>
+            <div id="success-order-number" class="order-number"></div>
+            <p>Выберите мессенджер для связи с поддержкой:</p>
+            <div class="modal-buttons">
+                <button class="modal-button telegram" onclick="goToMessenger('telegram')">Telegram</button>
+                <button class="modal-button vk" onclick="goToMessenger('vk')">ВКонтакте</button>
+                <button class="modal-button cancel" onclick="closeModal()">Позже</button>
+            </div>
+        </div>
+    </div>
+
     <div class="cart-fab" onclick="location.href='cart.html'">
         🛒
         <span class="cart-count" id="cart-count">0</span>
@@ -184,6 +274,13 @@
         let products = [];
         let pickupLocations = [];
         let currentOrderTotal = 0;
+        let currentOrderNumber = null;
+
+        // Ссылки на мессенджеры
+        const MESSENGER_LINKS = {
+            telegram: 'https://t.me/dpsbor_site_bot',
+            vk: 'https://vk.com/im/convo/-236751492'
+        };
 
         async function loadData() {
             await loadProducts();
@@ -284,20 +381,30 @@
         });
         updateDeliveryBlocks();
 
+        // Функции для модального окна
+        function showModal(orderNumber) {
+            currentOrderNumber = orderNumber;
+            document.getElementById('success-order-number').innerHTML = `№${orderNumber}`;
+            document.getElementById('messenger-modal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('messenger-modal').style.display = 'none';
+            window.location.href = 'orders.html';
+        }
+
+        function goToMessenger(messenger) {
+            const link = MESSENGER_LINKS[messenger];
+            if (link) {
+                window.location.href = link;
+            }
+        }
+
         const confirmBtn = document.getElementById('confirm-button');
         confirmBtn.addEventListener('click', async (e) => {
             e.target.disabled = true;
 
             try {
-                // Проверяем, выбран ли мессенджер
-                const messengerElement = document.querySelector('input[name="messenger"]:checked');
-                if (!messengerElement) {
-                    alert('Выберите мессенджер для связи');
-                    e.target.disabled = false;
-                    return;
-                }
-                const messenger = messengerElement.value;
-
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
 
@@ -326,7 +433,7 @@
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: messenger, // Сохраняем выбранный мессенджер
+                    messenger: 'not_selected', // По умолчанию не выбран
                     username: user?.username,
                     userId: user?.id
                 };
@@ -355,31 +462,13 @@
 
                 if (response.ok) {
                     const result = await response.json();
-                    const orderNumber = result.orderNumber;
                     
-                    // Формируем сообщение для мессенджера
-                    const itemsText = cart.items.map(item => {
-                        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                        return `${item.name} (${variantDisplay}) - ${item.quantity} шт`;
-                    }).join('\n');
+                    // Показываем модальное окно с выбором мессенджера
+                    showModal(result.orderNumber);
                     
-                    const deliveryText = deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером';
-                    const paymentText = paymentMethod === 'cash' ? 'Наличными' : 'Переводом';
-                    
-                    const message = `Заказ: ${orderNumber}
-${deliveryText}: ${address}
-
-${itemsText}
-
-Сумма заказа: ${currentOrderTotal} руб
-
-Оплата: ${paymentText}`;
-
-                    // Открываем нужный мессенджер с сообщением
-                    openMessenger(messenger, message, orderNumber);
-                    
-                    // Переходим на страницу заказов
-                    window.location.href = 'orders.html';
+                    // Очищаем корзину локально
+                    cart.items = [];
+                    updateCartCount();
                 } else {
                     const error = await response.json();
                     console.error('Ошибка при оформлении заказа:', error);
@@ -397,19 +486,6 @@ ${itemsText}
                 e.target.disabled = false;
             }
         });
-
-        // Функция открытия мессенджера
-        function openMessenger(messenger, message, orderNumber) {
-            const encodedMessage = encodeURIComponent(message);
-            
-            if (messenger === 'telegram') {
-                // Открываем чат с ботом @dpsbor_site_bot
-                window.open(`https://t.me/dpsbor_site_bot?start=order_${orderNumber}`, '_blank');
-            } else if (messenger === 'vk') {
-                // Открываем чат с сообществом ВКонтакте
-                window.open(`https://vk.com/im/convo/-236751492`, '_blank');
-            }
-        }
 
         loadData();
     </script>
