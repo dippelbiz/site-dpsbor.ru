@@ -376,7 +376,7 @@ ${itemsText}
 Оплата: ${paymentText}`;
 
                     // Открываем нужный мессенджер с сообщением
-                    openMessenger(messenger, message);
+                    openMessenger(messenger, message, orderNumber);
                     
                     // Переходим на страницу заказов
                     window.location.href = 'orders.html';
@@ -399,15 +399,15 @@ ${itemsText}
         });
 
         // Функция открытия мессенджера
-        function openMessenger(messenger, message) {
+        function openMessenger(messenger, message, orderNumber) {
             const encodedMessage = encodeURIComponent(message);
             
             if (messenger === 'telegram') {
-                // Открываем Telegram с готовым сообщением
-                window.open(`https://t.me/share/url?url=&text=${encodedMessage}`, '_blank');
+                // Открываем чат с ботом @dpsbor_site_bot
+                window.open(`https://t.me/dpsbor_site_bot?start=order_${orderNumber}`, '_blank');
             } else if (messenger === 'vk') {
-                // Открываем ВКонтакте с готовым сообщением
-                window.open(`https://vk.com/im?msg=${encodedMessage}`, '_blank');
+                // Открываем чат с сообществом ВКонтакте
+                window.open(`https://vk.com/im/convo/-236751492`, '_blank');
             }
         }
 
