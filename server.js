@@ -21,6 +21,20 @@ app.use((req, res, next) => {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,  // 10 секунд на подключение
+  idleTimeoutMillis: 30000,        // 30 секунд бездействия
+  max: 20,                         // максимум соединений
+  keepAlive: true                  // держать соединение живым
+});
+
+// Проверка подключения при старте
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('❌ Ошибка подключения к базе данных:', err.message);
+  } else {
+    console.log('✅ Подключение к базе данных установлено');
+    release();
+  }
 });
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -723,16 +737,28 @@ app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   res.json({ sellers: result.rows });
 });
 
+// Остатки конкретного продавца (с учётом ожидающих перемещения)
 app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
   const { sellerId } = req.params;
   const result = await pool.query(`
-    SELECT p.name as product_name, v.name as variant_name, ss.quantity
+    SELECT 
+      p.name as product_name, 
+      v.name as variant_name, 
+      ss.quantity,
+      COALESCE(pt.quantity, 0) as pending_quantity
     FROM seller_stock ss
     JOIN variants v ON ss.variant_id = v.id
     JOIN products p ON v.product_id = p.id
-    WHERE ss.seller_id = $1 AND ss.quantity > 0
+    LEFT JOIN (
+      SELECT variant_id, SUM(quantity) as quantity
+      FROM pending_transfers
+      WHERE seller_id = $1 AND status = 'pending'
+      GROUP BY variant_id
+    ) pt ON ss.variant_id = pt.variant_id
+    WHERE ss.seller_id = $1
     ORDER BY p.name, v.name
   `, [sellerId]);
+  
   res.json({ stock: result.rows });
 });
 
@@ -762,6 +788,8 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
   }
   
   try {
+    await pool.query('BEGIN');
+    
     // Проверяем, есть ли товар на главном складе
     const warehouseCheck = await pool.query(
       'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
@@ -770,23 +798,26 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     
     const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
     if (available < quantity) {
+      await pool.query('ROLLBACK');
       return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
     }
     
-    // Создаём заявку
+    // Создаём заявку в таблице pending_transfers
     await pool.query(`
-      INSERT INTO transfer_requests (seller_id, variant_id, quantity, status, created_at)
+      INSERT INTO pending_transfers (seller_id, variant_id, quantity, status, created_at)
       VALUES ($1, $2, $3, 'pending', NOW())
     `, [req.userId, variant_id, quantity]);
     
-    // Резервируем товар
+    // Резервируем товар на главном складе
     await pool.query(
       'UPDATE main_warehouse SET reserved = reserved + $1 WHERE variant_id = $2',
       [quantity, variant_id]
     );
     
+    await pool.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
+    await pool.query('ROLLBACK');
     console.error('Transfer request error:', err);
     res.status(500).json({ error: 'Ошибка при создании заявки' });
   }
@@ -796,13 +827,21 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
 app.get('/api/manager/transfer-requests', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT tr.id, tr.seller_id, u.name as seller_name, v.name as variant_name, 
-             p.name as product_name, tr.quantity, tr.status, tr.created_at
-      FROM transfer_requests tr
-      JOIN users u ON tr.seller_id = u.id
-      JOIN variants v ON tr.variant_id = v.id
+      SELECT 
+        pt.id, 
+        pt.seller_id, 
+        u.name as seller_name, 
+        v.name as variant_name, 
+        p.name as product_name, 
+        pt.quantity, 
+        pt.status, 
+        pt.created_at
+      FROM pending_transfers pt
+      JOIN users u ON pt.seller_id = u.id
+      JOIN variants v ON pt.variant_id = v.id
       JOIN products p ON v.product_id = p.id
-      ORDER BY tr.created_at DESC
+      WHERE pt.status = 'pending'
+      ORDER BY pt.created_at DESC
     `);
     res.json({ requests: result.rows });
   } catch (err) {
@@ -816,14 +855,14 @@ app.put('/api/manager/transfer-request/:id', checkManagerAuth, async (req, res) 
   const { id } = req.params;
   const { status } = req.body;
   
-  if (!['approved', 'rejected', 'completed'].includes(status)) {
+  if (!['approved', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
   
   try {
     await pool.query('BEGIN');
     
-    const request = await pool.query('SELECT * FROM transfer_requests WHERE id = $1', [id]);
+    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1', [id]);
     if (request.rows.length === 0) {
       await pool.query('ROLLBACK');
       return res.status(404).json({ error: 'Request not found' });
@@ -852,8 +891,8 @@ app.put('/api/manager/transfer-request/:id', checkManagerAuth, async (req, res) 
     }
     
     await pool.query(
-      'UPDATE transfer_requests SET status = $1, processed_at = NOW(), processed_by = $2 WHERE id = $3',
-      [status, req.userId, id]
+      'UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2',
+      [status, id]
     );
     
     await pool.query('COMMIT');
