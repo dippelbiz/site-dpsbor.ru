@@ -86,9 +86,6 @@
             font-weight: bold;
             transition: background 0.2s;
         }
-        .action-btn:hover {
-            background: #2980b9;
-        }
         .action-btn.packaging {
             background: #f39c12;
         }
@@ -98,21 +95,15 @@
         .action-btn.seller {
             background: #9b59b6;
         }
-        .action-btn.seller:hover {
-            background: #8e44ad;
-        }
         .action-btn.hub {
             background: #1abc9c;
         }
-        .action-btn.hub:hover {
-            background: #16a085;
-        }
-        .warehouse-table {
+        .warehouse-table, .seller-stock-table, .hub-stock-table {
             background: white;
             border-radius: 10px;
             padding: 20px;
+            margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow-x: auto;
         }
         table {
             width: 100%;
@@ -137,13 +128,6 @@
         .stock-badge.low {
             color: #e74c3c;
         }
-        input {
-            width: 80px;
-            padding: 6px;
-            text-align: center;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
         button {
             background: #28a745;
             color: white;
@@ -153,8 +137,6 @@
             cursor: pointer;
             margin: 2px;
         }
-        .income { background: #27ae60; }
-        .outcome { background: #e74c3c; }
         
         /* Модальные окна */
         .modal {
@@ -169,23 +151,51 @@
         }
         .modal-content {
             background-color: white;
-            margin: 10% auto;
+            margin: 5% auto;
             padding: 25px;
             border-radius: 10px;
             width: 90%;
-            max-width: 500px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
         .modal-content h3 {
             margin-bottom: 20px;
             color: #2c3e50;
         }
-        .modal-content select, .modal-content input {
+        .purchase-item, .packaging-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .purchase-item select, .purchase-item input,
+        .packaging-item select, .packaging-item input {
             width: 100%;
-            padding: 10px;
-            margin: 10px 0;
+            padding: 8px;
+            margin: 5px 0;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 4px;
+        }
+        .add-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
         }
         .modal-buttons {
             display: flex;
@@ -198,6 +208,27 @@
         }
         .close-btn {
             background: #95a5a6;
+        }
+        .seller-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .seller-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .seller-btn.active {
+            background: #27ae60;
+        }
+        .stock-value {
+            font-weight: bold;
+            font-size: 1.1em;
         }
     </style>
 </head>
@@ -225,12 +256,13 @@
             <button class="action-btn" onclick="openPurchaseModal()">📦 Закуп товара</button>
             <button class="action-btn packaging" onclick="openPackagingModal()">📦 Фасовка товара</button>
             <button class="action-btn seller" onclick="openSellerStockModal()">👥 Остатки продавцов</button>
-            <button class="action-btn hub" onclick="openHubStockModal()">🏪 Остатки на хабе (нерасфасованный)</button>
+            <button class="action-btn hub" onclick="openHubStockModal()">🏪 Нерасфасованный товар</button>
         </div>
         
+        <!-- Фасованные товары (только просмотр) -->
         <div class="warehouse-table">
             <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-                <h3>Фасованные товары (готовые к продаже)</h3>
+                <h3>📦 Фасованные товары (готовые к продаже)</h3>
                 <button onclick="loadWarehouse()">🔄 Обновить</button>
             </div>
             <table id="warehouse-table">
@@ -241,46 +273,54 @@
                         <th>Зарезервировано</th>
                         <th>Доступно</th>
                         <th>Мин. остаток</th>
-                        <th>Действия</th>
                     </tr>
                 </thead>
                 <tbody id="warehouse-list">
-                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                    <tr><td colspan="5" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <!-- Модальное окно закупки товара -->
+    <!-- Модальное окно закупки товара (множественный ввод) -->
     <div id="purchase-modal" class="modal">
         <div class="modal-content">
             <h3>📦 Закуп товара (поставка в кг)</h3>
-            <select id="purchase-product" style="width: 100%; padding: 10px;">
-                <option value="">Выберите товар</option>
-            </select>
-            <input type="number" id="purchase-quantity" placeholder="Количество (кг)" step="0.1">
-            <input type="text" id="purchase-comment" placeholder="Комментарий (поставщик, накладная)" style="width: 100%;">
+            <div id="purchase-items-container">
+                <div class="purchase-item">
+                    <select class="purchase-product" style="width: 100%;">
+                        <option value="">Выберите товар</option>
+                    </select>
+                    <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+                    <input type="text" class="purchase-comment" placeholder="Комментарий (поставщик, накладная)">
+                    <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
+                </div>
+            </div>
+            <button class="add-btn" onclick="addPurchaseItem()">+ Добавить ещё товар</button>
             <div class="modal-buttons">
-                <button onclick="confirmPurchase()">Подтвердить</button>
+                <button onclick="confirmPurchase()">Подтвердить закуп</button>
                 <button class="close-btn" onclick="closeModal('purchase-modal')">Отмена</button>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно фасовки -->
+    <!-- Модальное окно фасовки товара (множественный ввод) -->
     <div id="packaging-modal" class="modal">
         <div class="modal-content">
             <h3>📦 Фасовка товара</h3>
-            <select id="packaging-product" style="width: 100%; padding: 10px;">
-                <option value="">Выберите товар</option>
-            </select>
-            <input type="number" id="packaging-kg" placeholder="Количество (кг)" step="0.1">
-            <div style="margin: 10px 0;">
-                <label>Фасовка в упаковки:</label>
-                <select id="packaging-variant" style="width: 100%; padding: 10px; margin-top: 5px;">
-                    <option value="">Выберите тип упаковки</option>
-                </select>
+            <div id="packaging-items-container">
+                <div class="packaging-item">
+                    <select class="packaging-product" style="width: 100%;" onchange="loadVariantsForPackaging(this)">
+                        <option value="">Выберите товар</option>
+                    </select>
+                    <select class="packaging-variant" style="width: 100%; margin-top: 5px;">
+                        <option value="">Сначала выберите товар</option>
+                    </select>
+                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1" min="1">
+                    <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
+                </div>
             </div>
+            <button class="add-btn" onclick="addPackagingItem()">+ Добавить ещё товар</button>
             <div class="modal-buttons">
                 <button onclick="confirmPackaging()">Подтвердить фасовку</button>
                 <button class="close-btn" onclick="closeModal('packaging-modal')">Отмена</button>
@@ -292,10 +332,11 @@
     <div id="seller-stock-modal" class="modal">
         <div class="modal-content" style="max-width: 800px;">
             <h3>👥 Остатки на складах продавцов</h3>
+            <div class="seller-buttons" id="seller-buttons"></div>
             <div style="overflow-x: auto; max-height: 400px;">
                 <table style="width: 100%;" id="seller-stock-table">
-                    <thead><tr><th>Продавец</th><th>Товар</th><th>Количество (шт)</th></tr></thead>
-                    <tbody><tr><td colspan="3">Загрузка...</td></tr></tbody>
+                    <thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead>
+                    <tbody><tr><td colspan="2">Выберите продавца</td></tr></tbody>
                 </table>
             </div>
             <div class="modal-buttons">
@@ -304,10 +345,10 @@
         </div>
     </div>
 
-    <!-- Модальное окно остатков на хабе -->
+    <!-- Модальное окно нерасфасованного товара -->
     <div id="hub-stock-modal" class="modal">
         <div class="modal-content">
-            <h3>🏪 Остатки на хабе (нерасфасованный товар в кг)</h3>
+            <h3>🏪 Нерасфасованный товар</h3>
             <div style="overflow-x: auto; max-height: 400px;">
                 <table style="width: 100%;" id="hub-stock-table">
                     <thead><tr><th>Товар</th><th>Остаток (кг)</th></tr></thead>
@@ -321,12 +362,31 @@
     </div>
 
     <script>
-        let variantsList = [];
+        let productsList = [];
+        let variantsCache = {};
+        let sellersList = [];
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) window.location.href = '/manager/';
             return token;
+        }
+        
+        // ========== ЗАГРУЗКА ДАННЫХ ==========
+        async function loadProducts() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/products', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            productsList = data.products;
+            return productsList;
+        }
+        
+        async function loadSellers() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/sellers', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            sellersList = data.sellers;
+            return sellersList;
         }
         
         async function loadWarehouse() {
@@ -342,7 +402,7 @@
         function renderWarehouse(items) {
             const tbody = document.getElementById('warehouse-list');
             if (!items || items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет товаров</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Нет товаров</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map(item => `
@@ -352,158 +412,211 @@
                     <td>${item.reserved}</td>
                     <td>${item.available}</td>
                     <td>${item.min_stock}</td>
-                    <td>
-                        <button class="income" onclick="updateStock(${item.id}, 1, 'income')">+1</button>
-                        <button class="outcome" onclick="updateStock(${item.id}, 1, 'outcome')">-1</button>
-                    </td>
                 </tr>
             `).join('');
         }
         
-        async function updateStock(variantId, quantity, type) {
-            const token = checkAuth();
-            await fetch('/api/manager/warehouse/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ variant_id: variantId, quantity, type, comment: 'Ручное изменение' })
-            });
-            loadWarehouse();
-        }
-        
-        // Закуп товара
+        // ========== ЗАКУПКА ТОВАРА ==========
         async function openPurchaseModal() {
-            await loadProductsForSelect('purchase-product');
+            await loadProducts();
+            document.getElementById('purchase-items-container').innerHTML = '';
+            addPurchaseItem();
             document.getElementById('purchase-modal').style.display = 'block';
         }
         
+        function addPurchaseItem() {
+            const container = document.getElementById('purchase-items-container');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'purchase-item';
+            itemDiv.innerHTML = `
+                <select class="purchase-product" style="width: 100%;">
+                    <option value="">Выберите товар</option>
+                    ${productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+                <input type="text" class="purchase-comment" placeholder="Комментарий (поставщик, накладная)">
+                <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
+            `;
+            container.appendChild(itemDiv);
+        }
+        
+        function removePurchaseItem(btn) {
+            btn.parentElement.remove();
+        }
+        
         async function confirmPurchase() {
-            const productId = document.getElementById('purchase-product').value;
-            const quantityKg = parseFloat(document.getElementById('purchase-quantity').value);
-            const comment = document.getElementById('purchase-comment').value;
-            
-            if (!productId || !quantityKg || quantityKg <= 0) {
-                alert('Заполните все поля');
+            const items = document.querySelectorAll('#purchase-items-container .purchase-item');
+            const purchases = [];
+            for (let item of items) {
+                const productId = item.querySelector('.purchase-product').value;
+                const quantity = parseFloat(item.querySelector('.purchase-quantity').value);
+                const comment = item.querySelector('.purchase-comment').value;
+                if (productId && quantity > 0) {
+                    purchases.push({ product_id: productId, quantity_kg: quantity, comment });
+                }
+            }
+            if (purchases.length === 0) {
+                alert('Добавьте хотя бы один товар для закупки');
                 return;
             }
             
             const token = checkAuth();
-            const response = await fetch('/api/manager/warehouse/purchase', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ product_id: productId, quantity_kg: quantityKg, comment })
-            });
-            
-            if (response.ok) {
-                alert(`✅ Закуплен товар: ${quantityKg} кг`);
-                closeModal('purchase-modal');
-                document.getElementById('purchase-quantity').value = '';
-                document.getElementById('purchase-comment').value = '';
-                loadWarehouse();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + error.error);
+            for (let p of purchases) {
+                await fetch('/api/manager/warehouse/purchase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(p)
+                });
             }
+            
+            alert(`✅ Закуплено ${purchases.length} товаров`);
+            closeModal('purchase-modal');
+            loadWarehouse();
         }
         
-        // Фасовка товара
+        // ========== ФАСОВКА ТОВАРА ==========
         async function openPackagingModal() {
-            await loadProductsForSelect('packaging-product');
+            await loadProducts();
+            document.getElementById('packaging-items-container').innerHTML = '';
+            addPackagingItem();
             document.getElementById('packaging-modal').style.display = 'block';
         }
         
-        async function loadProductsForSelect(selectId) {
-            const token = checkAuth();
-            const response = await fetch('/api/manager/products', { headers: { 'Authorization': `Bearer ${token}` } });
-            const data = await response.json();
-            const select = document.getElementById(selectId);
-            select.innerHTML = '<option value="">Выберите товар</option>';
-            data.products.forEach(p => {
-                select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
-            });
+        function addPackagingItem() {
+            const container = document.getElementById('packaging-items-container');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'packaging-item';
+            itemDiv.innerHTML = `
+                <select class="packaging-product" style="width: 100%;" onchange="loadVariantsForPackaging(this)">
+                    <option value="">Выберите товар</option>
+                    ${productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <select class="packaging-variant" style="width: 100%; margin-top: 5px;">
+                    <option value="">Сначала выберите товар</option>
+                </select>
+                <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1" min="1">
+                <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
+            `;
+            container.appendChild(itemDiv);
         }
         
-        async function onProductChange() {
-            const productId = document.getElementById('packaging-product').value;
-            if (!productId) return;
+        function removePackagingItem(btn) {
+            btn.parentElement.remove();
+        }
+        
+        async function loadVariantsForPackaging(selectEl) {
+            const productId = selectEl.value;
+            const itemDiv = selectEl.closest('.packaging-item');
+            const variantSelect = itemDiv.querySelector('.packaging-variant');
+            
+            if (!productId) {
+                variantSelect.innerHTML = '<option value="">Сначала выберите товар</option>';
+                return;
+            }
+            
+            if (variantsCache[productId]) {
+                renderVariantOptions(variantSelect, variantsCache[productId]);
+                return;
+            }
             
             const token = checkAuth();
             const response = await fetch(`/api/manager/variants/${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
-            const select = document.getElementById('packaging-variant');
-            select.innerHTML = '<option value="">Выберите тип упаковки</option>';
-            data.variants.forEach(v => {
+            variantsCache[productId] = data.variants;
+            renderVariantOptions(variantSelect, data.variants);
+        }
+        
+        function renderVariantOptions(select, variants) {
+            select.innerHTML = '<option value="">Выберите упаковку</option>';
+            variants.forEach(v => {
                 select.innerHTML += `<option value="${v.id}" data-weight="${v.weight_kg}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`;
             });
         }
         
         async function confirmPackaging() {
-            const productId = document.getElementById('packaging-product').value;
-            const quantityKg = parseFloat(document.getElementById('packaging-kg').value);
-            const variantId = document.getElementById('packaging-variant').value;
-            const variantOption = document.getElementById('packaging-variant').selectedOptions[0];
-            const weightKg = parseFloat(variantOption?.dataset?.weight || 0);
-            
-            if (!productId || !quantityKg || !variantId) {
-                alert('Заполните все поля');
-                return;
+            const items = document.querySelectorAll('#packaging-items-container .packaging-item');
+            const packagingList = [];
+            for (let item of items) {
+                const productId = item.querySelector('.packaging-product').value;
+                const variantId = item.querySelector('.packaging-variant').value;
+                const pieces = parseInt(item.querySelector('.packaging-pieces').value);
+                if (productId && variantId && pieces > 0) {
+                    const variantOption = item.querySelector('.packaging-variant').selectedOptions[0];
+                    const weightKg = parseFloat(variantOption?.dataset?.weight || 0);
+                    packagingList.push({ product_id: productId, variant_id: variantId, pieces, weight_kg: weightKg });
+                }
             }
-            
-            const pieces = Math.floor(quantityKg / weightKg);
-            if (pieces === 0) {
-                alert(`Недостаточно кг для фасовки. Нужно минимум ${weightKg} кг для одной упаковки`);
+            if (packagingList.length === 0) {
+                alert('Добавьте хотя бы один товар для фасовки');
                 return;
             }
             
             const token = checkAuth();
-            const response = await fetch('/api/manager/warehouse/packaging', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ product_id: productId, variant_id: variantId, quantity_kg: quantityKg, pieces })
-            });
-            
-            if (response.ok) {
-                alert(`✅ Расфасовано ${pieces} шт по ${weightKg} кг (всего ${quantityKg} кг)`);
-                closeModal('packaging-modal');
-                document.getElementById('packaging-kg').value = '';
-                loadWarehouse();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + error.error);
+            for (let p of packagingList) {
+                const quantityKg = p.pieces * p.weight_kg;
+                await fetch('/api/manager/warehouse/packaging', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ 
+                        product_id: p.product_id, 
+                        variant_id: p.variant_id, 
+                        quantity_kg: quantityKg, 
+                        pieces: p.pieces 
+                    })
+                });
             }
+            
+            alert(`✅ Расфасовано ${packagingList.length} товаров`);
+            closeModal('packaging-modal');
+            loadWarehouse();
         }
         
-        // Остатки продавцов
+        // ========== ОСТАТКИ ПРОДАВЦОВ ==========
         async function openSellerStockModal() {
-            const token = checkAuth();
-            const response = await fetch('/api/manager/seller-stock', { headers: { 'Authorization': `Bearer ${token}` } });
-            const data = await response.json();
-            const tbody = document.getElementById('seller-stock-table').querySelector('tbody');
-            if (!data.stock || data.stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3">Нет данных</td></tr>';
-            } else {
-                tbody.innerHTML = data.stock.map(s => `
-                    <tr><td>${s.seller_name}</td><td>${s.product_name} (${s.variant_name})</td><td>${s.quantity}</td></tr>
-                `).join('');
-            }
+            await loadSellers();
+            const container = document.getElementById('seller-buttons');
+            container.innerHTML = sellersList.map(s => `
+                <button class="seller-btn" onclick="loadSellerStock(${s.id}, this)">${s.name}</button>
+            `).join('');
             document.getElementById('seller-stock-modal').style.display = 'block';
         }
         
-        // Остатки на хабе
+        async function loadSellerStock(sellerId, btn) {
+            document.querySelectorAll('.seller-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/seller-stock/${sellerId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            
+            const tbody = document.querySelector('#seller-stock-table tbody');
+            if (!data.stock || data.stock.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
+            } else {
+                tbody.innerHTML = data.stock.map(s => `
+                    <tr><td>${s.product_name} (${s.variant_name})</td><td class="stock-value">${s.quantity} шт</td></tr>
+                `).join('');
+            }
+        }
+        
+        // ========== НЕРАСФАСОВАННЫЙ ТОВАР ==========
         async function openHubStockModal() {
             const token = checkAuth();
             const response = await fetch('/api/manager/hub-stock', { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
-            const tbody = document.getElementById('hub-stock-table').querySelector('tbody');
+            
+            const tbody = document.querySelector('#hub-stock-table tbody');
             if (!data.stock || data.stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2">Нет данных</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
             } else {
                 tbody.innerHTML = data.stock.map(h => `
-                    <tr><td>${h.product_name}</td><td class="stock-badge">${h.quantity_kg} кг</td></tr>
+                    <tr><td>${h.product_name}</td><td class="stock-value">${h.quantity_kg} кг</td></tr>
                 `).join('');
             }
             document.getElementById('hub-stock-modal').style.display = 'block';
         }
         
+        // ========== ОБЩИЕ ФУНКЦИИ ==========
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
@@ -524,13 +637,9 @@
             window.location.href = '/manager/';
         }
         
-        // Привязываем событие выбора товара для фасовки
-        document.getElementById('packaging-product')?.addEventListener('change', onProductChange);
-        
         loadUser();
         loadWarehouse();
         
-        // Закрытие модальных окон при клике вне окна
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) {
                 event.target.style.display = 'none';
