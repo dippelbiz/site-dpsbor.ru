@@ -89,25 +89,6 @@
             border-radius: 5px;
             cursor: pointer;
         }
-        .period-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .period-btn {
-            background: #ecf0f1;
-            color: #2c3e50;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-        .period-btn.active {
-            background: #28a745;
-            color: white;
-        }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -208,7 +189,6 @@
             padding: 20px;
         }
         
-        /* Модальное окно завершённых задач */
         .modal {
             display: none;
             position: fixed;
@@ -285,13 +265,6 @@
             </div>
         </div>
         
-        <div class="period-buttons">
-            <button class="period-btn" data-period="today">Сегодня</button>
-            <button class="period-btn" data-period="week">Последняя неделя</button>
-            <button class="period-btn" data-period="month">Последний месяц</button>
-            <button class="period-btn" data-period="all">Все время</button>
-        </div>
-        
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-title">Новые заказы</div>
@@ -311,7 +284,6 @@
             </div>
         </div>
         
-        <!-- Раздел задач (для админа и кладовщика) -->
         <div id="tasks-section" class="tasks-section" style="display: none;">
             <div class="tasks-header">
                 <h3>📋 Задачи на подтверждение</h3>
@@ -323,7 +295,6 @@
         </div>
     </div>
 
-    <!-- Модальное окно завершённых задач -->
     <div id="completed-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -337,7 +308,6 @@
     </div>
 
     <script>
-        let currentPeriod = 'today';
         let currentUserRole = '';
         
         function checkAuth() {
@@ -349,26 +319,35 @@
         async function loadDashboard() {
             const token = checkAuth();
             try {
-                const response = await fetch(`/api/manager/dashboard?period=${currentPeriod}`, {
+                console.log('Загрузка дашборда...');
+                const response = await fetch('/api/manager/dashboard', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
+                
                 if (response.status === 401) { logout(); return; }
+                
                 const data = await response.json();
+                console.log('Данные получены:', data);
                 
                 document.getElementById('user-name').textContent = data.user.name;
-                currentUserRole = data.user.role;
                 const roleNames = { 'admin': 'Администратор', 'warehouse_seller': 'Кладовщик-продавец', 'seller': 'Продавец' };
                 document.getElementById('user-role').textContent = roleNames[data.user.role] || data.user.role;
                 document.getElementById('new-orders').textContent = data.stats.new_orders;
                 document.getElementById('processing-orders').textContent = data.stats.processing_orders;
                 document.getElementById('completed-count').textContent = data.stats.completed_count;
                 document.getElementById('revenue').textContent = data.stats.revenue + ' ₽';
-            } catch (err) { console.error(err); }
+                
+            } catch (err) {
+                console.error('Ошибка загрузки дашборда:', err);
+                document.getElementById('new-orders').textContent = '?';
+                document.getElementById('processing-orders').textContent = '?';
+                document.getElementById('completed-count').textContent = '?';
+                document.getElementById('revenue').textContent = '?';
+            }
         }
         
         async function loadTasks() {
             const token = checkAuth();
-            // Показываем раздел задач только для админа и кладовщика
             if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
             
             const tasksSection = document.getElementById('tasks-section');
@@ -405,7 +384,7 @@
                         </div>
                     `).join('');
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) { console.error('Tasks error:', err); }
         }
         
         async function approveTask(taskId) {
@@ -415,9 +394,8 @@
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
-                alert('✅ Заявка подтверждена, товар добавлен на склад продавца');
+                alert('✅ Заявка подтверждена');
                 loadTasks();
-                // Обновляем дашборд (чтобы обновилась статистика)
                 loadDashboard();
             } else {
                 const error = await response.json();
@@ -473,19 +451,7 @@
             window.location.href = '/manager/';
         }
         
-        // Настройка кнопок периода
-        document.querySelectorAll('.period-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentPeriod = btn.dataset.period;
-                loadDashboard();
-            });
-        });
-        document.querySelector('.period-btn[data-period="today"]').classList.add('active');
-        
         if (checkAuth()) {
-            // Загружаем сначала роль, потом задачи
             (async () => {
                 await loadDashboard();
                 await loadTasks();
@@ -494,3 +460,8 @@
     </script>
 </body>
 </html>
+
+
+
+
+
