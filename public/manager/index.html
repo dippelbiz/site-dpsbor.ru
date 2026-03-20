@@ -48,6 +48,7 @@
         }
         .telegram-login {
             margin: 20px 0;
+            min-height: 60px;
         }
         .error {
             color: #dc3545;
@@ -59,6 +60,19 @@
             display: none;
             margin-top: 15px;
             color: #666;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #218838;
         }
     </style>
 </head>
@@ -72,43 +86,84 @@
         
         <div id="error" class="error"></div>
         <div id="loading" class="loading">Проверка доступа...</div>
+        
+        <button onclick="manualCheck()" style="background: #6c757d;">Проверить авторизацию</button>
     </div>
 
     <script>
-        function onTelegramAuth(user) {
+        // Функция авторизации
+        async function onTelegramAuth(user) {
+            console.log('Telegram user:', user);
+            
             document.getElementById('loading').style.display = 'block';
             document.getElementById('error').style.display = 'none';
             
-            fetch('/api/manager/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    telegram_id: user.id,
-                    name: user.first_name + (user.last_name ? ' ' + user.last_name : ''),
-                    username: user.username
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
+            try {
+                const response = await fetch('/api/manager/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        telegram_id: user.id,
+                        name: user.first_name + (user.last_name ? ' ' + user.last_name : ''),
+                        username: user.username
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (response.ok && data.success) {
                     localStorage.setItem('manager_token', data.token);
                     localStorage.setItem('manager_name', data.name);
                     localStorage.setItem('manager_role', data.role);
+                    console.log('Redirecting to dashboard...');
                     window.location.href = '/manager/dashboard.html';
                 } else {
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('error').style.display = 'block';
-                    document.getElementById('error').innerHTML = '❌ ' + data.message;
+                    document.getElementById('error').innerHTML = '❌ ' + (data.message || 'Доступ запрещён');
                 }
-            })
-            .catch(err => {
+            } catch (err) {
+                console.error('Auth error:', err);
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('error').style.display = 'block';
-                document.getElementById('error').innerHTML = '❌ Ошибка соединения';
-            });
+                document.getElementById('error').innerHTML = '❌ Ошибка сервера: ' + err.message;
+            }
         }
         
+        // Ручная проверка (для отладки)
+        async function manualCheck() {
+            const token = localStorage.getItem('manager_token');
+            if (token) {
+                console.log('Token exists, checking...');
+                try {
+                    const response = await fetch('/api/manager/dashboard', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        window.location.href = '/manager/dashboard.html';
+                    } else {
+                        alert('Токен недействителен, войдите заново');
+                        localStorage.removeItem('manager_token');
+                    }
+                } catch (err) {
+                    console.error('Check error:', err);
+                }
+            } else {
+                alert('Нет токена, войдите через Telegram');
+            }
+        }
+        
+        // Глобальная функция для Telegram
         window.onTelegramAuth = onTelegramAuth;
+        
+        // Проверяем, есть ли уже токен
+        const existingToken = localStorage.getItem('manager_token');
+        if (existingToken) {
+            console.log('Found existing token, checking...');
+            manualCheck();
+        }
     </script>
     
     <script async
