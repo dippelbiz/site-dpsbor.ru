@@ -6,7 +6,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
-        /* Все стили остаются как в рабочей версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -507,19 +506,17 @@ ${itemsText}
         }
 
         function goToTelegram() {
-            // 1. Открываем Telegram в новой вкладке
-            window.open(MESSENGER_LINKS.telegram, '_blank');
-            
-            // 2. Текущую вкладку сразу переводим на Мои заказы
-            window.location.href = 'orders.html';
+            // Открываем страницу заказов в новой вкладке
+            window.open('orders.html', '_blank');
+            // В текущей вкладке открываем Telegram
+            window.location.href = MESSENGER_LINKS.telegram;
         }
 
         function goToVK() {
-            // 1. Открываем ВКонтакте в новой вкладке
-            window.open(MESSENGER_LINKS.vk, '_blank');
-            
-            // 2. Текущую вкладку сразу переводим на Мои заказы
-            window.location.href = 'orders.html';
+            // Открываем страницу заказов в новой вкладке
+            window.open('orders.html', '_blank');
+            // В текущей вкладке открываем ВКонтакте
+            window.location.href = MESSENGER_LINKS.vk;
         }
 
         async function cancelOrder() {
