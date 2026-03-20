@@ -815,7 +815,7 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Подтверждение заявки (списывает товар с главного склада)
+// Подтверждение заявки (правильная логика)
 app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
@@ -830,16 +830,16 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
     
     const { seller_id, variant_id, quantity } = request.rows[0];
     
-    // Проверяем, достаточно ли товара на главном складе
+    // Проверяем, достаточно ли зарезервировано товара на главном складе
     const warehouseCheck = await pool.query(
       'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
       [variant_id]
     );
     
-    const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
-    if (available < quantity) {
+    const reserved = warehouseCheck.rows[0]?.reserved || 0;
+    if (reserved < quantity) {
       await pool.query('ROLLBACK');
-      return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
+      return res.status(400).json({ error: `Недостаточно зарезервированного товара. Зарезервировано: ${reserved} шт, требуется: ${quantity} шт` });
     }
     
     // 1. Добавляем товар на склад продавца
@@ -850,7 +850,7 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
         quantity = seller_stock.quantity + EXCLUDED.quantity
     `, [seller_id, variant_id, quantity]);
     
-    // 2. СПИСЫВАЕМ товар с главного склада (уменьшаем quantity и снимаем reserved)
+    // 2. СПИСЫВАЕМ зарезервированный товар с главного склада
     await pool.query(
       'UPDATE main_warehouse SET quantity = quantity - $1, reserved = reserved - $1 WHERE variant_id = $2',
       [quantity, variant_id]
@@ -870,7 +870,6 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Ошибка при подтверждении' });
   }
 });
-
 // Отклонение заявки (только снимает резервирование)
 app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
