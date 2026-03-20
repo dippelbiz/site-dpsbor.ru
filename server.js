@@ -56,7 +56,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Получение корзины пользователя (временно, пока без авторизации)
+// Получение корзины пользователя
 app.get('/api/cart/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
@@ -67,7 +67,7 @@ app.get('/api/cart/:userId', async (req, res) => {
         v.name as variant_name, v.price
       FROM carts c
       JOIN products p ON c.product_id = p.id
-      LEFT JOIN product_variants v ON c.variant_id = v.id
+      LEFT JOIN variants v ON c.variant_id = v.id
       WHERE c.user_id = $1
     `, [userId]);
 
@@ -230,7 +230,7 @@ async function generateOrderNumber(prefix) {
   }
 }
 
-// ==================== СОЗДАНИЕ ЗАКАЗА (В НАШУ БАЗУ) ====================
+// ==================== СОЗДАНИЕ ЗАКАЗА ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -306,7 +306,7 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`✅ Определён продавец ID: ${seller_id}, префикс: ${prefix}`);
 
-    // Получаем содержимое корзины из данных (уже передано)
+    // Получаем содержимое корзины из данных
     let total_sum = 0;
     const orderItems = items.map(item => {
       const itemTotal = item.priceAtTime * item.quantity;
@@ -342,9 +342,6 @@ app.post('/api/order', async (req, res) => {
 
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
-
-    // Очищаем корзину (временно, пока корзина в памяти)
-    // TODO: добавить очистку корзины в БД
 
     console.log('='.repeat(60));
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
@@ -636,7 +633,6 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
     const product = await pool.query('SELECT name FROM products WHERE id = $1', [product_id]);
     const productName = product.rows[0]?.name;
     
-    // Создаём или обновляем запись в hub_stock
     await pool.query(`
       INSERT INTO hub_stock (product_id, product_name, quantity_kg)
       VALUES ($1, $2, $3)
@@ -670,7 +666,6 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   try {
     await pool.query('BEGIN');
     
-    // Проверяем наличие на хабе
     const hubStock = await pool.query(
       'SELECT quantity_kg FROM hub_stock WHERE product_id = $1',
       [product_id]
@@ -681,13 +676,11 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
       return res.status(400).json({ error: 'Недостаточно товара на хабе для фасовки' });
     }
     
-    // Списываем с хаба
     await pool.query(
       'UPDATE hub_stock SET quantity_kg = quantity_kg - $1 WHERE product_id = $2',
       [quantity_kg, product_id]
     );
     
-    // Добавляем фасованный товар на склад
     await pool.query(`
       INSERT INTO main_warehouse (variant_id, quantity, reserved, min_stock, last_updated)
       VALUES ($1, $2, 0, 5, NOW())
@@ -710,23 +703,26 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   }
 });
 
-// Остатки продавцов
-app.get('/api/manager/seller-stock', checkManagerAuth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.name as seller_name, p.name as product_name, v.name as variant_name, ss.quantity
-      FROM seller_stock ss
-      JOIN users u ON ss.seller_id = u.id
-      JOIN variants v ON ss.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
-      WHERE ss.quantity > 0
-      ORDER BY u.name, p.name
-    `);
-    res.json({ stock: result.rows });
-  } catch (err) {
-    console.error('Seller stock error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
+// Получение списка продавцов
+app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
+  const result = await pool.query(
+    "SELECT id, name FROM users WHERE role IN ('seller', 'warehouse_seller') ORDER BY name"
+  );
+  res.json({ sellers: result.rows });
+});
+
+// Остатки конкретного продавца
+app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
+  const { sellerId } = req.params;
+  const result = await pool.query(`
+    SELECT p.name as product_name, v.name as variant_name, ss.quantity
+    FROM seller_stock ss
+    JOIN variants v ON ss.variant_id = v.id
+    JOIN products p ON v.product_id = p.id
+    WHERE ss.seller_id = $1 AND ss.quantity > 0
+    ORDER BY p.name, v.name
+  `, [sellerId]);
+  res.json({ stock: result.rows });
 });
 
 // Остатки на хабе (нерасфасованный)
