@@ -21,59 +21,68 @@ app.use((req, res, next) => {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 30000,
-  idleTimeoutMillis: 60000,
-  max: 10,
-  keepAlive: true,
-  keepAliveInitialDelayMillis: 10000
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 10000,
+  max: 5,
+  min: 0,
+  allowExitOnIdle: true
 });
+
+// Функция для выполнения запросов с повторными попытками
+async function queryWithRetry(query, params, retries = 3, delay = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const result = await pool.query(query, params);
+      return result;
+    } catch (err) {
+      console.error(`❌ Ошибка запроса (попытка ${i + 1}/${retries}):`, err.message);
+      
+      const isConnectionError = err.message.includes('Connection terminated') || 
+                                 err.message.includes('timeout') ||
+                                 err.message.includes('ENETUNREACH') ||
+                                 err.code === 'ECONNRESET';
+      
+      if (!isConnectionError) throw err;
+      
+      if (i === retries - 1) throw err;
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      console.log(`🔄 Повторная попытка запроса...`);
+    }
+  }
+}
 
 // Проверка подключения при старте
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Ошибка подключения к базе данных:', err.message);
-  } else {
-    console.log('✅ Подключение к базе данных установлено');
-    release();
-  }
-});
-
-// Health check endpoint
-app.get('/api/health', async (req, res) => {
+(async () => {
   try {
-    const result = await pool.query('SELECT NOW() as time');
-    res.json({ status: 'ok', time: result.rows[0].time, message: 'База данных работает' });
+    await queryWithRetry('SELECT NOW() as time', [], 3, 2000);
+    console.log('✅ Подключение к базе данных установлено');
   } catch (err) {
-    console.error('Health check error:', err.message);
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('❌ Ошибка подключения к базе данных:', err.message);
   }
+})();
+
+// Периодическая проверка (heartbeat)
+setInterval(async () => {
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    console.error('❌ Heartbeat: база данных недоступна', err.message);
+  }
+}, 30000);
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('🛑 Получен SIGTERM, закрываю соединения...');
+  await pool.end();
+  process.exit(0);
 });
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-function normalizeNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  let str = String(value).trim();
-  str = str.replace(',', '.');
-  const parts = str.split('.');
-  if (parts.length > 2) {
-    str = parts[0] + '.' + parts.slice(1).join('');
-  }
-  const num = parseFloat(str);
-  return isNaN(num) ? null : num;
-}
-
-function getDateFilter(period) {
-  switch (period) {
-    case 'today':
-      return `DATE(created_at) = CURRENT_DATE`;
-    case 'week':
-      return `created_at >= NOW() - INTERVAL '7 days'`;
-    case 'month':
-      return `created_at >= NOW() - INTERVAL '30 days'`;
-    default:
-      return `1=1`;
-  }
-}
+process.on('SIGINT', async () => {
+  console.log('🛑 Получен SIGINT, закрываю соединения...');
+  await pool.end();
+  process.exit(0);
+});
 
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
