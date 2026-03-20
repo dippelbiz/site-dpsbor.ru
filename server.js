@@ -23,6 +23,20 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+// Функция для нормализации чисел (1,5 -> 1.5, 1.5 -> 1.5)
+function normalizeNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  let str = String(value).trim();
+  str = str.replace(',', '.');
+  const parts = str.split('.');
+  if (parts.length > 2) {
+    str = parts[0] + '.' + parts.slice(1).join('');
+  }
+  const num = parseFloat(str);
+  return isNaN(num) ? null : num;
+}
+
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
@@ -618,18 +632,19 @@ app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) =
   res.json({ variants: result.rows });
 });
 
-// Закуп товара (поставка в кг) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Закуп товара (поставка в кг) - с поддержкой дробных чисел
 app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
-  const { product_id, quantity_kg, comment } = req.body;
+  let { product_id, quantity_kg, comment } = req.body;
   
-  if (!product_id || !quantity_kg) {
-    return res.status(400).json({ error: 'Не указаны обязательные поля' });
+  quantity_kg = normalizeNumber(quantity_kg);
+  
+  if (!product_id || !quantity_kg || quantity_kg <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество (например, 1.5 или 1,5)' });
   }
   
   try {
     await pool.query('BEGIN');
     
-    // Получаем название товара
     const product = await pool.query('SELECT name FROM products WHERE id = $1', [product_id]);
     const productName = product.rows[0]?.name;
     
@@ -638,7 +653,6 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
       return res.status(404).json({ error: 'Товар не найден' });
     }
     
-    // Обновляем или вставляем запись в hub_stock
     const result = await pool.query(`
       INSERT INTO hub_stock (product_id, product_name, quantity_kg, updated_at)
       VALUES ($1, $2, $3, NOW())
@@ -651,7 +665,6 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
     
     console.log(`✅ Закуплено ${quantity_kg} кг товара ${productName}. Новый остаток: ${result.rows[0].quantity_kg} кг`);
     
-    // Записываем операцию в журнал
     await pool.query(`
       INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
       VALUES (NULL, 'hub', 'purchase', $1, $2, $3)
@@ -666,12 +679,19 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
   }
 });
 
-// Фасовка товара
+// Фасовка товара - с поддержкой дробных чисел
 app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) => {
-  const { product_id, variant_id, quantity_kg, pieces } = req.body;
+  let { product_id, variant_id, quantity_kg, pieces } = req.body;
   
-  if (!product_id || !variant_id || !quantity_kg) {
-    return res.status(400).json({ error: 'Не указаны обязательные поля' });
+  quantity_kg = normalizeNumber(quantity_kg);
+  pieces = normalizeNumber(pieces);
+  
+  if (!product_id || !variant_id || !quantity_kg || quantity_kg <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество' });
+  }
+  
+  if (!pieces || pieces <= 0) {
+    return res.status(400).json({ error: 'Укажите количество упаковок' });
   }
   
   try {
@@ -682,13 +702,14 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
       [product_id]
     );
     
-    if (hubStock.rows.length === 0 || hubStock.rows[0].quantity_kg < quantity_kg) {
+    const available = hubStock.rows[0]?.quantity_kg || 0;
+    if (available < quantity_kg) {
       await pool.query('ROLLBACK');
-      return res.status(400).json({ error: 'Недостаточно товара на хабе для фасовки' });
+      return res.status(400).json({ error: `Недостаточно товара на хабе. Доступно: ${available} кг, требуется: ${quantity_kg} кг` });
     }
     
     await pool.query(
-      'UPDATE hub_stock SET quantity_kg = quantity_kg - $1 WHERE product_id = $2',
+      'UPDATE hub_stock SET quantity_kg = quantity_kg - $1, updated_at = NOW() WHERE product_id = $2',
       [quantity_kg, product_id]
     );
     
