@@ -248,15 +248,21 @@
             </div>
         </div>
         
+        <!-- Кнопки переключения между Мои остатки и Главный склад -->
         <div id="stock-toggle-container" class="stock-toggle" style="display: none;">
             <button class="toggle-btn active" id="my-stock-btn" onclick="showMyStock()">📦 Мои остатки</button>
             <button class="toggle-btn" id="main-stock-btn" onclick="showMainStock()">🏪 Остатки на главном складе</button>
         </div>
         
-        <div id="action-buttons" class="action-buttons" style="display: none;">
+        <!-- Кнопка заявки на перемещение (доступна продавцу и админу) -->
+        <div id="request-btn-container" class="action-buttons" style="display: none;">
+            <button class="action-btn request" onclick="openTransferRequestModal()">📋 Заявка на перемещение</button>
+        </div>
+        
+        <!-- Кнопки для администратора и кладовщика (закуп, фасовка и т.д.) -->
+        <div id="admin-actions" class="action-buttons" style="display: none;">
             <button class="action-btn" onclick="openPurchaseModal()">📦 Закуп товара</button>
             <button class="action-btn packaging" onclick="openPackagingModal()">📦 Фасовка товара</button>
-            <button class="action-btn request" onclick="openTransferRequestModal()">📋 Заявка на перемещение</button>
             <button class="action-btn seller" onclick="openSellerStockModal()">👥 Остатки продавцов</button>
             <button class="action-btn hub" onclick="openHubStockModal()">🏪 Нерасфасованный товар</button>
         </div>
@@ -769,18 +775,23 @@
         async function initUI() {
             await getUserInfo();
             await loadProducts();
-            const actionButtons = document.getElementById('action-buttons');
+            const adminActions = document.getElementById('admin-actions');
+            const requestBtnContainer = document.getElementById('request-btn-container');
             const stockToggle = document.getElementById('stock-toggle-container');
+            
             if (currentUserRole === 'admin') {
-                actionButtons.style.display = 'flex';
+                adminActions.style.display = 'flex';
+                requestBtnContainer.style.display = 'flex';
                 stockToggle.style.display = 'flex';
                 await showMyStock();
             } else if (currentUserRole === 'warehouse_seller') {
-                actionButtons.style.display = 'flex';
+                adminActions.style.display = 'flex';
+                requestBtnContainer.style.display = 'none';
                 stockToggle.style.display = 'none';
                 await showMainStock();
             } else if (currentUserRole === 'seller') {
-                actionButtons.style.display = 'flex';
+                adminActions.style.display = 'none';
+                requestBtnContainer.style.display = 'flex';
                 stockToggle.style.display = 'flex';
                 await showMyStock();
             }
