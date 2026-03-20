@@ -307,157 +307,165 @@
         </div>
     </div>
 
-    <script>
-        let currentUserRole = '';
-        
-        function checkAuth() {
-            const token = localStorage.getItem('manager_token');
-            if (!token) { window.location.href = '/manager/'; return false; }
-            return token;
-        }
-        
-        async function loadDashboard() {
-            const token = checkAuth();
-            try {
-                console.log('Загрузка дашборда...');
-                const response = await fetch('/api/manager/dashboard', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
-                if (response.status === 401) { logout(); return; }
-                
-                const data = await response.json();
-                console.log('Данные получены:', data);
-                
-                document.getElementById('user-name').textContent = data.user.name;
-                const roleNames = { 'admin': 'Администратор', 'warehouse_seller': 'Кладовщик-продавец', 'seller': 'Продавец' };
-                document.getElementById('user-role').textContent = roleNames[data.user.role] || data.user.role;
-                document.getElementById('new-orders').textContent = data.stats.new_orders;
-                document.getElementById('processing-orders').textContent = data.stats.processing_orders;
-                document.getElementById('completed-count').textContent = data.stats.completed_count;
-                document.getElementById('revenue').textContent = data.stats.revenue + ' ₽';
-                
-            } catch (err) {
-                console.error('Ошибка загрузки дашборда:', err);
-                document.getElementById('new-orders').textContent = '?';
-                document.getElementById('processing-orders').textContent = '?';
-                document.getElementById('completed-count').textContent = '?';
-                document.getElementById('revenue').textContent = '?';
-            }
-        }
-        
-        async function loadTasks() {
-            const token = checkAuth();
-            if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
-            
-            const tasksSection = document.getElementById('tasks-section');
-            tasksSection.style.display = 'block';
-            
-            try {
-                const response = await fetch('/api/manager/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await response.json();
-                const tasksCount = data.tasks.length;
-                const badge = document.getElementById('tasks-badge');
-                if (tasksCount > 0) {
-                    badge.textContent = tasksCount;
-                    badge.style.display = 'inline-block';
-                } else {
-                    badge.style.display = 'none';
-                }
-                
-                const container = document.getElementById('tasks-list');
-                if (data.tasks.length === 0) {
-                    container.innerHTML = '<div class="no-tasks">Нет активных задач</div>';
-                } else {
-                    container.innerHTML = data.tasks.map(task => `
-                        <div class="task-card" data-id="${task.id}">
-                            <div class="task-info">
-                                <div class="task-seller">👤 ${task.seller_name}</div>
-                                <div class="task-product">📦 ${task.product_name} (${task.variant_name})</div>
-                                <div class="task-quantity">📊 Количество: ${task.quantity} шт</div>
-                                <div class="task-date">📅 ${new Date(task.created_at).toLocaleString()}</div>
-                            </div>
-                            <div class="task-buttons">
-                                <button class="approve-btn" onclick="approveTask(${task.id})">✅ Подтвердить</button>
-                                <button class="reject-btn" onclick="rejectTask(${task.id})">❌ Отклонить</button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            } catch (err) { console.error('Tasks error:', err); }
-        }
-        
-        async function approveTask(taskId) {
-            const token = checkAuth();
-            const response = await fetch(`/api/manager/tasks/${taskId}/approve`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+  <script>
+    let currentUserRole = '';
+    
+    function checkAuth() {
+        const token = localStorage.getItem('manager_token');
+        if (!token) { window.location.href = '/manager/'; return false; }
+        return token;
+    }
+    
+    async function loadDashboard() {
+        const token = checkAuth();
+        try {
+            console.log('Загрузка дашборда...');
+            const response = await fetch('/api/manager/dashboard', {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (response.ok) {
-                alert('✅ Заявка подтверждена');
-                loadTasks();
-                loadDashboard();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + error.error);
-            }
-        }
-        
-        async function rejectTask(taskId) {
-            const token = checkAuth();
-            const response = await fetch(`/api/manager/tasks/${taskId}/reject`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-            });
-            if (response.ok) {
-                alert('❌ Заявка отклонена');
-                loadTasks();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + error.error);
-            }
-        }
-        
-        async function openCompletedTasks() {
-            const token = checkAuth();
-            const response = await fetch('/api/manager/tasks/completed', { headers: { 'Authorization': `Bearer ${token}` } });
+            
+            if (response.status === 401) { logout(); return; }
+            
             const data = await response.json();
-            const container = document.getElementById('completed-tasks-list');
-            if (data.tasks.length === 0) {
-                container.innerHTML = '<div class="no-tasks">Нет завершённых задач</div>';
+            console.log('Данные получены:', data);
+            
+            // СОХРАНЯЕМ РОЛЬ
+            currentUserRole = data.user.role;
+            
+            document.getElementById('user-name').textContent = data.user.name;
+            const roleNames = { 'admin': 'Администратор', 'warehouse_seller': 'Кладовщик-продавец', 'seller': 'Продавец' };
+            document.getElementById('user-role').textContent = roleNames[data.user.role] || data.user.role;
+            document.getElementById('new-orders').textContent = data.stats.new_orders;
+            document.getElementById('processing-orders').textContent = data.stats.processing_orders;
+            document.getElementById('completed-count').textContent = data.stats.completed_count;
+            document.getElementById('revenue').textContent = data.stats.revenue + ' ₽';
+            
+            // После загрузки дашборда загружаем задачи (если нужно)
+            await loadTasks();
+            
+        } catch (err) {
+            console.error('Ошибка загрузки дашборда:', err);
+            document.getElementById('new-orders').textContent = '?';
+            document.getElementById('processing-orders').textContent = '?';
+            document.getElementById('completed-count').textContent = '?';
+            document.getElementById('revenue').textContent = '?';
+        }
+    }
+    
+    async function loadTasks() {
+        console.log('Проверка роли для задач:', currentUserRole);
+        
+        // Показываем задачи только для админа и кладовщика
+        if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') {
+            console.log('Задачи не показываются для роли:', currentUserRole);
+            return;
+        }
+        
+        const token = checkAuth();
+        const tasksSection = document.getElementById('tasks-section');
+        tasksSection.style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/manager/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const tasksCount = data.tasks.length;
+            const badge = document.getElementById('tasks-badge');
+            if (tasksCount > 0) {
+                badge.textContent = tasksCount;
+                badge.style.display = 'inline-block';
             } else {
-                container.innerHTML = data.tasks.map(task => {
-                    const statusText = task.status === 'approved' ? '✅ Подтверждена' : '❌ Отклонена';
-                    const statusClass = task.status === 'approved' ? 'status-approved' : 'status-rejected';
-                    return `
-                        <div class="completed-task-item">
-                            <strong>👤 ${task.seller_name}</strong>
-                            <span class="completed-task-status ${statusClass}">${statusText}</span>
-                            <div>📦 ${task.product_name} (${task.variant_name}) — ${task.quantity} шт</div>
-                            <div class="task-date">📅 ${new Date(task.updated_at).toLocaleString()}</div>
-                        </div>
-                    `;
-                }).join('');
+                badge.style.display = 'none';
             }
-            document.getElementById('completed-modal').style.display = 'block';
+            
+            const container = document.getElementById('tasks-list');
+            if (data.tasks.length === 0) {
+                container.innerHTML = '<div class="no-tasks">Нет активных задач</div>';
+            } else {
+                container.innerHTML = data.tasks.map(task => `
+                    <div class="task-card" data-id="${task.id}">
+                        <div class="task-info">
+                            <div class="task-seller">👤 ${task.seller_name}</div>
+                            <div class="task-product">📦 ${task.product_name} (${task.variant_name})</div>
+                            <div class="task-quantity">📊 Количество: ${task.quantity} шт</div>
+                            <div class="task-date">📅 ${new Date(task.created_at).toLocaleString()}</div>
+                        </div>
+                        <div class="task-buttons">
+                            <button class="approve-btn" onclick="approveTask(${task.id})">✅ Подтвердить</button>
+                            <button class="reject-btn" onclick="rejectTask(${task.id})">❌ Отклонить</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (err) { console.error('Tasks error:', err); }
+    }
+    
+    async function approveTask(taskId) {
+        const token = checkAuth();
+        const response = await fetch(`/api/manager/tasks/${taskId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            alert('✅ Заявка подтверждена');
+            loadDashboard();  // перезагружаем всё
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + error.error);
         }
-        
-        function closeCompletedModal() {
-            document.getElementById('completed-modal').style.display = 'none';
+    }
+    
+    async function rejectTask(taskId) {
+        const token = checkAuth();
+        const response = await fetch(`/api/manager/tasks/${taskId}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            alert('❌ Заявка отклонена');
+            loadDashboard();
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + error.error);
         }
-        
-        function logout() {
-            localStorage.removeItem('manager_token');
-            window.location.href = '/manager/';
+    }
+    
+    async function openCompletedTasks() {
+        const token = checkAuth();
+        const response = await fetch('/api/manager/tasks/completed', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await response.json();
+        const container = document.getElementById('completed-tasks-list');
+        if (data.tasks.length === 0) {
+            container.innerHTML = '<div class="no-tasks">Нет завершённых задач</div>';
+        } else {
+            container.innerHTML = data.tasks.map(task => {
+                const statusText = task.status === 'approved' ? '✅ Подтверждена' : '❌ Отклонена';
+                const statusClass = task.status === 'approved' ? 'status-approved' : 'status-rejected';
+                return `
+                    <div class="completed-task-item">
+                        <strong>👤 ${task.seller_name}</strong>
+                        <span class="completed-task-status ${statusClass}">${statusText}</span>
+                        <div>📦 ${task.product_name} (${task.variant_name}) — ${task.quantity} шт</div>
+                        <div class="task-date">📅 ${new Date(task.updated_at).toLocaleString()}</div>
+                    </div>
+                `;
+            }).join('');
         }
-        
-        if (checkAuth()) {
-            (async () => {
-                await loadDashboard();
-                await loadTasks();
-            })();
-        }
-    </script>
+        document.getElementById('completed-modal').style.display = 'block';
+    }
+    
+    function closeCompletedModal() {
+        document.getElementById('completed-modal').style.display = 'none';
+    }
+    
+    function logout() {
+        localStorage.removeItem('manager_token');
+        window.location.href = '/manager/';
+    }
+    
+    if (checkAuth()) {
+        loadDashboard();
+    }
+</script>
 </body>
 </html>
 
