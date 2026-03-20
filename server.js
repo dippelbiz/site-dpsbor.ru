@@ -405,7 +405,7 @@ async function checkManagerAuth(req, res, next) {
   next();
 }
 
-// Получение дашборда с фильтрацией по периоду
+// Получение дашборда (упрощённая версия)
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
     const { period = 'today' } = req.query;
@@ -417,27 +417,26 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     }
     const user = userResult.rows[0];
     
+    // Для админа — общая статистика, для продавца — только его заказы
     let statsQuery;
     let statsParams = [];
     
     if (user.role === 'admin') {
-      // Для админа: общая статистика по всем продавцам
       statsQuery = `
         SELECT 
           COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
           COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
-          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_today,
-          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue_today
+          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_count,
+          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue
         FROM orders
       `;
     } else {
-      // Для продавца: только его заказы
       statsQuery = `
         SELECT 
           COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
           COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
-          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_today,
-          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue_today
+          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_count,
+          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue
         FROM orders
         WHERE seller_id = $1
       `;
@@ -447,25 +446,7 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     const statsResult = await pool.query(statsQuery, statsParams);
     const stats = statsResult.rows[0];
     
-    // Статистика по продавцам (только для админа)
-    let sellersStats = [];
-    if (user.role === 'admin') {
-      const sellersResult = await pool.query(`
-        SELECT 
-          u.id,
-          u.name,
-          COUNT(o.id) as orders_count,
-          COALESCE(SUM(o.total), 0) as total_revenue
-        FROM users u
-        LEFT JOIN orders o ON u.id = o.seller_id AND ${dateFilter}
-        WHERE u.role IN ('seller', 'warehouse_seller', 'admin')
-        GROUP BY u.id, u.name
-        ORDER BY total_revenue DESC
-      `);
-      sellersStats = sellersResult.rows;
-    }
-    
-    // Последние заказы
+    // Последние 10 заказов (без разбивки по продавцам)
     let ordersQuery;
     let ordersParams = [];
     if (user.role === 'admin') {
@@ -497,10 +478,9 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
       stats: {
         new_orders: parseInt(stats.new_orders) || 0,
         processing_orders: parseInt(stats.processing_orders) || 0,
-        completed_today: parseInt(stats.completed_today) || 0,
-        revenue_today: parseInt(stats.revenue_today) || 0
+        completed_count: parseInt(stats.completed_count) || 0,
+        revenue: parseInt(stats.revenue) || 0
       },
-      sellers_stats: sellersStats,
       recent_orders: recentOrders
     });
   } catch (err) {
