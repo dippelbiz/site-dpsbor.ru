@@ -59,15 +59,6 @@
             font-weight: bold;
             color: #28a745;
         }
-        .order-status {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.9em;
-            font-weight: bold;
-        }
-        .status-active { background: #e3f2fd; color: #0d47a1; }
-        .status-completed { background: #e8f5e8; color: #1b5e20; }
-        .status-cancelled { background: #ffebee; color: #b71c1c; }
         .order-items {
             margin: 10px 0;
             font-size: 0.95em;
@@ -88,20 +79,6 @@
             border-radius: 5px;
             margin: 10px 0;
             font-size: 0.9em;
-        }
-        .cancel-button {
-            background: #d32f2f;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-        }
-        .cancel-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
         }
         .cart-fab {
             position: fixed;
@@ -177,25 +154,13 @@
                 return;
             }
 
+            // Сортируем от новых к старым
             orders.sort((a, b) => b.id - a.id);
 
             orders.forEach(order => {
-                // Определяем отображаемый номер заказа
                 const displayNumber = order.order_number || order.id;
 
-                // Нормализация статуса
-                const rawStatus = order.status;
-                let displayStatus = rawStatus;
-                if (displayStatus === 'active' || displayStatus === 'новый' || displayStatus === 'Активный') displayStatus = 'Активный';
-                if (displayStatus === 'completed') displayStatus = 'Завершен';
-                if (displayStatus === 'cancelled' || displayStatus === 'Отменен') displayStatus = 'Отменен';
-
-                let statusClass = '';
-                if (displayStatus === 'Активный') statusClass = 'status-active';
-                else if (displayStatus === 'Завершен') statusClass = 'status-completed';
-                else if (displayStatus === 'Отменен') statusClass = 'status-cancelled';
-
-                // Формируем список товаров с учётом варианта и заменой "Упаковка" на "Уп."
+                // Формируем список товаров
                 const itemsHtml = order.items.map(item => {
                     const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
                     const itemName = variantDisplay ? `${item.name} (${variantDisplay})` : item.name;
@@ -207,6 +172,7 @@
                     `;
                 }).join('');
 
+                // Информация о доставке и оплате
                 let infoHtml = '';
                 if (order.contact) {
                     const contact = order.contact;
@@ -215,12 +181,8 @@
 
                     if (contact.deliveryType === 'pickup') {
                         infoHtml += `<div><strong>Самовывоз</strong><br>Адрес: ${contact.address}</div>`;
-                    } else if (contact.deliveryType === 'free') {
-                        infoHtml += `<div><strong>Бесплатная доставка от 15 000 руб</strong><br>Адрес: ${contact.address}</div>`;
                     } else if (contact.deliveryType === 'courier') {
                         infoHtml += `<div><strong>Доставка курьером</strong><br>Адрес: ${contact.address}</div>`;
-                    } else if (contact.address) {
-                        infoHtml += `<div><strong>Адрес доставки:</strong> ${contact.address}</div>`;
                     }
 
                     if (contact.username) {
@@ -228,13 +190,7 @@
                     }
                 }
 
-                // Проверка на возможность отмены
-                const normalizedStatus = rawStatus.trim().toLowerCase();
-                const canCancel = normalizedStatus === 'активный' || normalizedStatus === 'новый' || normalizedStatus === 'active';
-                const cancelButton = canCancel
-                    ? `<button class="cancel-button" onclick="cancelOrder(${order.id})">Отменить заказ</button>`
-                    : '';
-
+                // Дата заказа
                 let formattedDate = 'Неизвестно';
                 if (order.created_at) {
                     const date = new Date(order.created_at);
@@ -248,7 +204,6 @@
                 card.innerHTML = `
                     <div class="order-header">
                         <span class="order-id">Заказ №${displayNumber}</span>
-                        <span class="order-status ${statusClass}">${displayStatus}</span>
                     </div>
                     <div class="order-items">
                         ${itemsHtml}
@@ -258,26 +213,9 @@
                     <div style="font-size: 0.9em; color: #666;">
                         Дата: ${formattedDate}
                     </div>
-                    ${cancelButton}
                 `;
                 container.appendChild(card);
             });
-        }
-
-        async function cancelOrder(orderId) {
-            if (!confirm('Вы уверены, что хотите отменить заказ?')) return;
-
-            const response = await fetch(`/api/order/${orderId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'Отменен' })
-            });
-
-            if (response.ok) {
-                loadOrders();
-            } else {
-                alert('Ошибка при отмене заказа');
-            }
         }
 
         loadOrders();
