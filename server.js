@@ -17,6 +17,7 @@ app.use((req, res, next) => {
   }
 });
 
+// ==================== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ ====================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -500,6 +501,244 @@ app.post('/api/order', async (req, res) => {
     console.error(err);
     console.error('='.repeat(60));
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ==================== ПАНЕЛЬ УПРАВЛЕНИЯ (MANAGER) ====================
+
+// Временное хранилище токенов
+const validTokens = new Map();
+
+// Авторизация через Telegram
+app.post('/api/manager/auth', async (req, res) => {
+  const { telegram_id, name } = req.body;
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM users WHERE telegram_id = $1 AND is_active = true',
+      [telegram_id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Доступ запрещён. Обратитесь к администратору.' 
+      });
+    }
+    
+    const user = result.rows[0];
+    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+    validTokens.set(token, { userId: user.id, role: user.role, expires: Date.now() + 86400000 });
+    
+    res.json({
+      success: true,
+      token: token,
+      name: user.name,
+      role: user.role
+    });
+  } catch (err) {
+    console.error('Auth error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка сервера' });
+  }
+});
+
+// Middleware для проверки токена
+async function checkManagerAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const token = authHeader.substring(7);
+  const tokenData = validTokens.get(token);
+  
+  if (!tokenData || tokenData.expires < Date.now()) {
+    validTokens.delete(token);
+    return res.status(401).json({ error: 'Token expired' });
+  }
+  
+  req.userId = tokenData.userId;
+  req.userRole = tokenData.role;
+  next();
+}
+
+// Получение дашборда
+app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
+  try {
+    const userResult = await pool.query(
+      'SELECT name, role FROM users WHERE id = $1',
+      [req.userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    const statsResult = await pool.query(`
+      SELECT 
+        COUNT(CASE WHEN status = 'new' THEN 1 END) as new_orders,
+        COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
+        COUNT(CASE WHEN status = 'completed' AND DATE(created_at) = CURRENT_DATE THEN 1 END) as completed_today,
+        COALESCE(SUM(CASE WHEN status = 'completed' AND DATE(created_at) = CURRENT_DATE THEN total END), 0) as revenue_today
+      FROM orders
+    `);
+    
+    const stats = statsResult.rows[0];
+    
+    const ordersResult = await pool.query(`
+      SELECT id, order_number, contact, total, status, created_at
+      FROM orders
+      ORDER BY created_at DESC
+      LIMIT 5
+    `);
+    
+    const recentOrders = ordersResult.rows.map(order => ({
+      ...order,
+      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
+    }));
+    
+    res.json({
+      user: { name: user.name, role: user.role },
+      stats: {
+        new_orders: parseInt(stats.new_orders) || 0,
+        processing_orders: parseInt(stats.processing_orders) || 0,
+        completed_today: parseInt(stats.completed_today) || 0,
+        revenue_today: parseInt(stats.revenue_today) || 0
+      },
+      recent_orders: recentOrders
+    });
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получение списка заказов
+app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+    
+    let query = `
+      SELECT id, order_number, contact, total, status, created_at, completed_at
+      FROM orders
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ` WHERE status = $${params.length + 1}`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+    
+    const result = await pool.query(query, params);
+    
+    const orders = result.rows.map(order => ({
+      ...order,
+      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
+    }));
+    
+    res.json({ orders });
+  } catch (err) {
+    console.error('Orders error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Обновление статуса заказа
+app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  const allowedStatuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  
+  try {
+    await pool.query(
+      'UPDATE orders SET status = $1, completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END WHERE id = $2',
+      [status, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update order error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получение склада
+app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        mw.id,
+        v.name as variant_name,
+        p.name as product_name,
+        mw.quantity,
+        mw.reserved,
+        (mw.quantity - mw.reserved) as available,
+        mw.min_stock
+      FROM main_warehouse mw
+      JOIN variants v ON mw.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      ORDER BY p.name, v.name
+    `);
+    
+    res.json({ warehouse: result.rows });
+  } catch (err) {
+    console.error('Warehouse error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Обновление склада (приход/расход)
+app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => {
+  const { variant_id, quantity, type, comment } = req.body;
+  
+  if (!variant_id || !quantity || !['income', 'outcome'].includes(type)) {
+    return res.status(400).json({ error: 'Invalid data' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    
+    if (type === 'income') {
+      await pool.query(
+        'UPDATE main_warehouse SET quantity = quantity + $1, last_updated = NOW() WHERE variant_id = $2',
+        [quantity, variant_id]
+      );
+    } else {
+      const checkResult = await pool.query(
+        'SELECT quantity FROM main_warehouse WHERE variant_id = $1',
+        [variant_id]
+      );
+      if (checkResult.rows[0]?.quantity < quantity) {
+        await pool.query('ROLLBACK');
+        return res.status(400).json({ error: 'Недостаточно товара на складе' });
+      }
+      await pool.query(
+        'UPDATE main_warehouse SET quantity = quantity - $1, last_updated = NOW() WHERE variant_id = $2',
+        [quantity, variant_id]
+      );
+    }
+    
+    await pool.query(
+      `INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+       VALUES ($1, 'main', $2, $3, $4, $5)`,
+      [variant_id, type, quantity, req.userId, comment]
+    );
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Warehouse update error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
