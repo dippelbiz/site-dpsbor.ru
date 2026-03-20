@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-widget.js?22"></script>
+    <title>Вход — Панель управления</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 10px;
+        }
+        .logo span {
+            color: #ff8f00;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .telegram-login {
+            margin: 20px 0;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            margin-top: 15px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo">ДП <span>СБОР</span></div>
+        <h2>Панель управления</h2>
+        <p>Войдите через Telegram для доступа</p>
+        
+        <div id="telegram-login" class="telegram-login"></div>
+        
+        <div id="error" class="error"></div>
+        <div id="loading" class="loading">Проверка доступа...</div>
+    </div>
+
+    <script>
+        function onTelegramAuth(user) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            
+            fetch('/api/manager/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegram_id: user.id,
+                    name: user.first_name + (user.last_name ? ' ' + user.last_name : ''),
+                    username: user.username
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    localStorage.setItem('manager_token', data.token);
+                    localStorage.setItem('manager_name', data.name);
+                    localStorage.setItem('manager_role', data.role);
+                    window.location.href = '/manager/dashboard.html';
+                } else {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error').innerHTML = '❌ ' + data.message;
+                }
+            })
+            .catch(err => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').innerHTML = '❌ Ошибка соединения';
+            });
+        }
+        
+        window.onTelegramAuth = onTelegramAuth;
+    </script>
+    
+    <script async
+        src="https://telegram.org/js/telegram-widget.js?22"
+        data-telegram-login="dpsbor_site_bot"
+        data-size="large"
+        data-onauth="onTelegramAuth(user)"
+        data-request-access="write">
+    </script>
+</body>
+</html>
