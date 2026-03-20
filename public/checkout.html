@@ -201,6 +201,24 @@
             line-height: 1.4;
         }
         
+        /* Кнопка отмены */
+        .cancel-button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .cancel-button:hover {
+            background: #c82333;
+        }
+        
         /* Кнопки мессенджеров */
         .messenger-buttons {
             display: flex;
@@ -234,22 +252,6 @@
         
         .messenger-button.vk:hover {
             background: #3a5a80;
-        }
-        
-        .close-button {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-            font-size: 15px;
-        }
-        
-        .close-button:hover {
-            background: #5a6268;
         }
     </style>
 </head>
@@ -311,7 +313,7 @@
                 <p style="margin-top: 10px; color: #28a745;">Мы ответим в ближайшее время!</p>
             </div>
             
-            <!-- Только кнопка копирования (текст скрыт) -->
+            <!-- Кнопка копирования -->
             <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
                 <span>📋</span> Копировать заказ
             </button>
@@ -326,9 +328,9 @@
                 </button>
             </div>
             
-            <!-- Кнопка "Позже" -->
-            <button class="close-button" onclick="closeModal()">
-                Перейти к заказам
+            <!-- Кнопка отмены заказа -->
+            <button class="cancel-button" onclick="cancelOrder()">
+                ❌ Отменить заказ
             </button>
         </div>
     </div>
@@ -351,6 +353,7 @@
         let pickupLocations = [];
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
+        let currentOrderId = null;
         let currentOrderMessage = '';
 
         // Ссылки на мессенджеры
@@ -359,25 +362,24 @@
             vk: 'https://vk.me/public236751492'
         };
 
-        // Функция для создания текста сообщения
+        // Функция для создания текста сообщения (БЕЗ СМАЙЛИКОВ)
         function createOrderMessage(orderNumber, orderData) {
             const itemsText = orderData.items.map(item => {
                 const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                return `${item.name} (${variantDisplay}) - ${item.quantity} шт`;
+                return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
             }).join('\n');
             
             const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
             const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
             
-            return `✅ ЗАКАЗ №${orderNumber}
-            
+            return `ЗАКАЗ №${orderNumber}
 Способ получения: ${deliveryText}
 Адрес: ${orderData.contact.address}
 Оплата: ${paymentText}
 
 ${itemsText}
 
-💰 Итого: ${orderData.total} руб.`;
+Итого: ${orderData.total} руб.`;
         }
 
         async function loadData() {
@@ -479,7 +481,8 @@ ${itemsText}
         });
         updateDeliveryBlocks();
 
-        function showModal(orderNumber, message) {
+        function showModal(orderId, orderNumber, message) {
+            currentOrderId = orderId;
             currentOrderNumber = orderNumber;
             currentOrderMessage = message;
             
@@ -493,7 +496,6 @@ ${itemsText}
 
         function closeModal() {
             document.getElementById('success-modal').style.display = 'none';
-            window.location.href = 'orders.html';
         }
 
         function copyOrderMessage() {
@@ -517,6 +519,31 @@ ${itemsText}
 
         function goToVK() {
             window.open(MESSENGER_LINKS.vk, '_blank');
+        }
+
+        async function cancelOrder() {
+            if (!confirm('Вы уверены, что хотите отменить заказ?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/order/${currentOrderId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'Отменен' })
+                });
+                
+                if (response.ok) {
+                    alert('Заказ отменён');
+                    closeModal();
+                    window.location.href = 'orders.html';
+                } else {
+                    alert('Ошибка при отмене заказа');
+                }
+            } catch (err) {
+                console.error('Ошибка:', err);
+                alert('Ошибка при отмене заказа');
+            }
         }
 
         const confirmBtn = document.getElementById('confirm-button');
@@ -589,7 +616,9 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
-                    showModal(result.orderNumber, orderMessage);
+                    // Нужно получить ID заказа из базы для отмены
+                    // Пока используем временное решение
+                    showModal('temp_id', result.orderNumber, orderMessage);
                     
                     cart.items = [];
                     updateCartCount();
