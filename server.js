@@ -34,30 +34,22 @@ async function sendOrderToYougile(orderData) {
   }
 
   try {
-    const itemsList = orderData.items.map(item => 
-      `• ${item.name} (${item.variantName || 'уп.'}) x${item.quantity} = ${item.price * item.quantity} руб.`
-    ).join('\n');
+    const itemsText = orderData.items.map(item => {
+      const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+      return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
+    }).join('\n');
     
-    // Определяем название мессенджера
-    let messengerName = 'Не указан';
-    if (orderData.contact.messenger === 'telegram') messengerName = 'Telegram';
-    else if (orderData.contact.messenger === 'vk') messengerName = 'ВКонтакте';
+    const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
+    const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
     
-    const description = `
-НОВЫЙ ЗАКАЗ С САЙТА dpsbor.ru
+    const description = `ЗАКАЗ №${orderData.orderNumber}
+Способ получения: ${deliveryText}
+Адрес: ${orderData.contact.address}
+Оплата: ${paymentText}
 
-👤 Клиент: ${orderData.contact.name}
-📞 Телефон: ${orderData.contact.phone}
-💬 Мессенджер: ${messengerName}
-🚚 Доставка: ${orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером'}
-📍 Адрес: ${orderData.contact.address}
-💳 Оплата: ${orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}
+${itemsText}
 
-📦 СОСТАВ ЗАКАЗА:
-${itemsList}
-
-💰 ИТОГО: ${orderData.total} руб.
-    `;
+Итого: ${orderData.total} руб.`;
     
     const response = await fetch('https://ru.yougile.com/api-v2/tasks', {
       method: 'POST',
@@ -66,7 +58,7 @@ ${itemsList}
         'Authorization': `Bearer ${YOUGILE_API_KEY}`
       },
       body: JSON.stringify({
-        title: `Заказ №${orderData.orderNumber || 'новый'}`,
+        title: `Заказ №${orderData.orderNumber}`,
         description: description,
         columnId: YOUGILE_COLUMN_ID
       })
@@ -273,7 +265,6 @@ app.get('/api/orders/:userId', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC', [userId]);
     
-    // Парсим JSON-поля
     const orders = result.rows.map(order => {
       if (order.items) order.items = JSON.parse(order.items);
       if (order.contact) order.contact = JSON.parse(order.contact);
@@ -287,7 +278,7 @@ app.get('/api/orders/:userId', async (req, res) => {
   }
 });
 
-// Обновление статуса заказа (для админ-панели, если будет)
+// Обновление статуса заказа
 app.put('/api/order/:orderId', async (req, res) => {
   const orderId = parseInt(req.params.orderId, 10);
   const { status } = req.body;
@@ -512,7 +503,7 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
-// ==================== СТАРЫЕ СТРАНИЦЫ (для совместимости) ====================
+// ==================== СТАРЫЕ СТРАНИЦЫ ====================
 app.get('/cart.html', (req, res) => {
   res.sendFile(__dirname + '/public/cart.html');
 });
