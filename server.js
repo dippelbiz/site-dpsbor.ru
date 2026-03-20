@@ -22,68 +22,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// ==================== YOUGILE ИНТЕГРАЦИЯ ====================
-const YOUGILE_API_KEY = process.env.YOUGILE_API_KEY;
-const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;
-
-// Функция отправки заказа в YouGile
-async function sendOrderToYougile(orderData) {
-  if (!YOUGILE_API_KEY || !YOUGILE_COLUMN_ID) {
-    console.log('⚠️ YouGile не настроен (отсутствуют ключи)');
-    return;
-  }
-
-  try {
-    const itemsList = orderData.items.map(item => 
-      `• ${item.name} (${item.variantName || 'уп.'}) x${item.quantity} = ${item.price * item.quantity} руб.`
-    ).join('\n');
-    
-    // Определяем название мессенджера для отображения
-    let messengerName = 'Не указан';
-    if (orderData.contact.messenger === 'telegram') messengerName = 'Telegram';
-    else if (orderData.contact.messenger === 'vk') messengerName = 'ВКонтакте';
-    
-    const description = `
-НОВЫЙ ЗАКАЗ С САЙТА dpsbor.ru
-
-👤 Клиент: ${orderData.contact.name}
-📞 Телефон: ${orderData.contact.phone}
-💬 Предпочтительный мессенджер: ${messengerName}
-🚚 Доставка: ${orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка курьером'}
-📍 Адрес: ${orderData.contact.address}
-💳 Оплата: ${orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}
-
-📦 СОСТАВ ЗАКАЗА:
-${itemsList}
-
-💰 ИТОГО: ${orderData.total} руб.
-    `;
-    
-    const response = await fetch('https://ru.yougile.com/api-v2/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${YOUGILE_API_KEY}`
-      },
-      body: JSON.stringify({
-        title: `Заказ №${orderData.orderNumber || 'новый'}`,
-        description: description,
-        columnId: YOUGILE_COLUMN_ID
-      })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('❌ Ошибка YouGile API:', response.status, errorData);
-    } else {
-      const result = await response.json();
-      console.log('✅ Заказ отправлен в YouGile, ID задачи:', result.id);
-    }
-  } catch (error) {
-    console.error('❌ Ошибка при отправке в YouGile:', error.message);
-  }
-}
-
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
@@ -272,14 +210,22 @@ app.get('/api/orders/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
     const result = await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC', [userId]);
-    res.json(result.rows);
+    
+    // Парсим JSON-поля
+    const orders = result.rows.map(order => {
+      if (order.items) order.items = JSON.parse(order.items);
+      if (order.contact) order.contact = JSON.parse(order.contact);
+      return order;
+    });
+    
+    res.json(orders);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-// Обновление статуса заказа
+// Обновление статуса заказа (для админ-панели, если будет)
 app.put('/api/order/:orderId', async (req, res) => {
   const orderId = parseInt(req.params.orderId, 10);
   const { status } = req.body;
@@ -290,14 +236,7 @@ app.put('/api/order/:orderId', async (req, res) => {
   }
 
   try {
-    const order = await pool.query('SELECT status FROM orders WHERE id = $1', [orderId]);
-    if (order.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
-    if (order.rows[0].status !== 'Активный' && status !== order.rows[0].status) {
-      return res.status(400).json({ error: 'Cannot change non-active order' });
-    }
-
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, orderId]);
-
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -483,14 +422,6 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE
-    sendOrderToYougile({
-      orderNumber: order_number,
-      contact: contact,
-      items: orderItems,
-      total: total_sum
-    }).catch(e => console.error('⚠️ YouGile error:', e.message));
-
     // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
     console.log('✅ Корзина очищена');
@@ -499,6 +430,7 @@ app.post('/api/order', async (req, res) => {
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
+    // Возвращаем только номер заказа — НИКАКИХ ВЫЗОВОВ YOUGILE
     res.status(200).json({ 
       orderNumber: order_number 
     });
@@ -511,7 +443,7 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
-// ==================== СТАРЫЕ СТРАНИЦЫ ====================
+// ==================== СТАРЫЕ СТРАНИЦЫ (для совместимости) ====================
 app.get('/cart.html', (req, res) => {
   res.sendFile(__dirname + '/public/cart.html');
 });
