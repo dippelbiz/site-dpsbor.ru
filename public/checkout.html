@@ -236,6 +236,12 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        .redirect-message {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
@@ -319,8 +325,7 @@
                 <p><b>📋 Что нужно сделать:</b></p>
                 <ol style="margin: 10px 0 0 20px;">
                     <li>Нажмите <b>«Копировать заказ»</b></li>
-                    <li>Перейдите в открывшийся чат</li>
-                    <li><b>Вставьте</b> скопированный текст и отправьте</li>
+                    <li>Вставьте текст в открывшийся чат и отправьте</li>
                 </ol>
             </div>
             
@@ -333,6 +338,11 @@
             <button class="cancel-button" onclick="cancelCreatedOrder()">
                 ❌ Отменить заказ
             </button>
+            
+            <!-- Сообщение о перенаправлении -->
+            <div class="redirect-message">
+                ⏳ Через 3 секунды вы перейдёте в «Мои заказы»
+            </div>
         </div>
     </div>
 
@@ -357,6 +367,7 @@
         let currentOrderNumber = null;
         let currentOrderId = null;
         let currentOrderMessage = '';
+        let redirectTimer = null;
 
         // Ссылки на мессенджеры
         const MESSENGER_LINKS = {
@@ -508,6 +519,14 @@ ${itemsText}
             const copyBtn = document.getElementById('copy-button');
             copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
             copyBtn.classList.remove('copied');
+            
+            // Запускаем таймер для перехода на страницу заказов
+            if (redirectTimer) {
+                clearTimeout(redirectTimer);
+            }
+            redirectTimer = setTimeout(() => {
+                window.location.href = 'orders.html';
+            }, 3000);
         }
 
         function copyOrderMessage() {
@@ -516,9 +535,18 @@ ${itemsText}
                 copyBtn.innerHTML = '<span>✅</span> Скопировано!';
                 copyBtn.classList.add('copied');
                 
+                // Сбрасываем таймер, но оставляем возможность перейти по кнопке
+                if (redirectTimer) {
+                    clearTimeout(redirectTimer);
+                }
+                
                 setTimeout(() => {
                     copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
                     copyBtn.classList.remove('copied');
+                    // Запускаем таймер заново
+                    redirectTimer = setTimeout(() => {
+                        window.location.href = 'orders.html';
+                    }, 3000);
                 }, 2000);
             }).catch(err => {
                 alert('Не удалось скопировать. Выделите текст вручную и нажмите Ctrl+C');
@@ -555,7 +583,7 @@ ${itemsText}
                     // Открываем мессенджер
                     window.open(MESSENGER_LINKS[messenger], '_blank');
                     
-                    // Показываем окно с кнопкой копирования
+                    // Показываем окно с кнопкой копирования и автоматическим переходом
                     showCopyModal(result.orderNumber, message);
                     
                     // Очищаем корзину
@@ -586,6 +614,9 @@ ${itemsText}
         function cancelCreatedOrder() {
             if (confirm('Отменить заказ? Он будет удалён из системы.')) {
                 // Здесь можно добавить API для удаления заказа
+                if (redirectTimer) {
+                    clearTimeout(redirectTimer);
+                }
                 hideAllModals();
                 window.location.href = 'orders.html';
             }
