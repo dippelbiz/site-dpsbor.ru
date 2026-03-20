@@ -405,6 +405,12 @@ async function checkManagerAuth(req, res, next) {
   next();
 }
 
+// Получение информации о текущем пользователе
+app.get('/api/manager/me', checkManagerAuth, async (req, res) => {
+  const result = await pool.query('SELECT id, name, role FROM users WHERE id = $1', [req.userId]);
+  res.json(result.rows[0]);
+});
+
 // Получение дашборда (упрощённая версия)
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
@@ -417,7 +423,6 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     }
     const user = userResult.rows[0];
     
-    // Для админа — общая статистика, для продавца — только его заказы
     let statsQuery;
     let statsParams = [];
     
@@ -446,7 +451,6 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     const statsResult = await pool.query(statsQuery, statsParams);
     const stats = statsResult.rows[0];
     
-    // Последние 10 заказов (без разбивки по продавцам)
     let ordersQuery;
     let ordersParams = [];
     if (user.role === 'admin') {
