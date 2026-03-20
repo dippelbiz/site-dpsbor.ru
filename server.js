@@ -21,18 +21,31 @@ app.use((req, res, next) => {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 20,
-  keepAlive: true
+  connectionTimeoutMillis: 30000,
+  idleTimeoutMillis: 60000,
+  max: 10,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000
 });
 
+// Проверка подключения при старте
 pool.connect((err, client, release) => {
   if (err) {
     console.error('❌ Ошибка подключения к базе данных:', err.message);
   } else {
     console.log('✅ Подключение к базе данных установлено');
     release();
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW() as time');
+    res.json({ status: 'ok', time: result.rows[0].time, message: 'База данных работает' });
+  } catch (err) {
+    console.error('Health check error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
@@ -464,32 +477,6 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     const statsResult = await pool.query(statsQuery, statsParams);
     const stats = statsResult.rows[0];
     
-    let ordersQuery;
-    let ordersParams = [];
-    if (user.role === 'admin') {
-      ordersQuery = `
-        SELECT id, order_number, contact, total, status, created_at
-        FROM orders
-        ORDER BY created_at DESC
-        LIMIT 10
-      `;
-    } else {
-      ordersQuery = `
-        SELECT id, order_number, contact, total, status, created_at
-        FROM orders
-        WHERE seller_id = $1
-        ORDER BY created_at DESC
-        LIMIT 10
-      `;
-      ordersParams = [req.userId];
-    }
-    
-    const ordersResult = await pool.query(ordersQuery, ordersParams);
-    const recentOrders = ordersResult.rows.map(order => ({
-      ...order,
-      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
-    }));
-    
     res.json({
       user: { name: user.name, role: user.role },
       stats: {
@@ -497,8 +484,7 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
         processing_orders: parseInt(stats.processing_orders) || 0,
         completed_count: parseInt(stats.completed_count) || 0,
         revenue: parseInt(stats.revenue) || 0
-      },
-      recent_orders: recentOrders
+      }
     });
   } catch (err) {
     console.error('Dashboard error:', err);
@@ -874,7 +860,7 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Подтверждение заявки
+// Подтверждение заявки (списывает товар с главного склада)
 app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
@@ -887,18 +873,35 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
       return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
     }
     
+    const { seller_id, variant_id, quantity } = request.rows[0];
+    
+    // Проверяем, достаточно ли товара на главном складе
+    const warehouseCheck = await pool.query(
+      'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
+      [variant_id]
+    );
+    
+    const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
+    if (available < quantity) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
+    }
+    
+    // 1. Добавляем товар на склад продавца
     await pool.query(`
       INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
       VALUES ($1, $2, $3, 0)
       ON CONFLICT (seller_id, variant_id) DO UPDATE SET 
         quantity = seller_stock.quantity + EXCLUDED.quantity
-    `, [request.rows[0].seller_id, request.rows[0].variant_id, request.rows[0].quantity]);
+    `, [seller_id, variant_id, quantity]);
     
+    // 2. СПИСЫВАЕМ товар с главного склада (уменьшаем quantity и снимаем reserved)
     await pool.query(
-      'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
-      [request.rows[0].quantity, request.rows[0].variant_id]
+      'UPDATE main_warehouse SET quantity = quantity - $1, reserved = reserved - $1 WHERE variant_id = $2',
+      [quantity, variant_id]
     );
     
+    // 3. Обновляем статус заявки
     await pool.query(
       'UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2',
       ['approved', id]
@@ -913,7 +916,7 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
   }
 });
 
-// Отклонение заявки
+// Отклонение заявки (только снимает резервирование)
 app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
@@ -926,9 +929,12 @@ app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => 
       return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
     }
     
+    const { variant_id, quantity } = request.rows[0];
+    
+    // Снимаем резервирование с главного склада
     await pool.query(
       'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
-      [request.rows[0].quantity, request.rows[0].variant_id]
+      [quantity, variant_id]
     );
     
     await pool.query(
