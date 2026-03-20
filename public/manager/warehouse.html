@@ -92,7 +92,7 @@
             color: white;
         }
         
-        /* Кнопки действий (только для админа/кладовщика) */
+        /* Кнопки действий */
         .action-buttons {
             display: flex;
             gap: 15px;
@@ -113,6 +113,7 @@
         .action-btn.packaging { background: #f39c12; }
         .action-btn.seller { background: #9b59b6; }
         .action-btn.hub { background: #1abc9c; }
+        .action-btn.request { background: #e67e22; }
         
         .warehouse-table {
             background: white;
@@ -133,15 +134,9 @@
             color: #7f8c8d;
             font-weight: normal;
         }
-        .low-stock {
-            background: #ffebee;
-        }
         .stock-badge {
             font-weight: bold;
             color: #27ae60;
-        }
-        .stock-badge.low {
-            color: #e74c3c;
         }
         button {
             background: #28a745;
@@ -179,15 +174,14 @@
             margin-bottom: 20px;
             color: #2c3e50;
         }
-        .purchase-item, .packaging-item {
+        .request-item, .purchase-item, .packaging-item {
             background: #f8f9fa;
             padding: 15px;
             margin-bottom: 15px;
             border-radius: 8px;
             border: 1px solid #e9ecef;
         }
-        .purchase-item select, .purchase-item input,
-        .packaging-item select, .packaging-item input {
+        select, input {
             width: 100%;
             padding: 8px;
             margin: 5px 0;
@@ -224,18 +218,6 @@
         .close-btn {
             background: #95a5a6;
         }
-        .available-stock {
-            background: #e8f5e9;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        .available-stock.warning {
-            background: #ffebee;
-            color: #c62828;
-        }
     </style>
 </head>
 <body>
@@ -257,16 +239,17 @@
             </div>
         </div>
         
-        <!-- Кнопки переключения склада -->
-        <div class="stock-toggle">
+        <!-- Кнопки переключения склада (только для продавцов) -->
+        <div id="stock-toggle-container" class="stock-toggle" style="display: none;">
             <button class="toggle-btn active" id="my-stock-btn" onclick="showMyStock()">📦 Мои остатки</button>
             <button class="toggle-btn" id="main-stock-btn" onclick="showMainStock()">🏪 Остатки на главном складе</button>
         </div>
         
-        <!-- Кнопки действий (только для админа/кладовщика) -->
+        <!-- Кнопки действий -->
         <div id="action-buttons" class="action-buttons" style="display: none;">
             <button class="action-btn" onclick="openPurchaseModal()">📦 Закуп товара</button>
             <button class="action-btn packaging" onclick="openPackagingModal()">📦 Фасовка товара</button>
+            <button class="action-btn request" onclick="openTransferRequestModal()">📋 Заявка на перемещение</button>
             <button class="action-btn seller" onclick="openSellerStockModal()">👥 Остатки продавцов</button>
             <button class="action-btn hub" onclick="openHubStockModal()">🏪 Нерасфасованный товар</button>
         </div>
@@ -292,17 +275,17 @@
         </div>
     </div>
 
-    <!-- Модальные окна (закуп, фасовка, остатки продавцов, нерасфасованный) -->
+    <!-- Модальное окно закупки -->
     <div id="purchase-modal" class="modal">
         <div class="modal-content">
             <h3>📦 Закуп товара (поставка в кг)</h3>
             <div id="purchase-items-container">
                 <div class="purchase-item">
-                    <select class="purchase-product" style="width: 100%;">
+                    <select class="purchase-product">
                         <option value="">Выберите товар</option>
                     </select>
                     <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
-                    <input type="text" class="purchase-comment" placeholder="Комментарий (поставщик, накладная)">
+                    <input type="text" class="purchase-comment" placeholder="Комментарий">
                     <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
                 </div>
             </div>
@@ -314,18 +297,19 @@
         </div>
     </div>
 
+    <!-- Модальное окно фасовки -->
     <div id="packaging-modal" class="modal">
         <div class="modal-content">
             <h3>📦 Фасовка товара</h3>
             <div id="packaging-items-container">
                 <div class="packaging-item">
-                    <select class="packaging-product" style="width: 100%;" onchange="loadVariantsForPackaging(this)">
+                    <select class="packaging-product" onchange="loadVariantsForPackaging(this)">
                         <option value="">Выберите товар</option>
                     </select>
-                    <select class="packaging-variant" style="width: 100%; margin-top: 5px;">
+                    <select class="packaging-variant">
                         <option value="">Сначала выберите товар</option>
                     </select>
-                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1" min="1">
+                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
                     <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
                 </div>
             </div>
@@ -337,22 +321,43 @@
         </div>
     </div>
 
+    <!-- Модальное окно заявки на перемещение -->
+    <div id="request-modal" class="modal">
+        <div class="modal-content">
+            <h3>📋 Заявка на перемещение товара</h3>
+            <div id="request-items-container">
+                <div class="request-item">
+                    <select class="request-product">
+                        <option value="">Выберите товар</option>
+                    </select>
+                    <input type="number" class="request-quantity" placeholder="Количество (шт)" step="1">
+                    <button class="remove-btn" onclick="removeRequestItem(this)">✖</button>
+                </div>
+            </div>
+            <button class="add-btn" onclick="addRequestItem()">+ Добавить ещё товар</button>
+            <div class="modal-buttons">
+                <button onclick="confirmRequest()">Отправить заявку</button>
+                <button class="close-btn" onclick="closeModal('request-modal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно остатков продавцов -->
     <div id="seller-stock-modal" class="modal">
         <div class="modal-content" style="max-width: 800px;">
             <h3>👥 Остатки на складах продавцов</h3>
-            <div id="seller-buttons" class="seller-buttons" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
-            <div style="overflow-x: auto; max-height: 400px;">
-                <table style="width: 100%;">
-                    <thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead>
-                    <tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody>
-                </table>
-            </div>
+            <div id="seller-buttons" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
+            <table style="width: 100%;">
+                <thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead>
+                <tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody>
+            </table>
             <div class="modal-buttons">
                 <button class="close-btn" onclick="closeModal('seller-stock-modal')">Закрыть</button>
             </div>
         </div>
     </div>
 
+    <!-- Модальное окно нерасфасованного товара -->
     <div id="hub-stock-modal" class="modal">
         <div class="modal-content">
             <h3>🏪 Нерасфасованный товар</h3>
@@ -368,44 +373,30 @@
 
     <script>
         let productsList = [];
-        let currentView = 'my'; // 'my' или 'main'
+        let currentView = 'my';
         let currentUserRole = '';
         let currentUserId = null;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
-            if (!token) {
-                window.location.href = '/manager/';
-                return false;
-            }
+            if (!token) { window.location.href = '/manager/'; return false; }
             return token;
         }
         
         async function getUserInfo() {
             const token = checkAuth();
-            const response = await fetch('/api/manager/dashboard', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (response.ok) {
-                const data = await response.json();
-                currentUserRole = data.user.role;
-                document.getElementById('user-name').textContent = data.user.name;
-                return data.user;
-            }
-            return null;
-        }
-        
-        async function getCurrentUserId() {
-            const token = checkAuth();
             const response = await fetch('/api/manager/me', { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.ok) {
                 const data = await response.json();
+                currentUserRole = data.role;
                 currentUserId = data.id;
-                return currentUserId;
+                document.getElementById('user-name').textContent = data.name;
+                return data;
             }
             return null;
         }
         
         async function loadMyStock() {
-            if (!currentUserId) await getCurrentUserId();
             const token = checkAuth();
             const response = await fetch(`/api/manager/seller-stock/${currentUserId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
@@ -420,30 +411,22 @@
         }
         
         async function loadCurrentStock() {
-            if (currentView === 'my') {
-                await showMyStock();
-            } else {
-                await showMainStock();
-            }
+            if (currentView === 'my') await showMyStock();
+            else await showMainStock();
         }
         
         async function showMyStock() {
+            if (!currentUserRole || currentUserRole === 'warehouse_seller') return;
             currentView = 'my';
             document.getElementById('my-stock-btn').classList.add('active');
             document.getElementById('main-stock-btn').classList.remove('active');
             document.getElementById('stock-title').innerHTML = '📦 Мои остатки';
-            
-            // Меняем заголовки таблицы
-            const thead = document.getElementById('warehouse-thead');
-            thead.innerHTML = '<tr><th>Товар</th><th>В наличии</th><th>Ожидает перемещения</th></tr>';
-            
+            document.getElementById('warehouse-thead').innerHTML = '<tr><th>Товар</th><th>В наличии</th><th>Ожидает перемещения</th></tr>';
             const tbody = document.getElementById('warehouse-list');
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Загрузка...</td></tr>';
-            
+            tbody.innerHTML = '<tr><td colspan="3">Загрузка...</td></tr>';
             const stock = await loadMyStock();
-            if (stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Нет товаров на вашем складе</td></tr>';
-            } else {
+            if (stock.length === 0) tbody.innerHTML = '<tr><td colspan="3">Нет товаров на вашем складе</td></tr>';
+            else {
                 tbody.innerHTML = stock.map(item => `
                     <tr>
                         <td><strong>${item.product_name}</strong><br><small>${item.variant_name}</small></td>
@@ -459,18 +442,12 @@
             document.getElementById('main-stock-btn').classList.add('active');
             document.getElementById('my-stock-btn').classList.remove('active');
             document.getElementById('stock-title').innerHTML = '🏪 Остатки на главном складе';
-            
-            // Меняем заголовки таблицы
-            const thead = document.getElementById('warehouse-thead');
-            thead.innerHTML = '<tr><th>Товар</th><th>В наличии (шт)</th><th>Зарезервировано</th><th>Доступно</th></tr>';
-            
+            document.getElementById('warehouse-thead').innerHTML = '<tr><th>Товар</th><th>В наличии (шт)</th><th>Зарезервировано</th><th>Доступно</th></tr>';
             const tbody = document.getElementById('warehouse-list');
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Загрузка...</td></tr>';
-            
+            tbody.innerHTML = '<tr><td colspan="4">Загрузка...</td></tr>';
             const warehouse = await loadMainWarehouse();
-            if (warehouse.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Нет товаров на главном складе</td></tr>';
-            } else {
+            if (warehouse.length === 0) tbody.innerHTML = '<tr><td colspan="4">Нет товаров на главном складе</td></tr>';
+            else {
                 tbody.innerHTML = warehouse.map(item => `
                     <tr>
                         <td><strong>${item.product_name}</strong><br><small>${item.variant_name}</small></td>
@@ -482,50 +459,114 @@
             }
         }
         
-        // Кнопки действий (только для админа/кладовщика)
-        async function checkAndShowActions() {
+        async function initUI() {
             await getUserInfo();
-            if (currentUserRole === 'admin' || currentUserRole === 'warehouse_seller') {
-                document.getElementById('action-buttons').style.display = 'flex';
+            await loadProducts();
+            
+            const actionButtons = document.getElementById('action-buttons');
+            const stockToggle = document.getElementById('stock-toggle-container');
+            
+            if (currentUserRole === 'admin') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'flex';
+                await showMyStock();
+            } else if (currentUserRole === 'warehouse_seller') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'none';
+                await showMainStock();
+            } else if (currentUserRole === 'seller') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'flex';
+                await showMyStock();
             }
         }
         
-        // Функции для модальных окон (закуп, фасовка, остатки продавцов, нерасфасованный)
-        async function openPurchaseModal() { /* ... */ }
-        async function openPackagingModal() { /* ... */ }
-        async function openSellerStockModal() { /* ... */ }
-        async function openHubStockModal() { /* ... */ }
-        
-        function logout() {
-            localStorage.removeItem('manager_token');
-            window.location.href = '/manager/';
-        }
-        
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-        
-        // Заглушки для функций (добавьте полную реализацию из предыдущей версии)
         async function loadProducts() {
             const token = checkAuth();
             const response = await fetch('/api/manager/products', { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
             productsList = data.products;
+            fillProductSelects();
         }
         
-        async function loadSellers() {
+        function fillProductSelects() {
+            const selects = document.querySelectorAll('.purchase-product, .packaging-product, .request-product');
+            selects.forEach(select => {
+                const currentVal = select.value;
+                select.innerHTML = '<option value="">Выберите товар</option>' + 
+                    productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                if (currentVal) select.value = currentVal;
+            });
+        }
+        
+        // Закупка
+        function addPurchaseItem() { addItem('purchase-items-container', 'purchase-item', 'purchase'); }
+        function removePurchaseItem(btn) { btn.parentElement.remove(); }
+        async function confirmPurchase() { /* ... */ }
+        
+        // Фасовка
+        function addPackagingItem() { addItem('packaging-items-container', 'packaging-item', 'packaging'); }
+        function removePackagingItem(btn) { btn.parentElement.remove(); }
+        async function confirmPackaging() { /* ... */ }
+        
+        // Заявка на перемещение
+        function addRequestItem() { addItem('request-items-container', 'request-item', 'request'); }
+        function removeRequestItem(btn) { btn.parentElement.remove(); }
+        async function confirmRequest() { /* ... */ }
+        
+        function addItem(containerId, className, type) {
+            const container = document.getElementById(containerId);
+            const itemDiv = document.createElement('div');
+            itemDiv.className = className;
+            if (type === 'purchase') {
+                itemDiv.innerHTML = `
+                    <select class="purchase-product" style="width:100%"><option value="">Выберите товар</option></select>
+                    <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+                    <input type="text" class="purchase-comment" placeholder="Комментарий">
+                    <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
+                `;
+            } else if (type === 'packaging') {
+                itemDiv.innerHTML = `
+                    <select class="packaging-product" style="width:100%" onchange="loadVariantsForPackaging(this)">
+                        <option value="">Выберите товар</option>
+                    </select>
+                    <select class="packaging-variant" style="width:100%; margin-top:5px">
+                        <option value="">Сначала выберите товар</option>
+                    </select>
+                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
+                    <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
+                `;
+            } else if (type === 'request') {
+                itemDiv.innerHTML = `
+                    <select class="request-product" style="width:100%"><option value="">Выберите товар</option></select>
+                    <input type="number" class="request-quantity" placeholder="Количество (шт)" step="1">
+                    <button class="remove-btn" onclick="removeRequestItem(this)">✖</button>
+                `;
+            }
+            container.appendChild(itemDiv);
+            fillProductSelects();
+        }
+        
+        async function loadVariantsForPackaging(selectEl) {
+            const productId = selectEl.value;
+            const itemDiv = selectEl.closest('.packaging-item');
+            const variantSelect = itemDiv.querySelector('.packaging-variant');
+            if (!productId) { variantSelect.innerHTML = '<option value="">Сначала выберите товар</option>'; return; }
             const token = checkAuth();
-            const response = await fetch('/api/manager/sellers', { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`/api/manager/variants/${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
-            return data.sellers;
+            variantSelect.innerHTML = '<option value="">Выберите упаковку</option>' + 
+                data.variants.map(v => `<option value="${v.id}" data-weight="${v.weight_kg}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`).join('');
         }
         
+        // Остатки продавцов (без кладовщика)
         async function openSellerStockModal() {
-            const sellers = await loadSellers();
+            const token = checkAuth();
+            const sellersRes = await fetch('/api/manager/sellers', { headers: { 'Authorization': `Bearer ${token}` } });
+            const sellersData = await sellersRes.json();
+            const sellers = sellersData.sellers.filter(s => s.role !== 'warehouse_seller');
             const container = document.getElementById('seller-buttons');
-            container.innerHTML = sellers.map(s => `
-                <button class="seller-btn" onclick="loadSellerStock(${s.id})">${s.name}</button>
-            `).join('');
+            container.innerHTML = sellers.map(s => `<button class="seller-btn" onclick="loadSellerStock(${s.id})">${s.name}</button>`).join('');
             document.getElementById('seller-stock-modal').style.display = 'block';
         }
         
@@ -534,13 +575,8 @@
             const response = await fetch(`/api/manager/seller-stock/${sellerId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
             const tbody = document.getElementById('seller-stock-list');
-            if (!data.stock || data.stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
-            } else {
-                tbody.innerHTML = data.stock.map(s => `
-                    <tr><td>${s.product_name} (${s.variant_name})</td><td>${s.quantity} шт</td></tr>
-                `).join('');
-            }
+            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
+            else tbody.innerHTML = data.stock.map(s => `<tr><td>${s.product_name} (${s.variant_name})</td><td>${s.quantity} шт</td></tr>`).join('');
         }
         
         async function openHubStockModal() {
@@ -548,31 +584,31 @@
             const response = await fetch('/api/manager/hub-stock', { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
             const tbody = document.getElementById('hub-stock-list');
-            if (!data.stock || data.stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
-            } else {
-                tbody.innerHTML = data.stock.map(h => `
-                    <tr><td>${h.product_name}</td><td>${h.quantity_kg} кг</td></tr>
-                `).join('');
-            }
+            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
+            else tbody.innerHTML = data.stock.map(h => `<tr><td>${h.product_name}</td><td>${h.quantity_kg} кг</td></tr>`).join('');
             document.getElementById('hub-stock-modal').style.display = 'block';
         }
         
-        // Инициализация
-        (async function init() {
-            if (!checkAuth()) return;
-            await getUserInfo();
-            await getCurrentUserId();
-            await loadProducts();
-            await checkAndShowActions();
-            await showMyStock();
-        })();
-        
-        window.onclick = function(event) {
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
-            }
+        async function openPurchaseModal() {
+            await fillProductSelects();
+            document.getElementById('purchase-modal').style.display = 'block';
         }
+        
+        async function openPackagingModal() {
+            await fillProductSelects();
+            document.getElementById('packaging-modal').style.display = 'block';
+        }
+        
+        async function openTransferRequestModal() {
+            await fillProductSelects();
+            document.getElementById('request-modal').style.display = 'block';
+        }
+        
+        function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+        function logout() { localStorage.removeItem('manager_token'); window.location.href = '/manager/'; }
+        
+        initUI();
+        window.onclick = function(event) { if (event.target.classList.contains('modal')) event.target.style.display = 'none'; }
     </script>
 </body>
 </html>
