@@ -772,30 +772,30 @@
         function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
         function logout() { localStorage.removeItem('manager_token'); window.location.href = '/manager/'; }
         
-        async function initUI() {
-            await getUserInfo();
-            await loadProducts();
-            const adminActions = document.getElementById('admin-actions');
-            const requestBtnContainer = document.getElementById('request-btn-container');
-            const stockToggle = document.getElementById('stock-toggle-container');
-            
-            if (currentUserRole === 'admin') {
-                adminActions.style.display = 'flex';
-                requestBtnContainer.style.display = 'flex';
-                stockToggle.style.display = 'flex';
-                await showMyStock();
-            } else if (currentUserRole === 'warehouse_seller') {
-                adminActions.style.display = 'flex';
-                requestBtnContainer.style.display = 'none';
-                stockToggle.style.display = 'none';
-                await showMainStock();
-            } else if (currentUserRole === 'seller') {
-                adminActions.style.display = 'none';
-                requestBtnContainer.style.display = 'flex';
-                stockToggle.style.display = 'flex';
-                await showMyStock();
-            }
-        }
+    async function initUI() {
+    await getUserInfo();
+    await loadProducts();
+    const adminActions = document.getElementById('admin-actions');
+    const requestBtnContainer = document.getElementById('request-btn-container');
+    const stockToggle = document.getElementById('stock-toggle-container');
+    
+    if (currentUserRole === 'admin') {
+        adminActions.style.display = 'flex';
+        requestBtnContainer.style.display = 'flex';
+        stockToggle.style.display = 'flex';
+        await showMyStock();
+    } else if (currentUserRole === 'warehouse_seller') {
+        adminActions.style.display = 'flex';
+        requestBtnContainer.style.display = 'none';  // кладовщику НЕ нужна заявка
+        stockToggle.style.display = 'none';
+        await showMainStock();
+    } else if (currentUserRole === 'seller') {
+        adminActions.style.display = 'none';
+        requestBtnContainer.style.display = 'flex';
+        stockToggle.style.display = 'flex';
+        await showMyStock();
+    }
+}
         
         initUI();
         window.onclick = function(event) { if (event.target.classList.contains('modal')) event.target.style.display = 'none'; }
