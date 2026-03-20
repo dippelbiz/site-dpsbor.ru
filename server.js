@@ -751,6 +751,120 @@ app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
   }
 });
 
+// ==================== ЗАЯВКИ НА ПЕРЕМЕЩЕНИЕ ====================
+
+// Создание заявки на перемещение
+app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => {
+  const { variant_id, quantity } = req.body;
+  
+  if (!variant_id || !quantity || quantity <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество' });
+  }
+  
+  try {
+    // Проверяем, есть ли товар на главном складе
+    const warehouseCheck = await pool.query(
+      'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
+      [variant_id]
+    );
+    
+    const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
+    if (available < quantity) {
+      return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
+    }
+    
+    // Создаём заявку
+    await pool.query(`
+      INSERT INTO transfer_requests (seller_id, variant_id, quantity, status, created_at)
+      VALUES ($1, $2, $3, 'pending', NOW())
+    `, [req.userId, variant_id, quantity]);
+    
+    // Резервируем товар
+    await pool.query(
+      'UPDATE main_warehouse SET reserved = reserved + $1 WHERE variant_id = $2',
+      [quantity, variant_id]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Transfer request error:', err);
+    res.status(500).json({ error: 'Ошибка при создании заявки' });
+  }
+});
+
+// Получение списка заявок (для админа/кладовщика)
+app.get('/api/manager/transfer-requests', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT tr.id, tr.seller_id, u.name as seller_name, v.name as variant_name, 
+             p.name as product_name, tr.quantity, tr.status, tr.created_at
+      FROM transfer_requests tr
+      JOIN users u ON tr.seller_id = u.id
+      JOIN variants v ON tr.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      ORDER BY tr.created_at DESC
+    `);
+    res.json({ requests: result.rows });
+  } catch (err) {
+    console.error('Transfer requests error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Обновление статуса заявки (одобрить/отклонить)
+app.put('/api/manager/transfer-request/:id', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  if (!['approved', 'rejected', 'completed'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    
+    const request = await pool.query('SELECT * FROM transfer_requests WHERE id = $1', [id]);
+    if (request.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Request not found' });
+    }
+    
+    if (status === 'approved') {
+      // При одобрении добавляем товар на склад продавца
+      await pool.query(`
+        INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
+        VALUES ($1, $2, $3, 0)
+        ON CONFLICT (seller_id, variant_id) DO UPDATE SET 
+          quantity = seller_stock.quantity + EXCLUDED.quantity
+      `, [request.rows[0].seller_id, request.rows[0].variant_id, request.rows[0].quantity]);
+      
+      // Снимаем резервирование с главного склада
+      await pool.query(
+        'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
+        [request.rows[0].quantity, request.rows[0].variant_id]
+      );
+    } else if (status === 'rejected') {
+      // При отказе просто снимаем резервирование
+      await pool.query(
+        'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
+        [request.rows[0].quantity, request.rows[0].variant_id]
+      );
+    }
+    
+    await pool.query(
+      'UPDATE transfer_requests SET status = $1, processed_at = NOW(), processed_by = $2 WHERE id = $3',
+      [status, req.userId, id]
+    );
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Transfer request update error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ==================== СТАРЫЕ СТРАНИЦЫ ====================
 app.get('/cart.html', (req, res) => {
   res.sendFile(__dirname + '/public/cart.html');
