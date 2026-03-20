@@ -268,9 +268,11 @@
             </div>
             <table id="warehouse-table">
                 <thead id="warehouse-thead">
-                    <tr><th>Товар</th><th>В наличии</th><th>Ожидает перемещения</th></tr>
+                     <tr><th>Товар</th><th>В наличии</th><th>Ожидает перемещения</th></tr>
                 </thead>
-                <tbody id="warehouse-list"><tr><td colspan="3">Загрузка...</td></tr></tbody>
+                <tbody id="warehouse-list">
+                    <tr><td colspan="3">Загрузка...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>
@@ -412,6 +414,14 @@
             else await showMainStock();
         }
         
+        // Форматирование чисел (убираем .00)
+        function formatNumber(value) {
+            if (value === undefined || value === null) return '0';
+            const num = Number(value);
+            if (isNaN(num)) return '0';
+            return Math.floor(num).toString();
+        }
+        
         async function showMyStock() {
             if (!currentUserRole || currentUserRole === 'warehouse_seller') return;
             currentView = 'my';
@@ -422,13 +432,14 @@
             const tbody = document.getElementById('warehouse-list');
             tbody.innerHTML = '<tr><td colspan="3">Загрузка...</td></tr>';
             const stock = await loadMyStock();
-            if (stock.length === 0) tbody.innerHTML = '<tr><td colspan="3">Нет товаров на вашем складе</td></tr>';
-            else {
+            if (stock.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">Нет товаров на вашем складе</td></tr>';
+            } else {
                 tbody.innerHTML = stock.map(item => `
                     <tr>
                         <td><strong>${item.product_name}</strong><br><small>${item.variant_name}</small></td>
-                        <td class="stock-badge">${item.quantity} шт</td>
-                        <td>0 шт</td>
+                        <td class="stock-badge">${formatNumber(item.quantity)} шт</td>
+                        <td>${formatNumber(item.pending_quantity || 0)} шт</td>
                     </tr>
                 `).join('');
             }
@@ -443,14 +454,15 @@
             const tbody = document.getElementById('warehouse-list');
             tbody.innerHTML = '<tr><td colspan="4">Загрузка...</td></tr>';
             const warehouse = await loadMainWarehouse();
-            if (warehouse.length === 0) tbody.innerHTML = '<tr><td colspan="4">Нет товаров на главном складе</td></tr>';
-            else {
+            if (warehouse.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">Нет товаров на главном складе</td></tr>';
+            } else {
                 tbody.innerHTML = warehouse.map(item => `
                     <tr>
                         <td><strong>${item.product_name}</strong><br><small>${item.variant_name}</small></td>
-                        <td class="stock-badge">${item.quantity}</td>
-                        <td>${item.reserved}</td>
-                        <td>${item.available}</td>
+                        <td class="stock-badge">${formatNumber(item.quantity)}</td>
+                        <td>${formatNumber(item.reserved)}</td>
+                        <td>${formatNumber(item.available)}</td>
                     </tr>
                 `).join('');
             }
@@ -537,7 +549,7 @@
             const availableDiv = document.getElementById(`request-available-${idx}`);
             
             if (variantId) {
-                availableDiv.innerHTML = `Доступно на главном складе: ${available} шт`;
+                availableDiv.innerHTML = `Доступно на главном складе: ${formatNumber(available)} шт`;
                 availableDiv.className = available > 0 ? 'available-stock' : 'available-stock warning';
             } else {
                 availableDiv.innerHTML = 'Доступно на главном складе: -- шт';
@@ -556,11 +568,11 @@
             
             if (variantId && quantity > 0) {
                 if (quantity > available) {
-                    availableDiv.innerHTML = `❌ Недостаточно товара! Доступно: ${available} шт, требуется: ${quantity} шт`;
+                    availableDiv.innerHTML = `❌ Недостаточно товара! Доступно: ${formatNumber(available)} шт, требуется: ${formatNumber(quantity)} шт`;
                     availableDiv.className = 'available-stock warning';
                     quantityInput.style.border = '1px solid #dc3545';
                 } else {
-                    availableDiv.innerHTML = `✅ Достаточно товара! Доступно: ${available} шт`;
+                    availableDiv.innerHTML = `✅ Достаточно товара! Доступно: ${formatNumber(available)} шт`;
                     availableDiv.className = 'available-stock success';
                     quantityInput.style.border = '1px solid #28a745';
                 }
@@ -630,7 +642,19 @@
         }
         
         // ========== ЗАКУПКА ==========
-        function addPurchaseItem() { addItem('purchase-items-container', 'purchase-item', 'purchase'); }
+        function addPurchaseItem() { 
+            const container = document.getElementById('purchase-items-container');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'purchase-item';
+            itemDiv.innerHTML = `
+                <select class="purchase-product"><option value="">Выберите товар</option></select>
+                <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+                <input type="text" class="purchase-comment" placeholder="Комментарий">
+                <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
+            `;
+            container.appendChild(itemDiv);
+            fillProductSelects();
+        }
         function removePurchaseItem(btn) { btn.parentElement.remove(); }
         async function confirmPurchase() {
             const items = document.querySelectorAll('#purchase-items-container .purchase-item');
@@ -655,7 +679,19 @@
         }
         
         // ========== ФАСОВКА ==========
-        function addPackagingItem() { addItem('packaging-items-container', 'packaging-item', 'packaging'); }
+        function addPackagingItem() {
+            const container = document.getElementById('packaging-items-container');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'packaging-item';
+            itemDiv.innerHTML = `
+                <select class="packaging-product" onchange="loadVariantsForPackaging(this)"><option value="">Выберите товар</option></select>
+                <select class="packaging-variant"><option value="">Сначала выберите товар</option></select>
+                <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
+                <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
+            `;
+            container.appendChild(itemDiv);
+            fillProductSelects();
+        }
         function removePackagingItem(btn) { btn.parentElement.remove(); }
         async function loadVariantsForPackaging(selectEl) {
             const productId = selectEl.value;
@@ -695,29 +731,6 @@
             loadCurrentStock();
         }
         
-        function addItem(containerId, className, type) {
-            const container = document.getElementById(containerId);
-            const itemDiv = document.createElement('div');
-            itemDiv.className = className;
-            if (type === 'purchase') {
-                itemDiv.innerHTML = `
-                    <select class="purchase-product"><option value="">Выберите товар</option></select>
-                    <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
-                    <input type="text" class="purchase-comment" placeholder="Комментарий">
-                    <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
-                `;
-            } else if (type === 'packaging') {
-                itemDiv.innerHTML = `
-                    <select class="packaging-product" onchange="loadVariantsForPackaging(this)"><option value="">Выберите товар</option></select>
-                    <select class="packaging-variant"><option value="">Сначала выберите товар</option></select>
-                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
-                    <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
-                `;
-            }
-            container.appendChild(itemDiv);
-            fillProductSelects();
-        }
-        
         // Остатки продавцов
         async function openSellerStockModal() {
             const token = checkAuth();
@@ -734,7 +747,7 @@
             const data = await response.json();
             const tbody = document.getElementById('seller-stock-list');
             if (!data.stock || data.stock.length === 0) tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
-            else tbody.innerHTML = data.stock.map(s => `<tr><td>${s.product_name} (${s.variant_name})</td><td>${s.quantity} шт</td></tr>`).join('');
+            else tbody.innerHTML = data.stock.map(s => `<tr><td>${s.product_name} (${s.variant_name})</td><td>${formatNumber(s.quantity)} шт</td></tr>`).join('');
         }
         
         async function openHubStockModal() {
