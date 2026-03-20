@@ -139,13 +139,8 @@
             font-size: 1.4em;
         }
         
-        .modal p {
-            color: #666;
-            margin: 5px 0 15px 0;
-        }
-        
-        /* Кнопка создания заказа */
-        .create-order-button {
+        /* Кнопка копирования */
+        .copy-button {
             background: #28a745;
             color: white;
             border: none;
@@ -160,10 +155,40 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
+            transition: background 0.2s;
         }
         
-        .create-order-button:hover {
+        .copy-button:hover {
             background: #218838;
+        }
+        
+        .copy-button.copied {
+            background: #6c757d;
+        }
+        
+        /* Инструкция */
+        .instruction {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: left;
+        }
+        
+        .instruction p {
+            margin: 5px 0;
+            color: #555;
+        }
+        
+        .instruction ol {
+            margin: 10px 0 0 20px;
+            padding: 0;
+            color: #333;
+        }
+        
+        .instruction li {
+            margin: 8px 0;
+            line-height: 1.4;
         }
         
         /* Кнопки мессенджеров */
@@ -175,18 +200,14 @@
         
         .messenger-button {
             flex: 1;
-            padding: 16px;
+            padding: 14px;
             border: none;
-            border-radius: 10px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 15px;
             font-weight: bold;
             cursor: pointer;
             transition: background 0.2s;
             color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
         }
         
         .messenger-button.telegram {
@@ -213,7 +234,7 @@
             border-radius: 8px;
             cursor: pointer;
             width: 100%;
-            margin-top: 15px;
+            margin-top: 10px;
             font-size: 16px;
             font-weight: bold;
         }
@@ -235,12 +256,6 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-        
-        .redirect-message {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 15px;
         }
     </style>
 </head>
@@ -290,59 +305,43 @@
     <div id="messenger-modal" class="modal">
         <div class="modal-content">
             <h3>✅ Заказ готов!</h3>
-            <p>Выберите куда отправить информацию о заказе:</p>
             
+            <div class="instruction">
+                <p><b>📋 Что нужно сделать:</b></p>
+                <ol>
+                    <li>Нажмите <b>«Копировать заказ»</b> (текст сохранится в буфер)</li>
+                    <li>Выберите мессенджер (Telegram или ВК)</li>
+                    <li><b>Вставьте</b> скопированный текст и отправьте нам</li>
+                </ol>
+            </div>
+            
+            <!-- Кнопка копирования -->
+            <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
+                <span>📋</span> Копировать заказ
+            </button>
+            
+            <!-- Кнопки мессенджеров -->
             <div class="messenger-buttons">
                 <button class="messenger-button telegram" onclick="createOrderAndGo('telegram')">
-                    <span>📱</span> Telegram
+                    Telegram
                 </button>
                 <button class="messenger-button vk" onclick="createOrderAndGo('vk')">
-                    <span>💬</span> ВКонтакте
+                    ВКонтакте
                 </button>
             </div>
             
+            <!-- Кнопка отмены -->
             <button class="cancel-button" onclick="cancelOrder()">
                 ❌ Отменить заказ
             </button>
         </div>
     </div>
 
-    <!-- Модальное окно загрузки (показывается во время создания заказа) -->
+    <!-- Модальное окно загрузки -->
     <div id="loading-modal" class="modal">
         <div class="modal-content">
             <div class="loading" style="margin: 20px auto;"></div>
             <p>Создаём ваш заказ...</p>
-        </div>
-    </div>
-
-    <!-- Модальное окно с инструкцией и кнопкой копирования -->
-    <div id="copy-modal" class="modal">
-        <div class="modal-content">
-            <h3>✅ Заказ создан!</h3>
-            <div id="copy-order-number" style="font-size: 1.3em; color: #28a745; margin: 10px 0; font-weight: bold;"></div>
-            
-            <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; margin: 15px 0; text-align: left;">
-                <p><b>📋 Что нужно сделать:</b></p>
-                <ol style="margin: 10px 0 0 20px;">
-                    <li>Нажмите <b>«Копировать заказ»</b></li>
-                    <li>Вставьте текст в открывшийся чат и отправьте</li>
-                </ol>
-            </div>
-            
-            <!-- Кнопка копирования -->
-            <button id="copy-button" class="create-order-button" onclick="copyOrderMessage()">
-                <span>📋</span> Копировать заказ
-            </button>
-            
-            <!-- Кнопка отмены (если передумали после создания) -->
-            <button class="cancel-button" onclick="cancelCreatedOrder()">
-                ❌ Отменить заказ
-            </button>
-            
-            <!-- Сообщение о перенаправлении -->
-            <div class="redirect-message">
-                ⏳ Через 3 секунды вы перейдёте в «Мои заказы»
-            </div>
         </div>
     </div>
 
@@ -363,11 +362,8 @@
         let products = [];
         let pickupLocations = [];
         let currentOrderTotal = 0;
-        let orderData = null; // Данные заказа (без сохранения в БД)
-        let currentOrderNumber = null;
-        let currentOrderId = null;
+        let pendingOrderData = null; // Данные заказа (не сохранённые в БД)
         let currentOrderMessage = '';
-        let redirectTimer = null;
 
         // Ссылки на мессенджеры
         const MESSENGER_LINKS = {
@@ -376,7 +372,7 @@
         };
 
         // Функция для создания текста сообщения (БЕЗ СМАЙЛИКОВ)
-        function createOrderMessage(orderNumber, orderData) {
+        function createOrderMessage(orderData) {
             const itemsText = orderData.items.map(item => {
                 const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
                 return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
@@ -385,7 +381,7 @@
             const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
             const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
             
-            return `ЗАКАЗ №${orderNumber}
+            return `ЗАКАЗ
 Способ получения: ${deliveryText}
 Адрес: ${orderData.contact.address}
 Оплата: ${paymentText}
@@ -501,7 +497,6 @@ ${itemsText}
         function hideAllModals() {
             document.getElementById('messenger-modal').style.display = 'none';
             document.getElementById('loading-modal').style.display = 'none';
-            document.getElementById('copy-modal').style.display = 'none';
         }
 
         function showLoadingModal() {
@@ -509,44 +504,19 @@ ${itemsText}
             document.getElementById('loading-modal').style.display = 'block';
         }
 
-        function showCopyModal(orderNumber, message) {
-            hideAllModals();
-            currentOrderNumber = orderNumber;
-            currentOrderMessage = message;
-            document.getElementById('copy-order-number').innerHTML = `№${orderNumber}`;
-            document.getElementById('copy-modal').style.display = 'block';
-            
-            const copyBtn = document.getElementById('copy-button');
-            copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
-            copyBtn.classList.remove('copied');
-            
-            // Запускаем таймер для перехода на страницу заказов
-            if (redirectTimer) {
-                clearTimeout(redirectTimer);
-            }
-            redirectTimer = setTimeout(() => {
-                window.location.href = 'orders.html';
-            }, 3000);
-        }
-
         function copyOrderMessage() {
+            if (!currentOrderMessage) {
+                currentOrderMessage = createOrderMessage(pendingOrderData);
+            }
+            
             navigator.clipboard.writeText(currentOrderMessage).then(() => {
                 const copyBtn = document.getElementById('copy-button');
                 copyBtn.innerHTML = '<span>✅</span> Скопировано!';
                 copyBtn.classList.add('copied');
                 
-                // Сбрасываем таймер, но оставляем возможность перейти по кнопке
-                if (redirectTimer) {
-                    clearTimeout(redirectTimer);
-                }
-                
                 setTimeout(() => {
                     copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
                     copyBtn.classList.remove('copied');
-                    // Запускаем таймер заново
-                    redirectTimer = setTimeout(() => {
-                        window.location.href = 'orders.html';
-                    }, 3000);
                 }, 2000);
             }).catch(err => {
                 alert('Не удалось скопировать. Выделите текст вручную и нажмите Ctrl+C');
@@ -554,15 +524,19 @@ ${itemsText}
         }
 
         async function createOrderAndGo(messenger) {
-            hideAllModals();
+            if (!pendingOrderData) {
+                alert('Ошибка: данные заказа не найдены');
+                return;
+            }
+            
             showLoadingModal();
             
             try {
-                // Добавляем выбранный мессенджер в контакт
+                // Добавляем выбранный мессенджер
                 const finalOrderData = {
-                    ...orderData,
+                    ...pendingOrderData,
                     contact: {
-                        ...orderData.contact,
+                        ...pendingOrderData.contact,
                         messenger: messenger
                     }
                 };
@@ -578,17 +552,29 @@ ${itemsText}
                 if (response.ok) {
                     const result = await response.json();
                     
-                    const message = createOrderMessage(result.orderNumber, finalOrderData);
+                    // Обновляем сообщение с номером заказа
+                    currentOrderMessage = `ЗАКАЗ №${result.orderNumber}
+Способ получения: ${finalOrderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}
+Адрес: ${finalOrderData.contact.address}
+Оплата: ${finalOrderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}
+
+${finalOrderData.items.map(item => {
+    const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+    return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
+}).join('\n')}
+
+Итого: ${finalOrderData.total} руб.`;
                     
                     // Открываем мессенджер
                     window.open(MESSENGER_LINKS[messenger], '_blank');
                     
-                    // Показываем окно с кнопкой копирования и автоматическим переходом
-                    showCopyModal(result.orderNumber, message);
-                    
                     // Очищаем корзину
                     cart.items = [];
                     updateCartCount();
+                    
+                    // Закрываем все окна и переходим на страницу заказов
+                    hideAllModals();
+                    window.location.href = 'orders.html';
                 } else {
                     const error = await response.json();
                     console.error('Ошибка создания заказа:', error);
@@ -606,19 +592,9 @@ ${itemsText}
 
         function cancelOrder() {
             if (confirm('Отменить оформление заказа?')) {
-                hideAllModals();
+                pendingOrderData = null;
+                currentOrderMessage = '';
                 window.location.href = 'cart.html';
-            }
-        }
-
-        function cancelCreatedOrder() {
-            if (confirm('Отменить заказ? Он будет удалён из системы.')) {
-                // Здесь можно добавить API для удаления заказа
-                if (redirectTimer) {
-                    clearTimeout(redirectTimer);
-                }
-                hideAllModals();
-                window.location.href = 'orders.html';
             }
         }
 
@@ -665,16 +641,22 @@ ${itemsText}
                     return;
                 }
 
-                // Сохраняем данные заказа, НО НЕ ОТПРАВЛЯЕМ В БД
-                orderData = {
+                // Сохраняем данные заказа (НЕ В БД)
+                pendingOrderData = {
                     userId: userId,
                     contact: contact,
                     requestId: requestId,
                     total: currentOrderTotal,
-                    items: cart.items
+                    items: cart.items.map(item => ({
+                        ...item,
+                        price: item.priceAtTime
+                    }))
                 };
 
-                console.log('📦 Данные заказа подготовлены:', orderData);
+                // Создаём текст для копирования (без номера заказа)
+                currentOrderMessage = createOrderMessage(pendingOrderData);
+                
+                console.log('📦 Данные заказа подготовлены:', pendingOrderData);
                 
                 // Показываем модальное окно с выбором мессенджера
                 hideAllModals();
