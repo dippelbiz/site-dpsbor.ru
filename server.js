@@ -618,7 +618,7 @@ app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) =
   res.json({ variants: result.rows });
 });
 
-// Закуп товара (поставка в кг)
+// Закуп товара (поставка в кг) - ИСПРАВЛЕННАЯ ВЕРСИЯ
 app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
   const { product_id, quantity_kg, comment } = req.body;
   
@@ -629,24 +629,36 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
   try {
     await pool.query('BEGIN');
     
+    // Получаем название товара
     const product = await pool.query('SELECT name FROM products WHERE id = $1', [product_id]);
     const productName = product.rows[0]?.name;
     
-    await pool.query(`
-      INSERT INTO hub_stock (product_id, product_name, quantity_kg)
-      VALUES ($1, $2, $3)
+    if (!productName) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Товар не найден' });
+    }
+    
+    // Обновляем или вставляем запись в hub_stock
+    const result = await pool.query(`
+      INSERT INTO hub_stock (product_id, product_name, quantity_kg, updated_at)
+      VALUES ($1, $2, $3, NOW())
       ON CONFLICT (product_id) DO UPDATE SET 
         quantity_kg = hub_stock.quantity_kg + EXCLUDED.quantity_kg,
+        product_name = EXCLUDED.product_name,
         updated_at = NOW()
+      RETURNING quantity_kg
     `, [product_id, productName, quantity_kg]);
     
+    console.log(`✅ Закуплено ${quantity_kg} кг товара ${productName}. Новый остаток: ${result.rows[0].quantity_kg} кг`);
+    
+    // Записываем операцию в журнал
     await pool.query(`
       INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
       VALUES (NULL, 'hub', 'purchase', $1, $2, $3)
-    `, [quantity_kg, req.userId, comment]);
+    `, [quantity_kg, req.userId, comment || `Закупка ${productName}`]);
     
     await pool.query('COMMIT');
-    res.json({ success: true });
+    res.json({ success: true, new_quantity: result.rows[0].quantity_kg });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Purchase error:', err);
