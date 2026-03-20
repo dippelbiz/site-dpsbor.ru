@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DP SBOR — Заказы</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+        }
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100%;
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
+        }
+        .logo {
+            padding: 0 20px 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-bottom: 1px solid #3e5a6b;
+            margin-bottom: 20px;
+            color: #28a745;
+        }
+        .logo span { color: #ff8f00; }
+        .nav-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #ecf0f1;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .nav-item:hover, .nav-item.active {
+            background: #28a745;
+            color: white;
+        }
+        .main-content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .logout-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .orders-table {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        th { color: #7f8c8d; font-weight: normal; }
+        .status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .status-new { background: #3498db; color: white; }
+        .status-completed { background: #27ae60; color: white; }
+        .status-cancelled { background: #e74c3c; color: white; }
+        select {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">DP <span>SBOR</span></div>
+        <a href="/manager/dashboard.html" class="nav-item">📊 Дашборд</a>
+        <a href="/manager/orders.html" class="nav-item active">📦 Заказы</a>
+        <a href="/manager/warehouse.html" class="nav-item">🏪 Склад</a>
+        <a href="/manager/requests.html" class="nav-item">📋 Заявки</a>
+        <a href="/manager/payments.html" class="nav-item">💰 Выплаты</a>
+    </div>
+    
+    <div class="main-content">
+        <div class="header">
+            <h1>Заказы</h1>
+            <div class="user-info">
+                <span id="user-name">Загрузка...</span>
+                <button class="logout-btn" onclick="logout()">Выйти</button>
+            </div>
+        </div>
+        
+        <div class="orders-table">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                <select id="status-filter">
+                    <option value="">Все статусы</option>
+                    <option value="new">Новые</option>
+                    <option value="confirmed">Подтверждённые</option>
+                    <option value="processing">В работе</option>
+                    <option value="completed">Выполненные</option>
+                    <option value="cancelled">Отменённые</option>
+                </select>
+                <button onclick="loadOrders()">Обновить</button>
+            </div>
+            <table id="orders-table">
+                <thead>
+                    <tr><th>№</th><th>Клиент</th><th>Состав</th><th>Сумма</th><th>Статус</th><th>Действия</th></tr>
+                </thead>
+                <tbody id="orders-list"><tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function checkAuth() {
+            const token = localStorage.getItem('manager_token');
+            if (!token) window.location.href = '/manager/';
+            return token;
+        }
+        
+        async function loadOrders() {
+            const token = checkAuth();
+            const status = document.getElementById('status-filter').value;
+            const url = `/api/manager/orders${status ? '?status=' + status : ''}`;
+            
+            try {
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (response.status === 401) { logout(); return; }
+                const data = await response.json();
+                renderOrders(data.orders);
+            } catch (err) { console.error(err); }
+        }
+        
+        function renderOrders(orders) {
+            const tbody = document.getElementById('orders-list');
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет заказов</td></tr>';
+                return;
+            }
+            tbody.innerHTML = orders.map(order => {
+                const itemsText = order.items?.map(i => `${i.name} x${i.quantity}`).join(', ') || '-';
+                const statusText = { 'new': 'Новый', 'confirmed': 'Подтверждён', 'processing': 'В работе', 'completed': 'Выполнен', 'cancelled': 'Отменён' }[order.status] || order.status;
+                return `
+                    <tr>
+                        <td>${order.order_number}</td>
+                        <td>${order.contact?.name || order.contact?.phone || '-'}</td>
+                        <td>${itemsText}</td>
+                        <td>${order.total} ₽</td>
+                        <td><span class="status status-${order.status}">${statusText}</span></td>
+                        <td><button onclick="updateStatus(${order.id}, 'completed')">✅ Выполнить</button></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        async function updateStatus(orderId, status) {
+            const token = checkAuth();
+            await fetch(`/api/manager/order/${orderId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ status })
+            });
+            loadOrders();
+        }
+        
+        async function loadUser() {
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/dashboard', { headers: { 'Authorization': `Bearer ${token}` } });
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('user-name').textContent = data.user.name;
+                }
+            } catch (err) {}
+        }
+        
+        function logout() {
+            localStorage.removeItem('manager_token');
+            window.location.href = '/manager/';
+        }
+        
+        loadUser();
+        loadOrders();
+    </script>
+</body>
+</html>
