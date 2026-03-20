@@ -411,7 +411,7 @@ app.get('/api/manager/me', checkManagerAuth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// Получение дашборда (упрощённая версия)
+// Получение дашборда
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
     const { period = 'today' } = req.query;
@@ -715,9 +715,10 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   }
 });
 
+// Получение списка продавцов (без кладовщиков для отображения в модалке)
 app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query(
-    "SELECT id, name FROM users WHERE role IN ('seller', 'warehouse_seller', 'admin') ORDER BY name"
+    "SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name"
   );
   res.json({ sellers: result.rows });
 });
