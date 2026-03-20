@@ -24,11 +24,12 @@ const pool = new Pool({
 
 // ==================== YOUGILE ИНТЕГРАЦИЯ ====================
 const YOUGILE_API_KEY = process.env.YOUGILE_API_KEY;
-const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;
+const YOUGILE_PIPELINE_ID = process.env.YOUGILE_PIPELINE_ID;   // ID воронки (например, "Продажи")
+const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;       // ID колонки (например, "Новые заказы")
 
-// Функция отправки заказа в YouGile
+// Функция отправки заказа в YouGile (как СДЕЛКА)
 async function sendOrderToYougile(orderData) {
-  if (!YOUGILE_API_KEY || !YOUGILE_COLUMN_ID) {
+  if (!YOUGILE_API_KEY || !YOUGILE_PIPELINE_ID || !YOUGILE_COLUMN_ID) {
     console.log('⚠️ YouGile не настроен (отсутствуют ключи)');
     return;
   }
@@ -51,7 +52,7 @@ ${itemsText}
 
 Итого: ${orderData.total} руб.`;
     
-    const response = await fetch('https://ru.yougile.com/api-v2/tasks', {
+    const response = await fetch('https://ru.yougile.com/api-v2/deals', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -60,7 +61,13 @@ ${itemsText}
       body: JSON.stringify({
         title: `Заказ №${orderData.orderNumber}`,
         description: description,
-        columnId: YOUGILE_COLUMN_ID
+        pipelineId: YOUGILE_PIPELINE_ID,
+        columnId: YOUGILE_COLUMN_ID,
+        customFields: {
+          'Сумма': orderData.total,
+          'Клиент': orderData.contact.name,
+          'Телефон': orderData.contact.phone
+        }
       })
     });
     
@@ -69,7 +76,7 @@ ${itemsText}
       console.error('❌ Ошибка YouGile API:', response.status, errorData);
     } else {
       const result = await response.json();
-      console.log('✅ Заказ отправлен в YouGile, ID задачи:', result.id);
+      console.log('✅ Сделка создана в YouGile, ID:', result.id);
     }
   } catch (error) {
     console.error('❌ Ошибка при отправке в YouGile:', error.message);
@@ -475,7 +482,7 @@ app.post('/api/order', async (req, res) => {
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE
+    // 🚀 ОТПРАВКА В YOUGILE (как сделка)
     sendOrderToYougile({
       orderNumber: order_number,
       contact: contact,
