@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панель управления — ДП СБОР</title>
+    <title>DP SBOR — Панель управления</title>
     <style>
         * {
             margin: 0;
@@ -30,6 +30,7 @@
             font-weight: bold;
             border-bottom: 1px solid #3e5a6b;
             margin-bottom: 20px;
+            color: #28a745;
         }
         .logo span {
             color: #ff8f00;
@@ -44,12 +45,8 @@
             transition: background 0.2s;
         }
         .nav-item:hover, .nav-item.active {
-            background: #1abc9c;
+            background: #28a745;
             color: white;
-        }
-        .nav-item .icon {
-            font-size: 1.2rem;
-            width: 24px;
         }
         .main-content {
             margin-left: 260px;
@@ -89,6 +86,25 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        .period-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .period-btn {
+            background: #ecf0f1;
+            color: #2c3e50;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .period-btn.active {
+            background: #28a745;
+            color: white;
+        }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -109,6 +125,17 @@
         .stat-value {
             font-size: 32px;
             font-weight: bold;
+            color: #2c3e50;
+        }
+        .sellers-table {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .sellers-table h3 {
+            margin-bottom: 15px;
             color: #2c3e50;
         }
         .recent-orders {
@@ -144,11 +171,24 @@
         .status-processing { background: #9b59b6; color: white; }
         .status-completed { background: #27ae60; color: white; }
         .status-cancelled { background: #e74c3c; color: white; }
+        .seller-badge {
+            display: inline-block;
+            background: #ecf0f1;
+            color: #2c3e50;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+        }
     </style>
 </head>
 <body>
     <div class="sidebar">
-        <div class="logo">ДП <span>СБОР</span></div>
+        <div class="logo">DP <span>SBOR</span></div>
         <a href="/manager/dashboard.html" class="nav-item active">
             <span class="icon">📊</span> Дашборд
         </a>
@@ -159,7 +199,7 @@
             <span class="icon">🏪</span> Склад
         </a>
         <a href="/manager/requests.html" class="nav-item">
-            <span class="icon">📋</span> Заявки на склад
+            <span class="icon">📋</span> Заявки
         </a>
         <a href="/manager/payments.html" class="nav-item">
             <span class="icon">💰</span> Выплаты
@@ -176,7 +216,14 @@
             </div>
         </div>
         
-        <div class="stats-grid">
+        <div class="period-buttons">
+            <button class="period-btn" data-period="today">Сегодня</button>
+            <button class="period-btn" data-period="week">Последняя неделя</button>
+            <button class="period-btn" data-period="month">Последний месяц</button>
+            <button class="period-btn" data-period="all">Все время</button>
+        </div>
+        
+        <div class="stats-grid" id="stats-grid">
             <div class="stat-card">
                 <div class="stat-title">Новые заказы</div>
                 <div class="stat-value" id="new-orders">0</div>
@@ -186,17 +233,35 @@
                 <div class="stat-value" id="processing-orders">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">Выполнено (сегодня)</div>
-                <div class="stat-value" id="completed-today">0</div>
+                <div class="stat-title">Выполнено</div>
+                <div class="stat-value" id="completed-count">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">Выручка (сегодня)</div>
-                <div class="stat-value" id="revenue-today">0 ₽</div>
+                <div class="stat-title">Выручка</div>
+                <div class="stat-value" id="revenue">0 ₽</div>
+            </div>
+        </div>
+        
+        <div id="sellers-stats-container" style="display: none;">
+            <div class="sellers-table">
+                <h3>📊 Статистика по продавцам</h3>
+                <table id="sellers-stats-table">
+                    <thead>
+                        <tr>
+                            <th>Продавец</th>
+                            <th>Заказов</th>
+                            <th>Выручка</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sellers-stats-list">
+                        <tr><td colspan="3" class="loading">Загрузка...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
         
         <div class="recent-orders">
-            <h3>Последние заказы</h3>
+            <h3>📋 Последние заказы</h3>
             <table id="recent-orders-table">
                 <thead>
                     <tr>
@@ -208,26 +273,31 @@
                     </tr>
                 </thead>
                 <tbody id="recent-orders-list">
-                    <tr><td colspan="5" style="text-align: center;">Загрузка...</td></tr>
+                    <tr><td colspan="5" class="loading">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
     <script>
+        let currentPeriod = 'today';
+        let currentUserRole = '';
+        
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) {
                 window.location.href = '/manager/';
                 return false;
             }
-            return true;
+            return token;
         }
         
         async function loadDashboard() {
-            const token = localStorage.getItem('manager_token');
+            const token = checkAuth();
+            if (!token) return;
+            
             try {
-                const response = await fetch('/api/manager/dashboard', {
+                const response = await fetch(`/api/manager/dashboard?period=${currentPeriod}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
@@ -240,6 +310,8 @@
                 const data = await response.json();
                 
                 document.getElementById('user-name').textContent = data.user.name;
+                currentUserRole = data.user.role;
+                
                 const roleNames = {
                     'admin': 'Администратор',
                     'warehouse_seller': 'Кладовщик-продавец',
@@ -249,14 +321,28 @@
                 
                 document.getElementById('new-orders').textContent = data.stats.new_orders;
                 document.getElementById('processing-orders').textContent = data.stats.processing_orders;
-                document.getElementById('completed-today').textContent = data.stats.completed_today;
-                document.getElementById('revenue-today').textContent = data.stats.revenue_today + ' ₽';
+                document.getElementById('completed-count').textContent = data.stats.completed_today;
+                document.getElementById('revenue').textContent = data.stats.revenue_today + ' ₽';
                 
-                const tbody = document.getElementById('recent-orders-list');
-                if (data.recent_orders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Нет заказов</td></tr>';
+                if (data.user.role === 'admin' && data.sellers_stats && data.sellers_stats.length > 0) {
+                    document.getElementById('sellers-stats-container').style.display = 'block';
+                    const tbody = document.getElementById('sellers-stats-list');
+                    tbody.innerHTML = data.sellers_stats.map(seller => `
+                        <tr>
+                            <td>${seller.name}</td>
+                            <td>${seller.orders_count}</td>
+                            <td>${seller.total_revenue} ₽</td>
+                        </tr>
+                    `).join('');
                 } else {
-                    tbody.innerHTML = data.recent_orders.map(order => {
+                    document.getElementById('sellers-stats-container').style.display = 'none';
+                }
+                
+                const ordersList = document.getElementById('recent-orders-list');
+                if (data.recent_orders.length === 0) {
+                    ordersList.innerHTML = '<tr><td colspan="5" class="loading">Нет заказов</td></tr>';
+                } else {
+                    ordersList.innerHTML = data.recent_orders.map(order => {
                         const statusText = {
                             'new': 'Новый',
                             'confirmed': 'Подтверждён',
@@ -267,8 +353,8 @@
                         }[order.status] || order.status;
                         return `
                             <tr>
-                                <td>${order.order_number}</td>
-                                <td>${order.contact?.name || order.contact?.phone || '—'}</td>
+                                <td><strong>${order.order_number}</strong></td>
+                                <td>${order.contact?.name || order.contact?.phone || '-'}</td>
                                 <td>${order.total} ₽</td>
                                 <td><span class="status status-${order.status}">${statusText}</span></td>
                                 <td><a href="/manager/orders.html?id=${order.id}" style="color: #3498db;">Подробнее</a></td>
@@ -287,6 +373,19 @@
             localStorage.removeItem('manager_role');
             window.location.href = '/manager/';
         }
+        
+        // Настройка кнопок периода
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentPeriod = btn.dataset.period;
+                loadDashboard();
+            });
+        });
+        
+        // Активируем кнопку "Сегодня" по умолчанию
+        document.querySelector('.period-btn[data-period="today"]').classList.add('active');
         
         if (checkAuth()) {
             loadDashboard();
