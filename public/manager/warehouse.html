@@ -6,26 +6,199 @@
     <title>DP SBOR — Склад</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
-        .sidebar {
-            position: fixed; left: 0; top: 0; width: 260px; height: 100%; background: #2c3e50; color: white; padding: 20px 0;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
         }
-        .logo { padding: 0 20px 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid #3e5a6b; margin-bottom: 20px; color: #28a745; }
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100%;
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
+        }
+        .logo {
+            padding: 0 20px 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-bottom: 1px solid #3e5a6b;
+            margin-bottom: 20px;
+            color: #28a745;
+        }
         .logo span { color: #ff8f00; }
-        .nav-item { padding: 12px 20px; display: flex; align-items: center; gap: 12px; color: #ecf0f1; text-decoration: none; transition: background 0.2s; }
-        .nav-item:hover, .nav-item.active { background: #28a745; color: white; }
-        .main-content { margin-left: 260px; padding: 20px; }
-        .header { background: white; padding: 15px 25px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .logout-btn { background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; }
-        .warehouse-table { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ecf0f1; }
-        th { color: #7f8c8d; font-weight: normal; }
-        .low-stock { background: #ffebee; }
-        input { width: 60px; padding: 4px; text-align: center; }
-        button { background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .nav-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #ecf0f1;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .nav-item:hover, .nav-item.active {
+            background: #28a745;
+            color: white;
+        }
+        .main-content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .logout-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .action-btn:hover {
+            background: #2980b9;
+        }
+        .action-btn.packaging {
+            background: #f39c12;
+        }
+        .action-btn.packaging:hover {
+            background: #e67e22;
+        }
+        .action-btn.seller {
+            background: #9b59b6;
+        }
+        .action-btn.seller:hover {
+            background: #8e44ad;
+        }
+        .action-btn.hub {
+            background: #1abc9c;
+        }
+        .action-btn.hub:hover {
+            background: #16a085;
+        }
+        .warehouse-table {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        th {
+            color: #7f8c8d;
+            font-weight: normal;
+        }
+        .low-stock {
+            background: #ffebee;
+        }
+        .stock-badge {
+            font-weight: bold;
+            color: #27ae60;
+        }
+        .stock-badge.low {
+            color: #e74c3c;
+        }
+        input {
+            width: 80px;
+            padding: 6px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 2px;
+        }
         .income { background: #27ae60; }
         .outcome { background: #e74c3c; }
+        
+        /* Модальные окна */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 25px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .modal-content select, .modal-content input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .modal-buttons button {
+            flex: 1;
+            padding: 10px;
+        }
+        .close-btn {
+            background: #95a5a6;
+        }
     </style>
 </head>
 <body>
@@ -41,19 +214,115 @@
     <div class="main-content">
         <div class="header">
             <h1>Склад</h1>
-            <div><span id="user-name"></span> <button class="logout-btn" onclick="logout()">Выйти</button></div>
+            <div class="user-info">
+                <span id="user-name">Загрузка...</span>
+                <button class="logout-btn" onclick="logout()">Выйти</button>
+            </div>
+        </div>
+        
+        <!-- Кнопки действий -->
+        <div class="action-buttons">
+            <button class="action-btn" onclick="openPurchaseModal()">📦 Закуп товара</button>
+            <button class="action-btn packaging" onclick="openPackagingModal()">📦 Фасовка товара</button>
+            <button class="action-btn seller" onclick="openSellerStockModal()">👥 Остатки продавцов</button>
+            <button class="action-btn hub" onclick="openHubStockModal()">🏪 Остатки на хабе (нерасфасованный)</button>
         </div>
         
         <div class="warehouse-table">
-            <div style="margin-bottom: 15px;"><button onclick="loadWarehouse()">Обновить</button></div>
+            <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <h3>Фасованные товары (готовые к продаже)</h3>
+                <button onclick="loadWarehouse()">🔄 Обновить</button>
+            </div>
             <table id="warehouse-table">
-                <thead><tr><th>Товар</th><th>В наличии</th><th>Зарезервировано</th><th>Доступно</th><th>Мин. остаток</th><th>Действия</th></tr></thead>
-                <tbody id="warehouse-list"><tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr></tbody>
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>В наличии (шт)</th>
+                        <th>Зарезервировано</th>
+                        <th>Доступно</th>
+                        <th>Мин. остаток</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="warehouse-list">
+                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>
 
+    <!-- Модальное окно закупки товара -->
+    <div id="purchase-modal" class="modal">
+        <div class="modal-content">
+            <h3>📦 Закуп товара (поставка в кг)</h3>
+            <select id="purchase-product" style="width: 100%; padding: 10px;">
+                <option value="">Выберите товар</option>
+            </select>
+            <input type="number" id="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+            <input type="text" id="purchase-comment" placeholder="Комментарий (поставщик, накладная)" style="width: 100%;">
+            <div class="modal-buttons">
+                <button onclick="confirmPurchase()">Подтвердить</button>
+                <button class="close-btn" onclick="closeModal('purchase-modal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно фасовки -->
+    <div id="packaging-modal" class="modal">
+        <div class="modal-content">
+            <h3>📦 Фасовка товара</h3>
+            <select id="packaging-product" style="width: 100%; padding: 10px;">
+                <option value="">Выберите товар</option>
+            </select>
+            <input type="number" id="packaging-kg" placeholder="Количество (кг)" step="0.1">
+            <div style="margin: 10px 0;">
+                <label>Фасовка в упаковки:</label>
+                <select id="packaging-variant" style="width: 100%; padding: 10px; margin-top: 5px;">
+                    <option value="">Выберите тип упаковки</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="confirmPackaging()">Подтвердить фасовку</button>
+                <button class="close-btn" onclick="closeModal('packaging-modal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно остатков продавцов -->
+    <div id="seller-stock-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>👥 Остатки на складах продавцов</h3>
+            <div style="overflow-x: auto; max-height: 400px;">
+                <table style="width: 100%;" id="seller-stock-table">
+                    <thead><tr><th>Продавец</th><th>Товар</th><th>Количество (шт)</th></tr></thead>
+                    <tbody><tr><td colspan="3">Загрузка...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="modal-buttons">
+                <button class="close-btn" onclick="closeModal('seller-stock-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно остатков на хабе -->
+    <div id="hub-stock-modal" class="modal">
+        <div class="modal-content">
+            <h3>🏪 Остатки на хабе (нерасфасованный товар в кг)</h3>
+            <div style="overflow-x: auto; max-height: 400px;">
+                <table style="width: 100%;" id="hub-stock-table">
+                    <thead><tr><th>Товар</th><th>Остаток (кг)</th></tr></thead>
+                    <tbody><tr><td colspan="2">Загрузка...</td></tr></tbody>
+                </table>
+            </div>
+            <div class="modal-buttons">
+                <button class="close-btn" onclick="closeModal('hub-stock-modal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let variantsList = [];
+        
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) window.location.href = '/manager/';
@@ -78,8 +347,8 @@
             }
             tbody.innerHTML = items.map(item => `
                 <tr class="${item.available < item.min_stock ? 'low-stock' : ''}">
-                    <td>${item.product_name} (${item.variant_name})</td>
-                    <td>${item.quantity}</td>
+                    <td><strong>${item.product_name}</strong><br><small>${item.variant_name}</small></td>
+                    <td class="${item.quantity < item.min_stock ? 'stock-badge low' : 'stock-badge'}">${item.quantity}</td>
                     <td>${item.reserved}</td>
                     <td>${item.available}</td>
                     <td>${item.min_stock}</td>
@@ -101,6 +370,144 @@
             loadWarehouse();
         }
         
+        // Закуп товара
+        async function openPurchaseModal() {
+            await loadProductsForSelect('purchase-product');
+            document.getElementById('purchase-modal').style.display = 'block';
+        }
+        
+        async function confirmPurchase() {
+            const productId = document.getElementById('purchase-product').value;
+            const quantityKg = parseFloat(document.getElementById('purchase-quantity').value);
+            const comment = document.getElementById('purchase-comment').value;
+            
+            if (!productId || !quantityKg || quantityKg <= 0) {
+                alert('Заполните все поля');
+                return;
+            }
+            
+            const token = checkAuth();
+            const response = await fetch('/api/manager/warehouse/purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ product_id: productId, quantity_kg: quantityKg, comment })
+            });
+            
+            if (response.ok) {
+                alert(`✅ Закуплен товар: ${quantityKg} кг`);
+                closeModal('purchase-modal');
+                document.getElementById('purchase-quantity').value = '';
+                document.getElementById('purchase-comment').value = '';
+                loadWarehouse();
+            } else {
+                const error = await response.json();
+                alert('Ошибка: ' + error.error);
+            }
+        }
+        
+        // Фасовка товара
+        async function openPackagingModal() {
+            await loadProductsForSelect('packaging-product');
+            document.getElementById('packaging-modal').style.display = 'block';
+        }
+        
+        async function loadProductsForSelect(selectId) {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/products', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const select = document.getElementById(selectId);
+            select.innerHTML = '<option value="">Выберите товар</option>';
+            data.products.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+            });
+        }
+        
+        async function onProductChange() {
+            const productId = document.getElementById('packaging-product').value;
+            if (!productId) return;
+            
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/variants/${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const select = document.getElementById('packaging-variant');
+            select.innerHTML = '<option value="">Выберите тип упаковки</option>';
+            data.variants.forEach(v => {
+                select.innerHTML += `<option value="${v.id}" data-weight="${v.weight_kg}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`;
+            });
+        }
+        
+        async function confirmPackaging() {
+            const productId = document.getElementById('packaging-product').value;
+            const quantityKg = parseFloat(document.getElementById('packaging-kg').value);
+            const variantId = document.getElementById('packaging-variant').value;
+            const variantOption = document.getElementById('packaging-variant').selectedOptions[0];
+            const weightKg = parseFloat(variantOption?.dataset?.weight || 0);
+            
+            if (!productId || !quantityKg || !variantId) {
+                alert('Заполните все поля');
+                return;
+            }
+            
+            const pieces = Math.floor(quantityKg / weightKg);
+            if (pieces === 0) {
+                alert(`Недостаточно кг для фасовки. Нужно минимум ${weightKg} кг для одной упаковки`);
+                return;
+            }
+            
+            const token = checkAuth();
+            const response = await fetch('/api/manager/warehouse/packaging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ product_id: productId, variant_id: variantId, quantity_kg: quantityKg, pieces })
+            });
+            
+            if (response.ok) {
+                alert(`✅ Расфасовано ${pieces} шт по ${weightKg} кг (всего ${quantityKg} кг)`);
+                closeModal('packaging-modal');
+                document.getElementById('packaging-kg').value = '';
+                loadWarehouse();
+            } else {
+                const error = await response.json();
+                alert('Ошибка: ' + error.error);
+            }
+        }
+        
+        // Остатки продавцов
+        async function openSellerStockModal() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/seller-stock', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const tbody = document.getElementById('seller-stock-table').querySelector('tbody');
+            if (!data.stock || data.stock.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">Нет данных</td></tr>';
+            } else {
+                tbody.innerHTML = data.stock.map(s => `
+                    <tr><td>${s.seller_name}</td><td>${s.product_name} (${s.variant_name})</td><td>${s.quantity}</td></tr>
+                `).join('');
+            }
+            document.getElementById('seller-stock-modal').style.display = 'block';
+        }
+        
+        // Остатки на хабе
+        async function openHubStockModal() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/hub-stock', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const tbody = document.getElementById('hub-stock-table').querySelector('tbody');
+            if (!data.stock || data.stock.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2">Нет данных</td></tr>';
+            } else {
+                tbody.innerHTML = data.stock.map(h => `
+                    <tr><td>${h.product_name}</td><td class="stock-badge">${h.quantity_kg} кг</td></tr>
+                `).join('');
+            }
+            document.getElementById('hub-stock-modal').style.display = 'block';
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
         async function loadUser() {
             const token = checkAuth();
             try {
@@ -117,8 +524,18 @@
             window.location.href = '/manager/';
         }
         
+        // Привязываем событие выбора товара для фасовки
+        document.getElementById('packaging-product')?.addEventListener('change', onProductChange);
+        
         loadUser();
         loadWarehouse();
+        
+        // Закрытие модальных окон при клике вне окна
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        }
     </script>
 </body>
 </html>
