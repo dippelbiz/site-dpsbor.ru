@@ -21,13 +21,12 @@ app.use((req, res, next) => {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,  // 10 секунд на подключение
-  idleTimeoutMillis: 30000,        // 30 секунд бездействия
-  max: 20,                         // максимум соединений
-  keepAlive: true                  // держать соединение живым
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 20,
+  keepAlive: true
 });
 
-// Проверка подключения при старте
 pool.connect((err, client, release) => {
   if (err) {
     console.error('❌ Ошибка подключения к базе данных:', err.message);
@@ -790,7 +789,6 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
   try {
     await pool.query('BEGIN');
     
-    // Проверяем, есть ли товар на главном складе
     const warehouseCheck = await pool.query(
       'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
       [variant_id]
@@ -802,13 +800,11 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
       return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
     }
     
-    // Создаём заявку в таблице pending_transfers
     await pool.query(`
       INSERT INTO pending_transfers (seller_id, variant_id, quantity, status, created_at)
       VALUES ($1, $2, $3, 'pending', NOW())
     `, [req.userId, variant_id, quantity]);
     
-    // Резервируем товар на главном складе
     await pool.query(
       'UPDATE main_warehouse SET reserved = reserved + $1 WHERE variant_id = $2',
       [quantity, variant_id]
@@ -823,18 +819,17 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
   }
 });
 
-// Получение списка заявок (для админа/кладовщика)
-app.get('/api/manager/transfer-requests', checkManagerAuth, async (req, res) => {
+// Получение списка активных заявок (для дашборда)
+app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        pt.id, 
-        pt.seller_id, 
-        u.name as seller_name, 
-        v.name as variant_name, 
-        p.name as product_name, 
-        pt.quantity, 
-        pt.status, 
+        pt.id,
+        pt.seller_id,
+        u.name as seller_name,
+        v.name as variant_name,
+        p.name as product_name,
+        pt.quantity,
         pt.created_at
       FROM pending_transfers pt
       JOIN users u ON pt.seller_id = u.id
@@ -843,64 +838,110 @@ app.get('/api/manager/transfer-requests', checkManagerAuth, async (req, res) => 
       WHERE pt.status = 'pending'
       ORDER BY pt.created_at DESC
     `);
-    res.json({ requests: result.rows });
+    res.json({ tasks: result.rows });
   } catch (err) {
-    console.error('Transfer requests error:', err);
+    console.error('Tasks error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-// Обновление статуса заявки (одобрить/отклонить)
-app.put('/api/manager/transfer-request/:id', checkManagerAuth, async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  
-  if (!['approved', 'rejected'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
+// Получение завершённых задач (подтверждённые и отклонённые)
+app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        pt.id,
+        pt.seller_id,
+        u.name as seller_name,
+        v.name as variant_name,
+        p.name as product_name,
+        pt.quantity,
+        pt.status,
+        pt.created_at,
+        pt.updated_at
+      FROM pending_transfers pt
+      JOIN users u ON pt.seller_id = u.id
+      JOIN variants v ON pt.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      WHERE pt.status IN ('approved', 'rejected')
+      ORDER BY pt.updated_at DESC
+      LIMIT 50
+    `);
+    res.json({ tasks: result.rows });
+  } catch (err) {
+    console.error('Completed tasks error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
+});
+
+// Подтверждение заявки
+app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
   
   try {
     await pool.query('BEGIN');
     
-    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1', [id]);
+    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
     if (request.rows.length === 0) {
       await pool.query('ROLLBACK');
-      return res.status(404).json({ error: 'Request not found' });
+      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
     }
     
-    if (status === 'approved') {
-      // При одобрении добавляем товар на склад продавца
-      await pool.query(`
-        INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
-        VALUES ($1, $2, $3, 0)
-        ON CONFLICT (seller_id, variant_id) DO UPDATE SET 
-          quantity = seller_stock.quantity + EXCLUDED.quantity
-      `, [request.rows[0].seller_id, request.rows[0].variant_id, request.rows[0].quantity]);
-      
-      // Снимаем резервирование с главного склада
-      await pool.query(
-        'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
-        [request.rows[0].quantity, request.rows[0].variant_id]
-      );
-    } else if (status === 'rejected') {
-      // При отказе просто снимаем резервирование
-      await pool.query(
-        'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
-        [request.rows[0].quantity, request.rows[0].variant_id]
-      );
-    }
+    await pool.query(`
+      INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
+      VALUES ($1, $2, $3, 0)
+      ON CONFLICT (seller_id, variant_id) DO UPDATE SET 
+        quantity = seller_stock.quantity + EXCLUDED.quantity
+    `, [request.rows[0].seller_id, request.rows[0].variant_id, request.rows[0].quantity]);
+    
+    await pool.query(
+      'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
+      [request.rows[0].quantity, request.rows[0].variant_id]
+    );
     
     await pool.query(
       'UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2',
-      [status, id]
+      ['approved', id]
     );
     
     await pool.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
     await pool.query('ROLLBACK');
-    console.error('Transfer request update error:', err);
-    res.status(500).json({ error: 'Database error' });
+    console.error('Approve task error:', err);
+    res.status(500).json({ error: 'Ошибка при подтверждении' });
+  }
+});
+
+// Отклонение заявки
+app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    await pool.query('BEGIN');
+    
+    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
+    if (request.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
+    }
+    
+    await pool.query(
+      'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
+      [request.rows[0].quantity, request.rows[0].variant_id]
+    );
+    
+    await pool.query(
+      'UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2',
+      ['rejected', id]
+    );
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Reject task error:', err);
+    res.status(500).json({ error: 'Ошибка при отклонении' });
   }
 });
 
