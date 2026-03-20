@@ -207,33 +207,6 @@
             text-align: center;
             padding: 20px;
         }
-        .recent-orders {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ecf0f1;
-        }
-        th {
-            color: #7f8c8d;
-            font-weight: normal;
-        }
-        .status {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-        }
-        .status-new { background: #3498db; color: white; }
-        .status-completed { background: #27ae60; color: white; }
-        .status-cancelled { background: #e74c3c; color: white; }
         
         /* Модальное окно завершённых задач */
         .modal {
@@ -348,16 +321,6 @@
                 <div class="no-tasks">Загрузка...</div>
             </div>
         </div>
-        
-        <div class="recent-orders">
-            <h3>📋 Последние заказы</h3>
-            <table id="recent-orders-table">
-                <thead>
-                    <tr><th>№ заказа</th><th>Клиент</th><th>Сумма</th><th>Статус</th><th>Действия</th></thead>
-                <tbody id="recent-orders-list"><tr><td colspan="5" class="loading">Загрузка...</td></tr>
-                </tbody>
-            </table>
-        </div>
     </div>
 
     <!-- Модальное окно завершённых задач -->
@@ -376,7 +339,6 @@
     <script>
         let currentPeriod = 'today';
         let currentUserRole = '';
-        let tasksCount = 0;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -401,21 +363,13 @@
                 document.getElementById('processing-orders').textContent = data.stats.processing_orders;
                 document.getElementById('completed-count').textContent = data.stats.completed_count;
                 document.getElementById('revenue').textContent = data.stats.revenue + ' ₽';
-                
-                const ordersList = document.getElementById('recent-orders-list');
-                if (data.recent_orders.length === 0) ordersList.innerHTML = '<tr><td colspan="5" class="loading">Нет заказов</td></tr>';
-                else {
-                    ordersList.innerHTML = data.recent_orders.map(order => {
-                        const statusText = { 'new': 'Новый', 'confirmed': 'Подтверждён', 'processing': 'В работе', 'shipped': 'Отгружен', 'completed': 'Выполнен', 'cancelled': 'Отменён' }[order.status] || order.status;
-                        return `<tr><td><strong>${order.order_number}</strong></td><td>${order.contact?.name || order.contact?.phone || '-'}</td><td>${order.total} ₽</td><td><span class="status status-${order.status}">${statusText}</span></td><td><a href="/manager/orders.html?id=${order.id}" style="color: #3498db;">Подробнее</a></td></tr>`;
-                    }).join('');
-                }
             } catch (err) { console.error(err); }
         }
         
         async function loadTasks() {
             const token = checkAuth();
-            if (!currentUserRole || (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller')) return;
+            // Показываем раздел задач только для админа и кладовщика
+            if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
             
             const tasksSection = document.getElementById('tasks-section');
             tasksSection.style.display = 'block';
@@ -423,7 +377,7 @@
             try {
                 const response = await fetch('/api/manager/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
                 const data = await response.json();
-                tasksCount = data.tasks.length;
+                const tasksCount = data.tasks.length;
                 const badge = document.getElementById('tasks-badge');
                 if (tasksCount > 0) {
                     badge.textContent = tasksCount;
@@ -463,6 +417,8 @@
             if (response.ok) {
                 alert('✅ Заявка подтверждена, товар добавлен на склад продавца');
                 loadTasks();
+                // Обновляем дашборд (чтобы обновилась статистика)
+                loadDashboard();
             } else {
                 const error = await response.json();
                 alert('Ошибка: ' + error.error);
@@ -517,6 +473,7 @@
             window.location.href = '/manager/';
         }
         
+        // Настройка кнопок периода
         document.querySelectorAll('.period-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
@@ -528,8 +485,11 @@
         document.querySelector('.period-btn[data-period="today"]').classList.add('active');
         
         if (checkAuth()) {
-            loadDashboard();
-            loadTasks();
+            // Загружаем сначала роль, потом задачи
+            (async () => {
+                await loadDashboard();
+                await loadTasks();
+            })();
         }
     </script>
 </body>
