@@ -531,7 +531,7 @@ app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
 
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 
-// Получение склада
+// Получение склада (без min_stock)
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -542,8 +542,7 @@ app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
         p.name as product_name,
         mw.quantity,
         mw.reserved,
-        (mw.quantity - mw.reserved) as available,
-        mw.min_stock
+        (mw.quantity - mw.reserved) as available
       FROM main_warehouse mw
       JOIN variants v ON mw.variant_id = v.id
       JOIN products p ON v.product_id = p.id
@@ -682,8 +681,8 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
     );
     
     await pool.query(`
-      INSERT INTO main_warehouse (variant_id, quantity, reserved, min_stock, last_updated)
-      VALUES ($1, $2, 0, 5, NOW())
+      INSERT INTO main_warehouse (variant_id, quantity, reserved, last_updated)
+      VALUES ($1, $2, 0, NOW())
       ON CONFLICT (variant_id) DO UPDATE SET 
         quantity = main_warehouse.quantity + EXCLUDED.quantity,
         last_updated = NOW()
