@@ -24,7 +24,6 @@ const pool = new Pool({
 });
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-// Функция для нормализации чисел (1,5 -> 1.5, 1.5 -> 1.5)
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
   let str = String(value).trim();
@@ -37,6 +36,19 @@ function normalizeNumber(value) {
   return isNaN(num) ? null : num;
 }
 
+function getDateFilter(period) {
+  switch (period) {
+    case 'today':
+      return `DATE(created_at) = CURRENT_DATE`;
+    case 'week':
+      return `created_at >= NOW() - INTERVAL '7 days'`;
+    case 'month':
+      return `created_at >= NOW() - INTERVAL '30 days'`;
+    default:
+      return `1=1`;
+  }
+}
+
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
@@ -44,7 +56,6 @@ app.get('/', (req, res) => {
 
 // ==================== API ТОВАРОВ И КОРЗИНЫ ====================
 
-// Получение всех товаров
 app.get('/api/products', async (req, res) => {
   try {
     const products = await pool.query(`
@@ -62,7 +73,6 @@ app.get('/api/products', async (req, res) => {
       GROUP BY p.id
       ORDER BY p.id
     `);
-    
     res.json(products.rows);
   } catch (err) {
     console.error(err);
@@ -70,7 +80,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Получение корзины пользователя
 app.get('/api/cart/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
@@ -102,7 +111,6 @@ app.get('/api/cart/:userId', async (req, res) => {
   }
 });
 
-// Добавление в корзину
 app.post('/api/cart/add', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
   const numUserId = parseInt(userId, 10);
@@ -137,7 +145,6 @@ app.post('/api/cart/add', async (req, res) => {
   }
 });
 
-// Обновление количества
 app.post('/api/cart/update', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
   const numUserId = parseInt(userId, 10);
@@ -166,7 +173,6 @@ app.post('/api/cart/update', async (req, res) => {
   }
 });
 
-// Удаление из корзины
 app.delete('/api/cart/remove', async (req, res) => {
   const { userId, productId, variantId } = req.body;
   try {
@@ -181,18 +187,15 @@ app.delete('/api/cart/remove', async (req, res) => {
   }
 });
 
-// Получение заказов пользователя
 app.get('/api/orders/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
     const result = await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC', [userId]);
-    
     const orders = result.rows.map(order => {
       if (order.items) order.items = JSON.parse(order.items);
       if (order.contact) order.contact = JSON.parse(order.contact);
       return order;
     });
-    
     res.json(orders);
   } catch (err) {
     console.error(err);
@@ -200,7 +203,6 @@ app.get('/api/orders/:userId', async (req, res) => {
   }
 });
 
-// Получение точек самовывоза
 app.get('/api/pickup-locations', async (req, res) => {
   try {
     const result = await pool.query(
@@ -213,24 +215,14 @@ app.get('/api/pickup-locations', async (req, res) => {
   }
 });
 
-// Вспомогательная функция для генерации номера заказа
 async function generateOrderNumber(prefix) {
-  if (!prefix) {
-    prefix = 'X';
-  }
-  
-  if (prefix.length > 3) {
-    prefix = prefix.substring(0, 3);
-  }
-  
+  if (!prefix) prefix = 'X';
+  if (prefix.length > 3) prefix = prefix.substring(0, 3);
   try {
     const result = await pool.query(
-      `SELECT order_number FROM orders 
-       WHERE order_number LIKE $1 
-       ORDER BY id DESC LIMIT 1`,
+      `SELECT order_number FROM orders WHERE order_number LIKE $1 ORDER BY id DESC LIMIT 1`,
       [prefix + '%']
     );
-    
     if (result.rows.length > 0) {
       const lastNum = result.rows[0].order_number.substring(prefix.length);
       const num = parseInt(lastNum) || 0;
@@ -244,7 +236,6 @@ async function generateOrderNumber(prefix) {
   }
 }
 
-// ==================== СОЗДАНИЕ ЗАКАЗА ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -275,7 +266,6 @@ app.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Проверка на дубликат
     if (request_id) {
       console.log(`🔍 Проверка request_id: ${request_id}`);
       const existing = await pool.query('SELECT id FROM orders WHERE request_id = $1', [request_id]);
@@ -286,7 +276,6 @@ app.post('/api/order', async (req, res) => {
       console.log('✅ Request_id уникален');
     }
 
-    // Получаем seller_id из точки самовывоза и префикс
     let seller_id = null;
     let address_id = null;
     let prefix = null;
@@ -313,14 +302,12 @@ app.post('/api/order', async (req, res) => {
         prefix = seller_name[0].toUpperCase();
       }
     } else {
-      // Для доставки - администратор (id=6)
       seller_id = 6;
       prefix = 'D';
     }
 
     console.log(`✅ Определён продавец ID: ${seller_id}, префикс: ${prefix}`);
 
-    // Получаем содержимое корзины из данных
     let total_sum = 0;
     const orderItems = items.map(item => {
       const itemTotal = item.priceAtTime * item.quantity;
@@ -338,15 +325,12 @@ app.post('/api/order', async (req, res) => {
     console.log('📝 Состав заказа:', orderItems);
     console.log(`💰 Итого: ${total_sum}`);
 
-    // Генерируем номер заказа
-    console.log(`🔢 Генерация номера для префикса: ${prefix}`);
     const order_number = await generateOrderNumber(prefix);
     console.log(`✅ Сгенерирован номер заказа: ${order_number}`);
 
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // Сохраняем заказ в БД
     console.log('💾 Сохранение заказа в БД...');
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, user_id, seller_id, address_id, items, total, contact, status, request_id)
@@ -361,9 +345,7 @@ app.post('/api/order', async (req, res) => {
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
     console.log('='.repeat(60));
     
-    res.status(200).json({ 
-      orderNumber: order_number 
-    });
+    res.status(200).json({ orderNumber: order_number });
 
   } catch (err) {
     console.error('❌ КРИТИЧЕСКАЯ ОШИБКА В /api/order:');
@@ -375,10 +357,8 @@ app.post('/api/order', async (req, res) => {
 
 // ==================== ПАНЕЛЬ УПРАВЛЕНИЯ (MANAGER) ====================
 
-// Временное хранилище токенов
 const validTokens = new Map();
 
-// Авторизация через Telegram
 app.post('/api/manager/auth', async (req, res) => {
   const { telegram_id, name } = req.body;
   console.log('Auth attempt:', { telegram_id, name });
@@ -392,29 +372,20 @@ app.post('/api/manager/auth', async (req, res) => {
     console.log('Query result:', result.rows);
     
     if (result.rows.length === 0) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Доступ запрещён. Обратитесь к администратору.' 
-      });
+      return res.status(403).json({ success: false, message: 'Доступ запрещён. Обратитесь к администратору.' });
     }
     
     const user = result.rows[0];
     const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
     validTokens.set(token, { userId: user.id, role: user.role, expires: Date.now() + 86400000 });
     
-    res.json({
-      success: true,
-      token: token,
-      name: user.name,
-      role: user.role
-    });
+    res.json({ success: true, token: token, name: user.name, role: user.role });
   } catch (err) {
     console.error('Auth error:', err);
     res.status(500).json({ success: false, message: 'Ошибка сервера' });
   }
 });
 
-// Middleware для проверки токена
 async function checkManagerAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -434,38 +405,88 @@ async function checkManagerAuth(req, res, next) {
   next();
 }
 
-// Получение дашборда
+// Получение дашборда с фильтрацией по периоду
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
-    const userResult = await pool.query(
-      'SELECT name, role FROM users WHERE id = $1',
-      [req.userId]
-    );
+    const { period = 'today' } = req.query;
+    const dateFilter = getDateFilter(period);
     
+    const userResult = await pool.query('SELECT name, role FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
     const user = userResult.rows[0];
     
-    const statsResult = await pool.query(`
-      SELECT 
-        COUNT(CASE WHEN status = 'new' THEN 1 END) as new_orders,
-        COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
-        COUNT(CASE WHEN status = 'completed' AND DATE(created_at) = CURRENT_DATE THEN 1 END) as completed_today,
-        COALESCE(SUM(CASE WHEN status = 'completed' AND DATE(created_at) = CURRENT_DATE THEN total END), 0) as revenue_today
-      FROM orders
-    `);
+    let statsQuery;
+    let statsParams = [];
     
+    if (user.role === 'admin') {
+      // Для админа: общая статистика по всем продавцам
+      statsQuery = `
+        SELECT 
+          COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
+          COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
+          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_today,
+          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue_today
+        FROM orders
+      `;
+    } else {
+      // Для продавца: только его заказы
+      statsQuery = `
+        SELECT 
+          COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
+          COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
+          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_today,
+          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue_today
+        FROM orders
+        WHERE seller_id = $1
+      `;
+      statsParams = [req.userId];
+    }
+    
+    const statsResult = await pool.query(statsQuery, statsParams);
     const stats = statsResult.rows[0];
     
-    const ordersResult = await pool.query(`
-      SELECT id, order_number, contact, total, status, created_at
-      FROM orders
-      ORDER BY created_at DESC
-      LIMIT 5
-    `);
+    // Статистика по продавцам (только для админа)
+    let sellersStats = [];
+    if (user.role === 'admin') {
+      const sellersResult = await pool.query(`
+        SELECT 
+          u.id,
+          u.name,
+          COUNT(o.id) as orders_count,
+          COALESCE(SUM(o.total), 0) as total_revenue
+        FROM users u
+        LEFT JOIN orders o ON u.id = o.seller_id AND ${dateFilter}
+        WHERE u.role IN ('seller', 'warehouse_seller', 'admin')
+        GROUP BY u.id, u.name
+        ORDER BY total_revenue DESC
+      `);
+      sellersStats = sellersResult.rows;
+    }
     
+    // Последние заказы
+    let ordersQuery;
+    let ordersParams = [];
+    if (user.role === 'admin') {
+      ordersQuery = `
+        SELECT id, order_number, contact, total, status, created_at
+        FROM orders
+        ORDER BY created_at DESC
+        LIMIT 10
+      `;
+    } else {
+      ordersQuery = `
+        SELECT id, order_number, contact, total, status, created_at
+        FROM orders
+        WHERE seller_id = $1
+        ORDER BY created_at DESC
+        LIMIT 10
+      `;
+      ordersParams = [req.userId];
+    }
+    
+    const ordersResult = await pool.query(ordersQuery, ordersParams);
     const recentOrders = ordersResult.rows.map(order => ({
       ...order,
       contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
@@ -479,6 +500,7 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
         completed_today: parseInt(stats.completed_today) || 0,
         revenue_today: parseInt(stats.revenue_today) || 0
       },
+      sellers_stats: sellersStats,
       recent_orders: recentOrders
     });
   } catch (err) {
@@ -487,16 +509,12 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получение списка заказов
 app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     
-    let query = `
-      SELECT id, order_number, contact, total, status, created_at, completed_at
-      FROM orders
-    `;
+    let query = `SELECT id, order_number, contact, total, status, created_at, completed_at FROM orders`;
     const params = [];
     
     if (status) {
@@ -508,7 +526,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     params.push(limit, offset);
     
     const result = await pool.query(query, params);
-    
     const orders = result.rows.map(order => ({
       ...order,
       contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
@@ -521,7 +538,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Обновление статуса заказа
 app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -545,7 +561,6 @@ app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
 
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 
-// Получение склада (без min_stock)
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -562,7 +577,6 @@ app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
       JOIN products p ON v.product_id = p.id
       ORDER BY p.name, v.name
     `);
-    
     res.json({ warehouse: result.rows });
   } catch (err) {
     console.error('Warehouse error:', err);
@@ -570,7 +584,6 @@ app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Обновление склада (приход/расход)
 app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => {
   const { variant_id, quantity, type, comment } = req.body;
   
@@ -587,10 +600,7 @@ app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => 
         [quantity, variant_id]
       );
     } else {
-      const checkResult = await pool.query(
-        'SELECT quantity FROM main_warehouse WHERE variant_id = $1',
-        [variant_id]
-      );
+      const checkResult = await pool.query('SELECT quantity FROM main_warehouse WHERE variant_id = $1', [variant_id]);
       if (checkResult.rows[0]?.quantity < quantity) {
         await pool.query('ROLLBACK');
         return res.status(400).json({ error: 'Недостаточно товара на складе' });
@@ -601,11 +611,10 @@ app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => 
       );
     }
     
-    await pool.query(
-      `INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
-       VALUES ($1, 'main', $2, $3, $4, $5)`,
-      [variant_id, type, quantity, req.userId, comment]
-    );
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES ($1, 'main', $2, $3, $4, $5)
+    `, [variant_id, type, quantity, req.userId, comment]);
     
     await pool.query('COMMIT');
     res.json({ success: true });
@@ -616,13 +625,11 @@ app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => 
   }
 });
 
-// Получение списка товаров для выбора
 app.get('/api/manager/products', checkManagerAuth, async (req, res) => {
   const result = await pool.query('SELECT id, name FROM products ORDER BY name');
   res.json({ products: result.rows });
 });
 
-// Получение вариантов товара по product_id
 app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) => {
   const { productId } = req.params;
   const result = await pool.query(
@@ -632,10 +639,8 @@ app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) =
   res.json({ variants: result.rows });
 });
 
-// Закуп товара (поставка в кг) - с поддержкой дробных чисел
 app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
   let { product_id, quantity_kg, comment } = req.body;
-  
   quantity_kg = normalizeNumber(quantity_kg);
   
   if (!product_id || !quantity_kg || quantity_kg <= 0) {
@@ -679,10 +684,8 @@ app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) =
   }
 });
 
-// Фасовка товара - с поддержкой дробных чисел
 app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) => {
   let { product_id, variant_id, quantity_kg, pieces } = req.body;
-  
   quantity_kg = normalizeNumber(quantity_kg);
   pieces = normalizeNumber(pieces);
   
@@ -697,21 +700,14 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   try {
     await pool.query('BEGIN');
     
-    const hubStock = await pool.query(
-      'SELECT quantity_kg FROM hub_stock WHERE product_id = $1',
-      [product_id]
-    );
-    
+    const hubStock = await pool.query('SELECT quantity_kg FROM hub_stock WHERE product_id = $1', [product_id]);
     const available = hubStock.rows[0]?.quantity_kg || 0;
     if (available < quantity_kg) {
       await pool.query('ROLLBACK');
       return res.status(400).json({ error: `Недостаточно товара на хабе. Доступно: ${available} кг, требуется: ${quantity_kg} кг` });
     }
     
-    await pool.query(
-      'UPDATE hub_stock SET quantity_kg = quantity_kg - $1, updated_at = NOW() WHERE product_id = $2',
-      [quantity_kg, product_id]
-    );
+    await pool.query('UPDATE hub_stock SET quantity_kg = quantity_kg - $1, updated_at = NOW() WHERE product_id = $2', [quantity_kg, product_id]);
     
     await pool.query(`
       INSERT INTO main_warehouse (variant_id, quantity, reserved, last_updated)
@@ -735,15 +731,13 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   }
 });
 
-// Получение списка продавцов
 app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query(
-    "SELECT id, name FROM users WHERE role IN ('seller', 'warehouse_seller') ORDER BY name"
+    "SELECT id, name FROM users WHERE role IN ('seller', 'warehouse_seller', 'admin') ORDER BY name"
   );
   res.json({ sellers: result.rows });
 });
 
-// Остатки конкретного продавца
 app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
   const { sellerId } = req.params;
   const result = await pool.query(`
@@ -757,7 +751,6 @@ app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res
   res.json({ stock: result.rows });
 });
 
-// Остатки на хабе (нерасфасованный)
 app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
