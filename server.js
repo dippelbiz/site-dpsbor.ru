@@ -24,12 +24,12 @@ const pool = new Pool({
 
 // ==================== YOUGILE ИНТЕГРАЦИЯ ====================
 const YOUGILE_API_KEY = process.env.YOUGILE_API_KEY;
-const YOUGILE_PIPELINE_ID = process.env.YOUGILE_PIPELINE_ID;   // ID воронки (например, "Продажи")
-const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;       // ID колонки (например, "Новые заказы")
+const YOUGILE_BOARD_ID = process.env.YOUGILE_BOARD_ID;     // ID доски (борды)
+const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;   // ID колонки
 
 // Функция отправки заказа в YouGile (как СДЕЛКА)
 async function sendOrderToYougile(orderData) {
-  if (!YOUGILE_API_KEY || !YOUGILE_PIPELINE_ID || !YOUGILE_COLUMN_ID) {
+  if (!YOUGILE_API_KEY || !YOUGILE_BOARD_ID || !YOUGILE_COLUMN_ID) {
     console.log('⚠️ YouGile не настроен (отсутствуют ключи)');
     return;
   }
@@ -61,13 +61,13 @@ ${itemsText}
       body: JSON.stringify({
         title: `Заказ №${orderData.orderNumber}`,
         description: description,
-        pipelineId: YOUGILE_PIPELINE_ID,
+        boardId: YOUGILE_BOARD_ID,
         columnId: YOUGILE_COLUMN_ID,
-        customFields: {
-          'Сумма': orderData.total,
-          'Клиент': orderData.contact.name,
-          'Телефон': orderData.contact.phone
-        }
+        contact: {
+          name: orderData.contact.name,
+          phone: orderData.contact.phone
+        },
+        amount: orderData.total
       })
     });
     
