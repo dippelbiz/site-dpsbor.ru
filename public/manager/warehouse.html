@@ -70,7 +70,6 @@
             cursor: pointer;
         }
         
-        /* Кнопки переключения склада */
         .stock-toggle {
             display: flex;
             gap: 15px;
@@ -92,7 +91,6 @@
             color: white;
         }
         
-        /* Кнопки действий */
         .action-buttons {
             display: flex;
             gap: 15px;
@@ -148,7 +146,6 @@
             margin: 2px;
         }
         
-        /* Модальные окна */
         .modal {
             display: none;
             position: fixed;
@@ -218,6 +215,18 @@
         .close-btn {
             background: #95a5a6;
         }
+        .available-stock {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .available-stock.warning {
+            background: #ffebee;
+            color: #c62828;
+        }
     </style>
 </head>
 <body>
@@ -239,13 +248,11 @@
             </div>
         </div>
         
-        <!-- Кнопки переключения склада (только для продавцов) -->
         <div id="stock-toggle-container" class="stock-toggle" style="display: none;">
             <button class="toggle-btn active" id="my-stock-btn" onclick="showMyStock()">📦 Мои остатки</button>
             <button class="toggle-btn" id="main-stock-btn" onclick="showMainStock()">🏪 Остатки на главном складе</button>
         </div>
         
-        <!-- Кнопки действий -->
         <div id="action-buttons" class="action-buttons" style="display: none;">
             <button class="action-btn" onclick="openPurchaseModal()">📦 Закуп товара</button>
             <button class="action-btn packaging" onclick="openPackagingModal()">📦 Фасовка товара</button>
@@ -254,7 +261,6 @@
             <button class="action-btn hub" onclick="openHubStockModal()">🏪 Нерасфасованный товар</button>
         </div>
         
-        <!-- Таблица склада -->
         <div class="warehouse-table">
             <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
                 <h3 id="stock-title">📦 Мои остатки</h3>
@@ -262,15 +268,9 @@
             </div>
             <table id="warehouse-table">
                 <thead id="warehouse-thead">
-                    <tr>
-                        <th>Товар</th>
-                        <th>В наличии</th>
-                        <th>Ожидает перемещения</th>
-                    </tr>
+                    <tr><th>Товар</th><th>В наличии</th><th>Ожидает перемещения</th></tr>
                 </thead>
-                <tbody id="warehouse-list">
-                    <tr><td colspan="3" style="text-align: center;">Загрузка...</td></tr>
-                </tbody>
+                <tbody id="warehouse-list"><tr><td colspan="3">Загрузка...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -281,9 +281,7 @@
             <h3>📦 Закуп товара (поставка в кг)</h3>
             <div id="purchase-items-container">
                 <div class="purchase-item">
-                    <select class="purchase-product">
-                        <option value="">Выберите товар</option>
-                    </select>
+                    <select class="purchase-product"><option value="">Выберите товар</option></select>
                     <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
                     <input type="text" class="purchase-comment" placeholder="Комментарий">
                     <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
@@ -303,12 +301,8 @@
             <h3>📦 Фасовка товара</h3>
             <div id="packaging-items-container">
                 <div class="packaging-item">
-                    <select class="packaging-product" onchange="loadVariantsForPackaging(this)">
-                        <option value="">Выберите товар</option>
-                    </select>
-                    <select class="packaging-variant">
-                        <option value="">Сначала выберите товар</option>
-                    </select>
+                    <select class="packaging-product" onchange="loadVariantsForPackaging(this)"><option value="">Выберите товар</option></select>
+                    <select class="packaging-variant"><option value="">Сначала выберите товар</option></select>
                     <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
                     <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
                 </div>
@@ -327,16 +321,16 @@
             <h3>📋 Заявка на перемещение товара</h3>
             <div id="request-items-container">
                 <div class="request-item">
-                    <select class="request-product">
-                        <option value="">Выберите товар</option>
-                    </select>
-                    <input type="number" class="request-quantity" placeholder="Количество (шт)" step="1">
-                    <button class="remove-btn" onclick="removeRequestItem(this)">✖</button>
+                    <select class="request-product" onchange="loadRequestVariants(this)"><option value="">Выберите товар</option></select>
+                    <div id="request-available-0" class="available-stock">Доступно на главном складе: -- шт</div>
+                    <select class="request-variant" id="request-variant-0" onchange="updateRequestAvailability(0)"><option value="">Сначала выберите товар</option></select>
+                    <input type="number" class="request-quantity" id="request-quantity-0" placeholder="Количество (шт)" step="1" min="1" oninput="checkRequestQuantity(0)">
+                    <button class="remove-btn" onclick="removeRequestItem(this, 0)">✖</button>
                 </div>
             </div>
             <button class="add-btn" onclick="addRequestItem()">+ Добавить ещё товар</button>
             <div class="modal-buttons">
-                <button onclick="confirmRequest()">Отправить заявку</button>
+                <button id="request-submit-btn" onclick="confirmRequest()" style="background: #28a745;">Отправить заявку</button>
                 <button class="close-btn" onclick="closeModal('request-modal')">Отмена</button>
             </div>
         </div>
@@ -347,13 +341,8 @@
         <div class="modal-content" style="max-width: 800px;">
             <h3>👥 Остатки на складах продавцов</h3>
             <div id="seller-buttons" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
-            <table style="width: 100%;">
-                <thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead>
-                <tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody>
-            </table>
-            <div class="modal-buttons">
-                <button class="close-btn" onclick="closeModal('seller-stock-modal')">Закрыть</button>
-            </div>
+            <table><thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead><tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody></table>
+            <div class="modal-buttons"><button class="close-btn" onclick="closeModal('seller-stock-modal')">Закрыть</button></div>
         </div>
     </div>
 
@@ -361,13 +350,8 @@
     <div id="hub-stock-modal" class="modal">
         <div class="modal-content">
             <h3>🏪 Нерасфасованный товар</h3>
-            <table style="width: 100%;">
-                <thead><tr><th>Товар</th><th>Остаток (кг)</th></tr></thead>
-                <tbody id="hub-stock-list"><tr><td colspan="2">Загрузка...</td></tr></tbody>
-            </table>
-            <div class="modal-buttons">
-                <button class="close-btn" onclick="closeModal('hub-stock-modal')">Закрыть</button>
-            </div>
+            <table><thead><tr><th>Товар</th><th>Остаток (кг)</th></tr></thead><tbody id="hub-stock-list"><tr><td colspan="2">Загрузка...</td></tr></tbody></table>
+            <div class="modal-buttons"><button class="close-btn" onclick="closeModal('hub-stock-modal')">Закрыть</button></div>
         </div>
     </div>
 
@@ -376,6 +360,8 @@
         let currentView = 'my';
         let currentUserRole = '';
         let currentUserId = null;
+        let mainWarehouseStock = {}; // {variant_id: quantity}
+        let requestItemCounter = 0;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -394,6 +380,17 @@
                 return data;
             }
             return null;
+        }
+        
+        async function loadMainWarehouseStock() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/warehouse', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            mainWarehouseStock = {};
+            data.warehouse.forEach(item => {
+                mainWarehouseStock[item.variant_id] = item.available;
+            });
+            return mainWarehouseStock;
         }
         
         async function loadMyStock() {
@@ -459,28 +456,6 @@
             }
         }
         
-        async function initUI() {
-            await getUserInfo();
-            await loadProducts();
-            
-            const actionButtons = document.getElementById('action-buttons');
-            const stockToggle = document.getElementById('stock-toggle-container');
-            
-            if (currentUserRole === 'admin') {
-                actionButtons.style.display = 'flex';
-                stockToggle.style.display = 'flex';
-                await showMyStock();
-            } else if (currentUserRole === 'warehouse_seller') {
-                actionButtons.style.display = 'flex';
-                stockToggle.style.display = 'none';
-                await showMainStock();
-            } else if (currentUserRole === 'seller') {
-                actionButtons.style.display = 'flex';
-                stockToggle.style.display = 'flex';
-                await showMyStock();
-            }
-        }
-        
         async function loadProducts() {
             const token = checkAuth();
             const response = await fetch('/api/manager/products', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -490,8 +465,7 @@
         }
         
         function fillProductSelects() {
-            const selects = document.querySelectorAll('.purchase-product, .packaging-product, .request-product');
-            selects.forEach(select => {
+            document.querySelectorAll('.purchase-product, .packaging-product, .request-product').forEach(select => {
                 const currentVal = select.value;
                 select.innerHTML = '<option value="">Выберите товар</option>' + 
                     productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
@@ -499,54 +473,190 @@
             });
         }
         
-        // Закупка
-        function addPurchaseItem() { addItem('purchase-items-container', 'purchase-item', 'purchase'); }
-        function removePurchaseItem(btn) { btn.parentElement.remove(); }
-        async function confirmPurchase() { /* ... */ }
+        // ========== ЗАЯВКА НА ПЕРЕМЕЩЕНИЕ ==========
+        async function openTransferRequestModal() {
+            requestItemCounter = 0;
+            await loadMainWarehouseStock();
+            await loadProducts();
+            document.getElementById('request-items-container').innerHTML = '';
+            addRequestItem();
+            document.getElementById('request-modal').style.display = 'block';
+        }
         
-        // Фасовка
-        function addPackagingItem() { addItem('packaging-items-container', 'packaging-item', 'packaging'); }
-        function removePackagingItem(btn) { btn.parentElement.remove(); }
-        async function confirmPackaging() { /* ... */ }
-        
-        // Заявка на перемещение
-        function addRequestItem() { addItem('request-items-container', 'request-item', 'request'); }
-        function removeRequestItem(btn) { btn.parentElement.remove(); }
-        async function confirmRequest() { /* ... */ }
-        
-        function addItem(containerId, className, type) {
-            const container = document.getElementById(containerId);
+        function addRequestItem() {
+            const idx = requestItemCounter++;
+            const container = document.getElementById('request-items-container');
             const itemDiv = document.createElement('div');
-            itemDiv.className = className;
-            if (type === 'purchase') {
-                itemDiv.innerHTML = `
-                    <select class="purchase-product" style="width:100%"><option value="">Выберите товар</option></select>
-                    <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
-                    <input type="text" class="purchase-comment" placeholder="Комментарий">
-                    <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
-                `;
-            } else if (type === 'packaging') {
-                itemDiv.innerHTML = `
-                    <select class="packaging-product" style="width:100%" onchange="loadVariantsForPackaging(this)">
-                        <option value="">Выберите товар</option>
-                    </select>
-                    <select class="packaging-variant" style="width:100%; margin-top:5px">
-                        <option value="">Сначала выберите товар</option>
-                    </select>
-                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
-                    <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
-                `;
-            } else if (type === 'request') {
-                itemDiv.innerHTML = `
-                    <select class="request-product" style="width:100%"><option value="">Выберите товар</option></select>
-                    <input type="number" class="request-quantity" placeholder="Количество (шт)" step="1">
-                    <button class="remove-btn" onclick="removeRequestItem(this)">✖</button>
-                `;
-            }
+            itemDiv.className = 'request-item';
+            itemDiv.id = `request-item-${idx}`;
+            itemDiv.innerHTML = `
+                <select class="request-product" data-idx="${idx}" onchange="loadRequestVariants(this, ${idx})">
+                    <option value="">Выберите товар</option>
+                    ${productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+                <div id="request-available-${idx}" class="available-stock">Доступно на главном складе: -- шт</div>
+                <select class="request-variant" id="request-variant-${idx}" data-idx="${idx}" onchange="updateRequestAvailability(${idx})">
+                    <option value="">Сначала выберите товар</option>
+                </select>
+                <input type="number" class="request-quantity" id="request-quantity-${idx}" placeholder="Количество (шт)" step="1" min="1" oninput="checkRequestQuantity(${idx})">
+                <button class="remove-btn" onclick="removeRequestItem(this, ${idx})">✖</button>
+            `;
             container.appendChild(itemDiv);
             fillProductSelects();
         }
         
+        function removeRequestItem(btn, idx) {
+            btn.parentElement.remove();
+        }
+        
+        async function loadRequestVariants(selectEl, idx) {
+            const productId = selectEl.value;
+            const variantSelect = document.getElementById(`request-variant-${idx}`);
+            const availableDiv = document.getElementById(`request-available-${idx}`);
+            
+            if (!productId) {
+                variantSelect.innerHTML = '<option value="">Сначала выберите товар</option>';
+                availableDiv.innerHTML = 'Доступно на главном складе: -- шт';
+                availableDiv.className = 'available-stock';
+                return;
+            }
+            
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/variants/${productId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            
+            variantSelect.innerHTML = '<option value="">Выберите упаковку</option>' + 
+                data.variants.map(v => `<option value="${v.id}" data-weight="${v.weight_kg}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`).join('');
+            variantSelect.onchange = () => updateRequestAvailability(idx);
+        }
+        
+        function updateRequestAvailability(idx) {
+            const variantSelect = document.getElementById(`request-variant-${idx}`);
+            const variantId = variantSelect.value;
+            const available = mainWarehouseStock[variantId] || 0;
+            const availableDiv = document.getElementById(`request-available-${idx}`);
+            
+            if (variantId) {
+                availableDiv.innerHTML = `Доступно на главном складе: ${available} шт`;
+                availableDiv.className = available > 0 ? 'available-stock' : 'available-stock warning';
+            } else {
+                availableDiv.innerHTML = 'Доступно на главном складе: -- шт';
+                availableDiv.className = 'available-stock';
+            }
+            checkRequestQuantity(idx);
+        }
+        
+        function checkRequestQuantity(idx) {
+            const variantSelect = document.getElementById(`request-variant-${idx}`);
+            const quantityInput = document.getElementById(`request-quantity-${idx}`);
+            const variantId = variantSelect.value;
+            const quantity = parseInt(quantityInput.value) || 0;
+            const available = mainWarehouseStock[variantId] || 0;
+            const availableDiv = document.getElementById(`request-available-${idx}`);
+            
+            if (variantId && quantity > 0) {
+                if (quantity > available) {
+                    availableDiv.innerHTML = `❌ Недостаточно товара! Доступно: ${available} шт, требуется: ${quantity} шт`;
+                    availableDiv.className = 'available-stock warning';
+                    quantityInput.style.border = '1px solid #dc3545';
+                } else {
+                    availableDiv.innerHTML = `✅ Достаточно товара! Доступно: ${available} шт`;
+                    availableDiv.className = 'available-stock success';
+                    quantityInput.style.border = '1px solid #28a745';
+                }
+            } else {
+                quantityInput.style.border = '1px solid #ddd';
+            }
+            checkAllRequestValidity();
+        }
+        
+        function checkAllRequestValidity() {
+            const items = document.querySelectorAll('#request-items-container .request-item');
+            let allValid = true;
+            for (let item of items) {
+                const variantSelect = item.querySelector('.request-variant');
+                const quantityInput = item.querySelector('.request-quantity');
+                const variantId = variantSelect?.value;
+                const quantity = parseInt(quantityInput?.value) || 0;
+                const available = mainWarehouseStock[variantId] || 0;
+                if (!variantId || quantity === 0 || quantity > available) {
+                    allValid = false;
+                    break;
+                }
+            }
+            const submitBtn = document.getElementById('request-submit-btn');
+            submitBtn.disabled = !allValid;
+            submitBtn.style.opacity = allValid ? '1' : '0.5';
+            submitBtn.style.cursor = allValid ? 'pointer' : 'not-allowed';
+        }
+        
+        async function confirmRequest() {
+            const items = document.querySelectorAll('#request-items-container .request-item');
+            const requests = [];
+            for (let item of items) {
+                const variantSelect = item.querySelector('.request-variant');
+                const quantity = parseInt(item.querySelector('.request-quantity').value);
+                const variantId = variantSelect?.value;
+                if (variantId && quantity > 0) {
+                    const available = mainWarehouseStock[variantId] || 0;
+                    if (quantity > available) {
+                        alert(`Недостаточно товара на главном складе для одной из позиций`);
+                        return;
+                    }
+                    requests.push({ variant_id: variantId, quantity });
+                }
+            }
+            if (requests.length === 0) {
+                alert('Добавьте хотя бы один товар для заявки');
+                return;
+            }
+            
+            const token = checkAuth();
+            for (let req of requests) {
+                const response = await fetch('/api/manager/transfer-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ variant_id: req.variant_id, quantity: req.quantity })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(`Ошибка: ${error.error}`);
+                    return;
+                }
+            }
+            
+            alert(`✅ Заявка на перемещение отправлена!`);
+            closeModal('request-modal');
+        }
+        
+        // ========== ЗАКУПКА ==========
+        function addPurchaseItem() { addItem('purchase-items-container', 'purchase-item', 'purchase'); }
+        function removePurchaseItem(btn) { btn.parentElement.remove(); }
+        async function confirmPurchase() {
+            const items = document.querySelectorAll('#purchase-items-container .purchase-item');
+            const purchases = [];
+            for (let item of items) {
+                const productId = item.querySelector('.purchase-product').value;
+                const quantity = parseFloat(item.querySelector('.purchase-quantity').value);
+                const comment = item.querySelector('.purchase-comment').value;
+                if (productId && quantity > 0) purchases.push({ product_id: productId, quantity_kg: quantity, comment });
+            }
+            if (purchases.length === 0) { alert('Добавьте хотя бы один товар'); return; }
+            const token = checkAuth();
+            for (let p of purchases) {
+                await fetch('/api/manager/warehouse/purchase', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(p)
+                });
+            }
+            alert(`✅ Закуплено ${purchases.length} товаров`);
+            closeModal('purchase-modal');
+            loadCurrentStock();
+        }
+        
+        // ========== ФАСОВКА ==========
+        function addPackagingItem() { addItem('packaging-items-container', 'packaging-item', 'packaging'); }
+        function removePackagingItem(btn) { btn.parentElement.remove(); }
         async function loadVariantsForPackaging(selectEl) {
             const productId = selectEl.value;
             const itemDiv = selectEl.closest('.packaging-item');
@@ -558,15 +668,63 @@
             variantSelect.innerHTML = '<option value="">Выберите упаковку</option>' + 
                 data.variants.map(v => `<option value="${v.id}" data-weight="${v.weight_kg}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`).join('');
         }
+        async function confirmPackaging() {
+            const items = document.querySelectorAll('#packaging-items-container .packaging-item');
+            const packagingList = [];
+            for (let item of items) {
+                const productId = item.querySelector('.packaging-product').value;
+                const variantId = item.querySelector('.packaging-variant').value;
+                const pieces = parseInt(item.querySelector('.packaging-pieces').value);
+                if (productId && variantId && pieces > 0) {
+                    const variantOption = item.querySelector('.packaging-variant').selectedOptions[0];
+                    const weightKg = parseFloat(variantOption?.dataset?.weight || 0);
+                    packagingList.push({ product_id: productId, variant_id: variantId, pieces, weight_kg: weightKg });
+                }
+            }
+            if (packagingList.length === 0) { alert('Добавьте хотя бы один товар'); return; }
+            const token = checkAuth();
+            for (let p of packagingList) {
+                const quantityKg = p.pieces * p.weight_kg;
+                await fetch('/api/manager/warehouse/packaging', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ product_id: p.product_id, variant_id: p.variant_id, quantity_kg: quantityKg, pieces: p.pieces })
+                });
+            }
+            alert(`✅ Расфасовано ${packagingList.length} товаров`);
+            closeModal('packaging-modal');
+            loadCurrentStock();
+        }
         
-        // Остатки продавцов (без кладовщика)
+        function addItem(containerId, className, type) {
+            const container = document.getElementById(containerId);
+            const itemDiv = document.createElement('div');
+            itemDiv.className = className;
+            if (type === 'purchase') {
+                itemDiv.innerHTML = `
+                    <select class="purchase-product"><option value="">Выберите товар</option></select>
+                    <input type="number" class="purchase-quantity" placeholder="Количество (кг)" step="0.1">
+                    <input type="text" class="purchase-comment" placeholder="Комментарий">
+                    <button class="remove-btn" onclick="removePurchaseItem(this)">✖</button>
+                `;
+            } else if (type === 'packaging') {
+                itemDiv.innerHTML = `
+                    <select class="packaging-product" onchange="loadVariantsForPackaging(this)"><option value="">Выберите товар</option></select>
+                    <select class="packaging-variant"><option value="">Сначала выберите товар</option></select>
+                    <input type="number" class="packaging-pieces" placeholder="Количество упаковок (шт)" step="1">
+                    <button class="remove-btn" onclick="removePackagingItem(this)">✖</button>
+                `;
+            }
+            container.appendChild(itemDiv);
+            fillProductSelects();
+        }
+        
+        // Остатки продавцов
         async function openSellerStockModal() {
             const token = checkAuth();
             const sellersRes = await fetch('/api/manager/sellers', { headers: { 'Authorization': `Bearer ${token}` } });
             const sellersData = await sellersRes.json();
-            const sellers = sellersData.sellers.filter(s => s.role !== 'warehouse_seller');
             const container = document.getElementById('seller-buttons');
-            container.innerHTML = sellers.map(s => `<button class="seller-btn" onclick="loadSellerStock(${s.id})">${s.name}</button>`).join('');
+            container.innerHTML = sellersData.sellers.map(s => `<button class="seller-btn" onclick="loadSellerStock(${s.id})">${s.name}</button>`).join('');
             document.getElementById('seller-stock-modal').style.display = 'block';
         }
         
@@ -589,23 +747,31 @@
             document.getElementById('hub-stock-modal').style.display = 'block';
         }
         
-        async function openPurchaseModal() {
-            await fillProductSelects();
-            document.getElementById('purchase-modal').style.display = 'block';
-        }
-        
-        async function openPackagingModal() {
-            await fillProductSelects();
-            document.getElementById('packaging-modal').style.display = 'block';
-        }
-        
-        async function openTransferRequestModal() {
-            await fillProductSelects();
-            document.getElementById('request-modal').style.display = 'block';
-        }
+        async function openPurchaseModal() { await loadProducts(); document.getElementById('purchase-modal').style.display = 'block'; }
+        async function openPackagingModal() { await loadProducts(); document.getElementById('packaging-modal').style.display = 'block'; }
         
         function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
         function logout() { localStorage.removeItem('manager_token'); window.location.href = '/manager/'; }
+        
+        async function initUI() {
+            await getUserInfo();
+            await loadProducts();
+            const actionButtons = document.getElementById('action-buttons');
+            const stockToggle = document.getElementById('stock-toggle-container');
+            if (currentUserRole === 'admin') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'flex';
+                await showMyStock();
+            } else if (currentUserRole === 'warehouse_seller') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'none';
+                await showMainStock();
+            } else if (currentUserRole === 'seller') {
+                actionButtons.style.display = 'flex';
+                stockToggle.style.display = 'flex';
+                await showMyStock();
+            }
+        }
         
         initUI();
         window.onclick = function(event) { if (event.target.classList.contains('modal')) event.target.style.display = 'none'; }
