@@ -446,12 +446,9 @@ app.get('/api/manager/me', checkManagerAuth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// Получение дашборда
+// Получение дашборда (упрощённый, за всё время)
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
-    const { period = 'today' } = req.query;
-    const dateFilter = getDateFilter(period);
-    
     const userResult = await pool.query('SELECT name, role FROM users WHERE id = $1', [req.userId]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -464,19 +461,19 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     if (user.role === 'admin') {
       statsQuery = `
         SELECT 
-          COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
-          COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
-          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_count,
-          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue
+          COUNT(CASE WHEN status = 'new' THEN 1 END) as new_orders,
+          COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_count,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total END), 0) as revenue
         FROM orders
       `;
     } else {
       statsQuery = `
         SELECT 
-          COUNT(CASE WHEN status = 'new' AND ${dateFilter} THEN 1 END) as new_orders,
-          COUNT(CASE WHEN status = 'processing' AND ${dateFilter} THEN 1 END) as processing_orders,
-          COUNT(CASE WHEN status = 'completed' AND ${dateFilter} THEN 1 END) as completed_count,
-          COALESCE(SUM(CASE WHEN status = 'completed' AND ${dateFilter} THEN total END), 0) as revenue
+          COUNT(CASE WHEN status = 'new' THEN 1 END) as new_orders,
+          COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_orders,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_count,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total END), 0) as revenue
         FROM orders
         WHERE seller_id = $1
       `;
@@ -500,57 +497,6 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
-app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
-  try {
-    const { status, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
-    
-    let query = `SELECT id, order_number, contact, total, status, created_at, completed_at FROM orders`;
-    const params = [];
-    
-    if (status) {
-      query += ` WHERE status = $${params.length + 1}`;
-      params.push(status);
-    }
-    
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
-    
-    const result = await pool.query(query, params);
-    const orders = result.rows.map(order => ({
-      ...order,
-      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
-    }));
-    
-    res.json({ orders });
-  } catch (err) {
-    console.error('Orders error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
-app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  
-  const allowedStatuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
-  if (!allowedStatuses.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-  
-  try {
-    await pool.query(
-      'UPDATE orders SET status = $1, completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END WHERE id = $2',
-      [status, id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Update order error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
