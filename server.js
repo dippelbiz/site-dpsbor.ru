@@ -23,60 +23,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// ==================== YOUGILE ИНТЕГРАЦИЯ (TASKS) ====================
-const YOUGILE_API_KEY = process.env.YOUGILE_API_KEY;
-const YOUGILE_COLUMN_ID = process.env.YOUGILE_COLUMN_ID;
-
-// Функция отправки заказа в YouGile (как ЗАДАЧА)
-async function sendOrderToYougile(orderData) {
-  if (!YOUGILE_API_KEY || !YOUGILE_COLUMN_ID) {
-    console.log('⚠️ YouGile не настроен (отсутствуют ключи)');
-    return;
-  }
-
-  try {
-    const itemsText = orderData.items.map(item => {
-      const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-      return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
-    }).join('\n');
-    
-    const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
-    const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
-    
-    const description = `ЗАКАЗ №${orderData.orderNumber}
-Способ получения: ${deliveryText}
-Адрес: ${orderData.contact.address}
-Оплата: ${paymentText}
-
-${itemsText}
-
-Итого: ${orderData.total} руб.`;
-    
-    const response = await fetch('https://ru.yougile.com/api-v2/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${YOUGILE_API_KEY}`
-      },
-      body: JSON.stringify({
-        title: `Заказ №${orderData.orderNumber}`,
-        description: description,
-        columnId: YOUGILE_COLUMN_ID
-      })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('❌ Ошибка YouGile API:', response.status, errorData);
-    } else {
-      const result = await response.json();
-      console.log('✅ Задача создана в YouGile, ID:', result.id);
-    }
-  } catch (error) {
-    console.error('❌ Ошибка при отправке в YouGile:', error.message);
-  }
-}
-
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
@@ -88,73 +34,36 @@ app.get('/', (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     const products = await pool.query(`
-      SELECT id, name, description, image, category 
-      FROM products 
-      ORDER BY id
+      SELECT p.id, p.name, p.description, p.image, p.category,
+             json_agg(json_build_object(
+               'id', v.id,
+               'name', v.name,
+               'price', v.price,
+               'weight_kg', v.weight_kg,
+               'is_active', v.is_active
+             ) ORDER BY v.sort_order) as variants
+      FROM products p
+      LEFT JOIN variants v ON p.id = v.product_id
+      WHERE v.is_active = true
+      GROUP BY p.id
+      ORDER BY p.id
     `);
     
-    const variants = await pool.query(`
-      SELECT 
-        v.id, 
-        v.product_id, 
-        v.name, 
-        v.price, 
-        v.weight_kg, 
-        v.packaging_cost,
-        v.sort_order,
-        v.is_active,
-        p.purchase_price_kg
-      FROM product_variants v
-      JOIN products p ON v.product_id = p.id
-      ORDER BY v.product_id, v.sort_order
-    `);
-    
-    const variantsByProduct = {};
-    variants.rows.forEach(v => {
-      if (!variantsByProduct[v.product_id]) {
-        variantsByProduct[v.product_id] = [];
-      }
-      
-      const base_cost = (v.purchase_price_kg * v.weight_kg) + (v.packaging_cost || 0);
-      const avg_price = (v.price + base_cost) / 2;
-      const price_seller = Math.ceil(avg_price / 10) * 10;
-      
-      variantsByProduct[v.product_id].push({
-        id: v.id,
-        name: v.name,
-        price: v.price,
-        price_seller: price_seller,
-        weight_kg: v.weight_kg,
-        packaging_cost: v.packaging_cost,
-        sort_order: v.sort_order,
-        is_active: v.is_active
-      });
-    });
-
-    const result = products.rows.map(p => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      image: p.image,
-      category: p.category,
-      variants: variantsByProduct[p.id] || []
-    }));
-    
-    res.json(result);
+    res.json(products.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-// Получение корзины пользователя
+// Получение корзины пользователя (временно, пока без авторизации)
 app.get('/api/cart/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
     const result = await pool.query(`
       SELECT 
         c.product_id, c.variant_id, c.quantity, c.price_at_time,
-        p.name, p.description, p.image,
+        p.name,
         v.name as variant_name, v.price
       FROM carts c
       JOIN products p ON c.product_id = p.id
@@ -169,9 +78,7 @@ app.get('/api/cart/:userId', async (req, res) => {
       priceAtTime: row.price_at_time,
       name: row.name,
       variantName: row.variant_name,
-      price: row.price,
-      description: row.description,
-      image: row.image
+      price: row.price
     }));
 
     res.json({ userId, items });
@@ -191,7 +98,7 @@ app.post('/api/cart/add', async (req, res) => {
 
   try {
     const variant = await pool.query(
-      'SELECT price, is_active FROM product_variants WHERE id = $1 AND product_id = $2',
+      'SELECT price, is_active FROM variants WHERE id = $1 AND product_id = $2',
       [numVariantId, numProductId]
     );
     if (variant.rows.length === 0) {
@@ -279,25 +186,6 @@ app.get('/api/orders/:userId', async (req, res) => {
   }
 });
 
-// Обновление статуса заказа
-app.put('/api/order/:orderId', async (req, res) => {
-  const orderId = parseInt(req.params.orderId, 10);
-  const { status } = req.body;
-
-  const allowed = ['Активный', 'Завершен', 'Отменен'];
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-
-  try {
-    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, orderId]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
 // Получение точек самовывоза
 app.get('/api/pickup-locations', async (req, res) => {
   try {
@@ -314,7 +202,6 @@ app.get('/api/pickup-locations', async (req, res) => {
 // Вспомогательная функция для генерации номера заказа
 async function generateOrderNumber(prefix) {
   if (!prefix) {
-    console.error('generateOrderNumber: prefix is null, using X');
     prefix = 'X';
   }
   
@@ -343,7 +230,7 @@ async function generateOrderNumber(prefix) {
   }
 }
 
-// ==================== СОЗДАНИЕ ЗАКАЗА ====================
+// ==================== СОЗДАНИЕ ЗАКАЗА (В НАШУ БАЗУ) ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -385,7 +272,7 @@ app.post('/api/order', async (req, res) => {
       console.log('✅ Request_id уникален');
     }
 
-    // Получаем seller_id из точки самовывоза
+    // Получаем seller_id из точки самовывоза и префикс
     let seller_id = null;
     let address_id = null;
     let prefix = null;
@@ -407,50 +294,30 @@ app.post('/api/order', async (req, res) => {
       console.log(`✅ Точка найдена: ID=${address_id}, продавец=${seller_id}, префикс=${prefix}`);
       
       if (!prefix) {
-        const seller = await pool.query('SELECT name FROM sellers WHERE id = $1', [seller_id]);
+        const seller = await pool.query('SELECT name FROM users WHERE id = $1', [seller_id]);
         const seller_name = seller.rows[0]?.name || 'X';
         prefix = seller_name[0].toUpperCase();
-        console.log(`⚠️ Префикс не задан, использовано имя продавца: ${prefix}`);
       }
     } else {
+      // Для доставки - администратор (id=6)
       seller_id = 6;
       prefix = 'D';
-      console.log(`🚚 Доставка: продавец-админ ID=6, префикс=D`);
     }
 
     console.log(`✅ Определён продавец ID: ${seller_id}, префикс: ${prefix}`);
 
-    // Получаем содержимое корзины
-    console.log(`🔍 Получение корзины пользователя ${userId}`);
-    const cartResult = await pool.query(`
-      SELECT 
-        c.product_id, c.variant_id, c.quantity, c.price_at_time,
-        p.name,
-        v.name as variant_name
-      FROM carts c
-      JOIN products p ON c.product_id = p.id
-      LEFT JOIN product_variants v ON c.variant_id = v.id
-      WHERE c.user_id = $1
-    `, [userId]);
-
-    console.log(`📦 Найдено позиций в корзине: ${cartResult.rows.length}`);
-
-    if (cartResult.rows.length === 0) {
-      console.error('❌ Корзина пуста');
-      return res.status(400).json({ error: 'Cart is empty' });
-    }
-
+    // Получаем содержимое корзины из данных (уже передано)
     let total_sum = 0;
-    const orderItems = cartResult.rows.map(row => {
-      const itemTotal = row.price_at_time * row.quantity;
+    const orderItems = items.map(item => {
+      const itemTotal = item.priceAtTime * item.quantity;
       total_sum += itemTotal;
       return {
-        productId: row.product_id,
-        variantId: row.variant_id,
-        name: row.name,
-        variantName: row.variant_name,
-        quantity: row.quantity,
-        price: row.price_at_time,
+        productId: item.productId,
+        variantId: item.variantId,
+        name: item.name,
+        variantName: item.variantName,
+        quantity: item.quantity,
+        price: item.priceAtTime,
       };
     });
 
@@ -471,22 +338,13 @@ app.post('/api/order', async (req, res) => {
       INSERT INTO orders (order_number, user_id, seller_id, address_id, items, total, contact, status, request_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
-    `, [order_number, userId, seller_id, address_id, itemsJson, total_sum, contactJson, 'Активный', request_id]);
+    `, [order_number, userId, seller_id, address_id, itemsJson, total_sum, contactJson, 'new', request_id]);
 
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
 
-    // 🚀 ОТПРАВКА В YOUGILE (как задача)
-    sendOrderToYougile({
-      orderNumber: order_number,
-      contact: contact,
-      items: orderItems,
-      total: total_sum
-    }).catch(e => console.error('⚠️ YouGile error:', e.message));
-
-    // Очищаем корзину
-    await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
-    console.log('✅ Корзина очищена');
+    // Очищаем корзину (временно, пока корзина в памяти)
+    // TODO: добавить очистку корзины в БД
 
     console.log('='.repeat(60));
     console.log('✅ ЗАКАЗ УСПЕШНО ОБРАБОТАН');
@@ -512,12 +370,15 @@ const validTokens = new Map();
 // Авторизация через Telegram
 app.post('/api/manager/auth', async (req, res) => {
   const { telegram_id, name } = req.body;
+  console.log('Auth attempt:', { telegram_id, name });
   
   try {
     const result = await pool.query(
       'SELECT * FROM users WHERE telegram_id = $1 AND is_active = true',
       [telegram_id]
     );
+    
+    console.log('Query result:', result.rows);
     
     if (result.rows.length === 0) {
       return res.status(403).json({ 
@@ -671,12 +532,15 @@ app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   }
 });
 
+// ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
+
 // Получение склада
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
         mw.id,
+        v.id as variant_id,
         v.name as variant_name,
         p.name as product_name,
         mw.quantity,
@@ -738,6 +602,145 @@ app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => 
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Warehouse update error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получение списка товаров для выбора
+app.get('/api/manager/products', checkManagerAuth, async (req, res) => {
+  const result = await pool.query('SELECT id, name FROM products ORDER BY name');
+  res.json({ products: result.rows });
+});
+
+// Получение вариантов товара по product_id
+app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) => {
+  const { productId } = req.params;
+  const result = await pool.query(
+    'SELECT id, name, weight_kg, price FROM variants WHERE product_id = $1 AND is_active = true ORDER BY weight_kg',
+    [productId]
+  );
+  res.json({ variants: result.rows });
+});
+
+// Закуп товара (поставка в кг)
+app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
+  const { product_id, quantity_kg, comment } = req.body;
+  
+  if (!product_id || !quantity_kg) {
+    return res.status(400).json({ error: 'Не указаны обязательные поля' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    
+    const product = await pool.query('SELECT name FROM products WHERE id = $1', [product_id]);
+    const productName = product.rows[0]?.name;
+    
+    // Создаём или обновляем запись в hub_stock
+    await pool.query(`
+      INSERT INTO hub_stock (product_id, product_name, quantity_kg)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (product_id) DO UPDATE SET 
+        quantity_kg = hub_stock.quantity_kg + EXCLUDED.quantity_kg,
+        updated_at = NOW()
+    `, [product_id, productName, quantity_kg]);
+    
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES (NULL, 'hub', 'purchase', $1, $2, $3)
+    `, [quantity_kg, req.userId, comment]);
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Purchase error:', err);
+    res.status(500).json({ error: 'Ошибка при закупке' });
+  }
+});
+
+// Фасовка товара
+app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) => {
+  const { product_id, variant_id, quantity_kg, pieces } = req.body;
+  
+  if (!product_id || !variant_id || !quantity_kg) {
+    return res.status(400).json({ error: 'Не указаны обязательные поля' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    
+    // Проверяем наличие на хабе
+    const hubStock = await pool.query(
+      'SELECT quantity_kg FROM hub_stock WHERE product_id = $1',
+      [product_id]
+    );
+    
+    if (hubStock.rows.length === 0 || hubStock.rows[0].quantity_kg < quantity_kg) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: 'Недостаточно товара на хабе для фасовки' });
+    }
+    
+    // Списываем с хаба
+    await pool.query(
+      'UPDATE hub_stock SET quantity_kg = quantity_kg - $1 WHERE product_id = $2',
+      [quantity_kg, product_id]
+    );
+    
+    // Добавляем фасованный товар на склад
+    await pool.query(`
+      INSERT INTO main_warehouse (variant_id, quantity, reserved, min_stock, last_updated)
+      VALUES ($1, $2, 0, 5, NOW())
+      ON CONFLICT (variant_id) DO UPDATE SET 
+        quantity = main_warehouse.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    `, [variant_id, pieces]);
+    
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES ($1, 'hub', 'packaging', $2, $3, $4)
+    `, [variant_id, pieces, req.userId, `Фасовка из ${quantity_kg} кг`]);
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Packaging error:', err);
+    res.status(500).json({ error: 'Ошибка при фасовке' });
+  }
+});
+
+// Остатки продавцов
+app.get('/api/manager/seller-stock', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.name as seller_name, p.name as product_name, v.name as variant_name, ss.quantity
+      FROM seller_stock ss
+      JOIN users u ON ss.seller_id = u.id
+      JOIN variants v ON ss.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      WHERE ss.quantity > 0
+      ORDER BY u.name, p.name
+    `);
+    res.json({ stock: result.rows });
+  } catch (err) {
+    console.error('Seller stock error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Остатки на хабе (нерасфасованный)
+app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT product_name, quantity_kg 
+      FROM hub_stock 
+      WHERE quantity_kg > 0
+      ORDER BY product_name
+    `);
+    res.json({ stock: result.rows });
+  } catch (err) {
+    console.error('Hub stock error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
