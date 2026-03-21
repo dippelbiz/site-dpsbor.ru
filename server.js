@@ -40,10 +40,10 @@ pool.connect((err, client, release) => {
 // ==================== WAzzup ИНТЕГРАЦИЯ ====================
 const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
 
-// Создание чата в Wazzup для заказа
-async function createWazzupChatForOrder(orderId, phone, channel, name) {
+// Создание чата в Wazzup
+async function createWazzupChat(phone, channel, name) {
   if (!WAZZUP_API_KEY || !phone || phone === '0000000000') {
-    console.log('⚠️ Невозможно создать чат Wazzup: нет API ключа или телефона');
+    console.log('⚠️ Не удалось создать чат: нет API ключа или телефона');
     return null;
   }
   
@@ -57,31 +57,21 @@ async function createWazzupChatForOrder(orderId, phone, channel, name) {
       body: JSON.stringify({
         channel: channel || 'telegram',
         recipient: phone,
-        name: name || 'Клиент',
-        metadata: {
-          order_id: orderId
-        }
+        name: name || 'Клиент'
       })
     });
     
     if (response.ok) {
       const chatData = await response.json();
-      console.log(`✅ Чат Wazzup создан для заказа ${orderId}: ${chatData.id}`);
-      
-      // Сохраняем ID чата в заказе
-      await pool.query(
-        'UPDATE orders SET wazzup_chat_id = $1 WHERE id = $2',
-        [chatData.id, orderId]
-      );
-      
+      console.log(`✅ Чат Wazzup создан: ${chatData.id}`);
       return chatData.id;
     } else {
       const error = await response.text();
-      console.error(`❌ Ошибка создания чата Wazzup: ${response.status} - ${error}`);
+      console.error(`❌ Ошибка создания чата: ${response.status} - ${error}`);
       return null;
     }
   } catch (err) {
-    console.error('❌ Ошибка при создании чата Wazzup:', err.message);
+    console.error('❌ Ошибка при создании чата:', err.message);
     return null;
   }
 }
@@ -384,7 +374,7 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // Сохраняем заказ в БД
+    // Сохраняем заказ в БД (без wazzup_chat_id, он будет создан при взятии в работу)
     console.log('💾 Сохранение заказа в БД...');
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
@@ -394,17 +384,6 @@ app.post('/api/order', async (req, res) => {
 
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
-
-    // ========== СОЗДАЁМ ЧАТ В WAzzUP ==========
-    const phone = contact.phone;
-    const messenger = contact.messenger || 'telegram';
-    const name = contact.name;
-    
-    if (WAZZUP_API_KEY && phone && phone !== '0000000000') {
-      await createWazzupChatForOrder(orderId, phone, messenger, name);
-    } else {
-      console.log(`⚠️ Не удалось создать чат Wazzup: телефон ${phone}`);
-    }
 
     // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
@@ -590,30 +569,39 @@ app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Взять заказ в работу
+// Взять заказ в работу (и создать чат в Wazzup)
 app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      'SELECT user_telegram_id FROM orders WHERE id = $1 AND status = $2',
+      'SELECT user_telegram_id, contact FROM orders WHERE id = $1 AND status = $2',
       [id, 'new']
     );
     if (orderResult.rows.length === 0) {
       return res.status(404).json({ error: 'Заказ не найден или уже в работе' });
     }
     
-    const userTelegramId = orderResult.rows[0].user_telegram_id;
+    const order = orderResult.rows[0];
+    const contact = order.contact;
+    const phone = contact.phone;
+    const messenger = contact.messenger || 'telegram';
+    const name = contact.name;
+    
+    // Создаём чат в Wazzup
+    const wazzupChatId = await createWazzupChat(phone, messenger, name);
     
     await pool.query('BEGIN');
     
+    // Обновляем заказ (статус, продавец, ID чата)
     await pool.query(
-      'UPDATE orders SET status = $1, seller_id = $2 WHERE id = $3',
-      ['processing', req.userId, id]
+      'UPDATE orders SET status = $1, seller_id = $2, wazzup_chat_id = $3 WHERE id = $4',
+      ['processing', req.userId, wazzupChatId, id]
     );
     
+    // Устанавливаем активный чат для пользователя
     await pool.query(
       'UPDATE users SET active_chat_order_id = $1 WHERE telegram_id = $2',
-      [id, userTelegramId]
+      [id, order.user_telegram_id]
     );
     
     await pool.query('COMMIT');
