@@ -286,7 +286,7 @@ app.delete('/api/cart/remove', async (req, res) => {
   }
 });
 
-// Получение заказов пользователя
+// Получение заказов пользователя (для покупателя)
 app.get('/api/orders/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
@@ -305,6 +305,7 @@ app.get('/api/orders/:userId', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Получение точек самовывоза
 app.get('/api/pickup-locations', async (req, res) => {
   try {
@@ -433,7 +434,7 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // Сохраняем заказ в БД (исправленный INSERT)
+    // Сохраняем заказ в БД
     console.log('💾 Сохранение заказа в БД...');
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
@@ -566,15 +567,19 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   }
 });
 
+// Получение списка заказов для менеджера
 app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     
-    let query = `SELECT id, order_number, contact, total, status, created_at, completed_at FROM orders`;
+    let query = `
+      SELECT id, order_number, contact, items, total, status, seller_id, created_at, completed_at
+      FROM orders
+    `;
     const params = [];
     
-    if (status) {
+    if (status && status !== 'all') {
       query += ` WHERE status = $${params.length + 1}`;
       params.push(status);
     }
@@ -584,8 +589,15 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     
     const result = await pool.query(query, params);
     const orders = result.rows.map(order => ({
-      ...order,
-      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
+      id: order.id,
+      order_number: order.order_number,
+      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact,
+      items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items,
+      total: order.total,
+      status: order.status,
+      seller_id: order.seller_id,
+      created_at: order.created_at,
+      completed_at: order.completed_at
     }));
     
     res.json({ orders });
@@ -595,11 +607,12 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   }
 });
 
+// Обновление статуса заказа
 app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   
-  const allowedStatuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
+  const allowedStatuses = ['new', 'processing', 'completed', 'cancelled'];
   if (!allowedStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
   
   try {
@@ -610,6 +623,57 @@ app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Update order error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Взять заказ в работу
+app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'UPDATE orders SET status = $1, seller_id = $2 WHERE id = $3 AND status = $4',
+      ['processing', req.userId, id, 'new']
+    );
+    if (result.rowCount === 0) {
+      return res.status(400).json({ error: 'Заказ уже в работе или завершён' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Take order error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Завершить заказ
+app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query(
+      'UPDATE orders SET status = $1, completed_at = NOW() WHERE id = $2',
+      ['completed', id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Complete order error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Получить информацию о заказе для чата
+app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    
+    const order = result.rows[0];
+    order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact;
+    
+    res.json({ order });
+  } catch (err) {
+    console.error('Get order error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
