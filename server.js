@@ -337,6 +337,7 @@ async function generateOrderNumber(prefix) {
   }
 }
 
+// ==================== СОЗДАНИЕ ЗАКАЗА ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -378,24 +379,22 @@ app.post('/api/order', async (req, res) => {
     }
 
     let seller_id = null;
-    let address_id = null;
     let prefix = null;
     
     if (contact.deliveryType === 'pickup') {
       console.log(`🔍 Поиск точки самовывоза: ${contact.address}`);
       const addrResult = await pool.query(
-        'SELECT id, seller_id, prefix FROM pickup_locations WHERE address = $1', 
+        'SELECT seller_id, prefix FROM pickup_locations WHERE address = $1', 
         [contact.address]
       );
       if (addrResult.rows.length === 0) {
         console.error(`❌ Адрес не найден: ${contact.address}`);
         return res.status(400).json({ error: 'Invalid pickup address' });
       }
-      address_id = addrResult.rows[0].id;
       seller_id = addrResult.rows[0].seller_id;
       prefix = addrResult.rows[0].prefix;
       
-      console.log(`✅ Точка найдена: ID=${address_id}, продавец=${seller_id}, префикс=${prefix}`);
+      console.log(`✅ Точка найдена: продавец=${seller_id}, префикс=${prefix}`);
       
       if (!prefix) {
         const seller = await pool.query('SELECT name FROM users WHERE id = $1', [seller_id]);
@@ -432,12 +431,13 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
+    // Сохраняем заказ в БД (исправленный INSERT)
     console.log('💾 Сохранение заказа в БД...');
     const insertResult = await pool.query(`
-      INSERT INTO orders (order_number, user_id, seller_id, address_id, items, total, contact, status, request_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       RETURNING id
-    `, [order_number, userId, seller_id, address_id, itemsJson, total_sum, contactJson, 'new', request_id]);
+    `, [order_number, userId, seller_id, itemsJson, total_sum, contactJson, 'new', request_id]);
 
     const orderId = insertResult.rows[0].id;
     console.log(`✅ Заказ сохранён с ID: ${orderId}`);
