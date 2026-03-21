@@ -37,69 +37,6 @@ pool.connect((err, client, release) => {
   }
 });
 
-// ==================== WAzzup ИНТЕГРАЦИЯ ====================
-const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
-
-// Webhook для приёма сообщений от Wazzup (сохраняем сообщения в БД)
-app.post('/api/webhook/wazzup', async (req, res) => {
-  console.log('📨 Получено сообщение от Wazzup:', JSON.stringify(req.body, null, 2));
-  
-  try {
-    const data = req.body;
-    const { channel, sender_id, sender_name, sender_phone, message_text, direction, message_id } = data;
-    
-    let orderId = null;
-    let orderNumber = null;
-    
-    // Парсим номер заказа из сообщения
-    if (message_text) {
-      const match = message_text.match(/ЗАКАЗ\s*№?\s*([A-Za-zА-Яа-я]{1,3}\d+)/i) ||
-                    message_text.match(/Заказ\s*№?\s*([A-Za-zА-Яа-я]{1,3}\d+)/i) ||
-                    message_text.match(/№\s*([A-Za-zА-Яа-я]{1,3}\d+)/i);
-      if (match) {
-        orderNumber = match[1];
-        console.log(`🔍 Найден номер заказа в сообщении: ${orderNumber}`);
-        
-        const orderResult = await pool.query(
-          'SELECT id FROM orders WHERE order_number = $1',
-          [orderNumber]
-        );
-        if (orderResult.rows.length > 0) {
-          orderId = orderResult.rows[0].id;
-          console.log(`✅ Заказ найден: ID=${orderId}`);
-        }
-      }
-    }
-    
-    // Сохраняем сообщение в БД
-    await pool.query(`
-      INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, sender_phone, message_text, direction, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-    `, [orderId, channel, message_id, sender_id, sender_name, sender_phone, message_text, direction]);
-    
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('Wazzup webhook error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Получение чата по заказу (история сообщений)
-app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
-  const { orderId } = req.params;
-  try {
-    const messages = await pool.query(`
-      SELECT * FROM chat_messages 
-      WHERE order_id = $1 
-      ORDER BY created_at ASC
-    `, [orderId]);
-    res.json({ messages: messages.rows });
-  } catch (err) {
-    console.error('Chat error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -642,7 +579,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      'SELECT order_number, user_telegram_id, contact FROM orders WHERE id = $1 AND status = $2',
+      'SELECT order_number, user_telegram_id FROM orders WHERE id = $1 AND status = $2',
       [id, 'processing']
     );
     if (orderResult.rows.length === 0) {
@@ -650,14 +587,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     }
     
     const order = orderResult.rows[0];
-    let contact = {};
-    try {
-      contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
-    } catch (e) {
-      console.error('Ошибка парсинга контакта:', e.message);
-    }
-    const phone = contact.phone;
-    const messenger = contact.messenger || 'telegram';
     
     await pool.query('BEGIN');
     
@@ -672,24 +601,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     );
     
     await pool.query('COMMIT');
-    
-    // Отправляем уведомление клиенту
-    if (WAZZUP_API_KEY && phone && phone !== '0000000000') {
-      const notification = `✅ Ваш заказ №${order.order_number} завершён! Спасибо за покупку. Диалог закрыт. Вы можете сделать новый заказ на сайте dpsbor.ru`;
-      
-      await fetch('https://api.wazzup24.com/v3/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${WAZZUP_API_KEY}`
-        },
-        body: JSON.stringify({
-          channel: messenger,
-          recipient: phone,
-          text: notification
-        })
-      }).catch(err => console.error('Ошибка отправки уведомления:', err));
-    }
     
     res.json({ success: true });
   } catch (err) {
@@ -942,128 +853,4 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     }
     
     await pool.query(`
-      INSERT INTO pending_transfers (seller_id, variant_id, quantity, status, created_at)
-      VALUES ($1, $2, $3, 'pending', NOW())
-    `, [req.userId, variant_id, quantity]);
-    
-    await pool.query('UPDATE main_warehouse SET reserved = reserved + $1 WHERE variant_id = $2', [quantity, variant_id]);
-    await pool.query('COMMIT');
-    res.json({ success: true });
-  } catch (err) {
-    await pool.query('ROLLBACK');
-    console.error('Transfer request error:', err);
-    res.status(500).json({ error: 'Ошибка при создании заявки' });
-  }
-});
-
-app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT pt.id, pt.seller_id, u.name as seller_name, v.name as variant_name, p.name as product_name, pt.quantity, pt.created_at
-      FROM pending_transfers pt
-      JOIN users u ON pt.seller_id = u.id
-      JOIN variants v ON pt.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
-      WHERE pt.status = 'pending'
-      ORDER BY pt.created_at DESC
-    `);
-    res.json({ tasks: result.rows });
-  } catch (err) {
-    console.error('Tasks error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
-app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT pt.id, pt.seller_id, u.name as seller_name, v.name as variant_name, p.name as product_name, pt.quantity, pt.status, pt.created_at, pt.updated_at
-      FROM pending_transfers pt
-      JOIN users u ON pt.seller_id = u.id
-      JOIN variants v ON pt.variant_id = v.id
-      JOIN products p ON v.product_id = p.id
-      WHERE pt.status IN ('approved', 'rejected')
-      ORDER BY pt.updated_at DESC
-      LIMIT 50
-    `);
-    res.json({ tasks: result.rows });
-  } catch (err) {
-    console.error('Completed tasks error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
-app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('BEGIN');
-    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
-    if (request.rows.length === 0) {
-      await pool.query('ROLLBACK');
-      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
-    }
-    
-    const { seller_id, variant_id, quantity } = request.rows[0];
-    const warehouseCheck = await pool.query('SELECT reserved FROM main_warehouse WHERE variant_id = $1', [variant_id]);
-    const reserved = warehouseCheck.rows[0]?.reserved || 0;
-    if (reserved < quantity) {
-      await pool.query('ROLLBACK');
-      return res.status(400).json({ error: `Недостаточно зарезервированного товара. Зарезервировано: ${reserved} шт, требуется: ${quantity} шт` });
-    }
-    
-    await pool.query(`
-      INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
-      VALUES ($1, $2, $3, 0)
-      ON CONFLICT (seller_id, variant_id) DO UPDATE SET quantity = seller_stock.quantity + EXCLUDED.quantity
-    `, [seller_id, variant_id, quantity]);
-    
-    await pool.query('UPDATE main_warehouse SET quantity = quantity - $1, reserved = reserved - $1 WHERE variant_id = $2', [quantity, variant_id]);
-    await pool.query('UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2', ['approved', id]);
-    await pool.query('COMMIT');
-    res.json({ success: true });
-  } catch (err) {
-    await pool.query('ROLLBACK');
-    console.error('Approve task error:', err);
-    res.status(500).json({ error: 'Ошибка при подтверждении' });
-  }
-});
-
-app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    await pool.query('BEGIN');
-    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
-    if (request.rows.length === 0) {
-      await pool.query('ROLLBACK');
-      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
-    }
-    
-    const { variant_id, quantity } = request.rows[0];
-    await pool.query('UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2', [quantity, variant_id]);
-    await pool.query('UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2', ['rejected', id]);
-    await pool.query('COMMIT');
-    res.json({ success: true });
-  } catch (err) {
-    await pool.query('ROLLBACK');
-    console.error('Reject task error:', err);
-    res.status(500).json({ error: 'Ошибка при отклонении' });
-  }
-});
-
-// ==================== СТАРЫЕ СТРАНИЦЫ ====================
-app.get('/cart.html', (req, res) => {
-  res.sendFile(__dirname + '/public/cart.html');
-});
-
-app.get('/orders.html', (req, res) => {
-  res.sendFile(__dirname + '/public/orders.html');
-});
-
-app.get('/checkout.html', (req, res) => {
-  res.sendFile(__dirname + '/public/checkout.html');
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
-});
+      INSERT INTO pending
