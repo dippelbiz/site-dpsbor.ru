@@ -40,7 +40,7 @@ pool.connect((err, client, release) => {
 // ==================== WAzzup ИНТЕГРАЦИЯ ====================
 const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
 
-// Webhook для приёма сообщений от Wazzup (с парсингом номера заказа)
+// Webhook для приёма сообщений от Wazzup
 app.post('/api/webhook/wazzup', async (req, res) => {
   console.log('📨 Получено сообщение от Wazzup:', JSON.stringify(req.body, null, 2));
   
@@ -53,7 +53,6 @@ app.post('/api/webhook/wazzup', async (req, res) => {
     
     // Парсим номер заказа из сообщения
     if (message_text) {
-      // Регулярное выражение для поиска номера заказа (А1, D2, Ю3 и т.д.)
       const match = message_text.match(/ЗАКАЗ\s*№?\s*([A-Za-zА-Яа-я]{1,3}\d+)/i) ||
                     message_text.match(/Заказ\s*№?\s*([A-Za-zА-Яа-я]{1,3}\d+)/i) ||
                     message_text.match(/№\s*([A-Za-zА-Яа-я]{1,3}\d+)/i);
@@ -61,7 +60,6 @@ app.post('/api/webhook/wazzup', async (req, res) => {
         orderNumber = match[1];
         console.log(`🔍 Найден номер заказа в сообщении: ${orderNumber}`);
         
-        // Находим заказ в БД
         const orderResult = await pool.query(
           'SELECT id FROM orders WHERE order_number = $1',
           [orderNumber]
@@ -75,8 +73,6 @@ app.post('/api/webhook/wazzup', async (req, res) => {
             'UPDATE orders SET wazzup_chat_id = $1 WHERE id = $2 AND wazzup_chat_id IS NULL',
             [message_id, orderId]
           );
-        } else {
-          console.log(`⚠️ Заказ с номером ${orderNumber} не найден`);
         }
       }
     }
@@ -566,7 +562,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     
     const result = await pool.query(query, params);
     const orders = result.rows.map(order => {
-      // Безопасный парсинг JSON
       let contact = {};
       let items = [];
       try {
@@ -596,6 +591,7 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Обновление статуса заказа
 app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
@@ -621,7 +617,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      'SELECT user_telegram_id FROM orders WHERE id = $1 AND status = $2',
+      'SELECT user_telegram_id, wazzup_chat_id FROM orders WHERE id = $1 AND status = $2',
       [id, 'new']
     );
     if (orderResult.rows.length === 0) {
@@ -644,13 +640,14 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     
     await pool.query('COMMIT');
     
-    res.json({ success: true });
+    res.json({ success: true, wazzup_chat_id: order.wazzup_chat_id });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Take order error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Завершить заказ
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
@@ -712,6 +709,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Получить информацию о заказе
 app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
@@ -720,8 +718,12 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
     
     const order = result.rows[0];
-    order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-    order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact;
+    try {
+      order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+      order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
+    } catch (e) {
+      console.error('Ошибка парсинга:', e.message);
+    }
     
     res.json({ order });
   } catch (err) {
