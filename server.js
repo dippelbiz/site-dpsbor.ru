@@ -565,19 +565,30 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     params.push(limit, offset);
     
     const result = await pool.query(query, params);
-    const orders = result.rows.map(order => ({
-      id: order.id,
-      order_number: order.order_number,
-      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact,
-      items: typeof order.items === 'string' ? JSON.parse(order.items) : order.items,
-      total: order.total,
-      status: order.status,
-      seller_id: order.seller_id,
-      user_telegram_id: order.user_telegram_id,
-      wazzup_chat_id: order.wazzup_chat_id,
-      created_at: order.created_at,
-      completed_at: order.completed_at
-    }));
+    const orders = result.rows.map(order => {
+      // Безопасный парсинг JSON
+      let contact = {};
+      let items = [];
+      try {
+        contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
+        items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+      } catch (e) {
+        console.error('Ошибка парсинга JSON для заказа', order.id, e.message);
+      }
+      return {
+        id: order.id,
+        order_number: order.order_number,
+        contact: contact,
+        items: items,
+        total: order.total,
+        status: order.status,
+        seller_id: order.seller_id,
+        user_telegram_id: order.user_telegram_id,
+        wazzup_chat_id: order.wazzup_chat_id,
+        created_at: order.created_at,
+        completed_at: order.completed_at
+      };
+    });
     
     res.json({ orders });
   } catch (err) {
@@ -585,7 +596,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 // Обновление статуса заказа
 app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
@@ -611,7 +621,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      'SELECT user_telegram_id, order_number FROM orders WHERE id = $1 AND status = $2',
+      'SELECT user_telegram_id FROM orders WHERE id = $1 AND status = $2',
       [id, 'new']
     );
     if (orderResult.rows.length === 0) {
@@ -641,7 +651,6 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 // Завершить заказ
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
@@ -655,7 +664,12 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     }
     
     const order = orderResult.rows[0];
-    const contact = order.contact;
+    let contact = {};
+    try {
+      contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
+    } catch (e) {
+      console.error('Ошибка парсинга контакта:', e.message);
+    }
     const phone = contact.phone;
     const messenger = contact.messenger || 'telegram';
     
@@ -698,7 +712,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 // Получить информацию о заказе
 app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
