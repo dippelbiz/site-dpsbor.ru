@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат с клиентом</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header {
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .order-info {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .close-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            max-width: 70%;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 10px;
+            word-wrap: break-word;
+        }
+        .message.incoming {
+            background: white;
+            align-self: flex-start;
+            border-left: 3px solid #3498db;
+        }
+        .message.outgoing {
+            background: #3498db;
+            color: white;
+            align-self: flex-end;
+        }
+        .message-meta {
+            font-size: 11px;
+            margin-top: 5px;
+            color: #7f8c8d;
+        }
+        .message.outgoing .message-meta {
+            color: rgba(255,255,255,0.7);
+        }
+        .chat-input {
+            background: white;
+            padding: 15px;
+            border-top: 1px solid #ecf0f1;
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input textarea {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            resize: none;
+            font-family: inherit;
+        }
+        .chat-input button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-header">
+        <div class="order-info" id="order-info">Загрузка...</div>
+        <button class="close-btn" onclick="window.close()">Закрыть</button>
+    </div>
+    
+    <div class="messages-container" id="messages-container">
+        <div class="loading">Загрузка сообщений...</div>
+    </div>
+    
+    <div class="chat-input">
+        <textarea id="message-input" placeholder="Введите сообщение..." rows="2"></textarea>
+        <button onclick="sendMessage()">Отправить</button>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('id');
+        let lastMessageId = 0;
+        
+        function checkAuth() {
+            const token = localStorage.getItem('manager_token');
+            if (!token) { window.location.href = '/manager/'; return false; }
+            return token;
+        }
+        
+        async function loadOrderInfo() {
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/orders?limit=100`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const order = data.orders.find(o => o.id == orderId);
+            if (order) {
+                document.getElementById('order-info').innerHTML = `Заказ №${order.order_number} — ${order.contact?.name || 'Клиент'}`;
+            }
+        }
+        
+        async function loadMessages() {
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/order/${orderId}/chat`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await response.json();
+                renderMessages(data.messages);
+            } catch (err) {
+                console.error('Error loading messages:', err);
+            }
+        }
+        
+        function renderMessages(messages) {
+            const container = document.getElementById('messages-container');
+            if (messages.length === 0) {
+                container.innerHTML = '<div class="loading">Нет сообщений. Напишите клиенту!</div>';
+                return;
+            }
+            
+            container.innerHTML = messages.map(msg => `
+                <div class="message ${msg.direction}">
+                    <div>${escapeHtml(msg.message_text)}</div>
+                    <div class="message-meta">
+                        ${msg.sender_name || (msg.direction === 'incoming' ? 'Клиент' : 'Вы')} • 
+                        ${new Date(msg.created_at).toLocaleString()}
+                    </div>
+                </div>
+            `).join('');
+            
+            // Скролл вниз
+            container.scrollTop = container.scrollHeight;
+            
+            // Сохраняем последний ID
+            if (messages.length > 0) {
+                lastMessageId = messages[messages.length - 1].id;
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/order/${orderId}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ message: text })
+            });
+            
+            if (response.ok) {
+                input.value = '';
+                loadMessages();
+            } else {
+                const error = await response.json();
+                alert('Ошибка: ' + error.error);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Загружаем данные
+        if (orderId) {
+            loadOrderInfo();
+            loadMessages();
+            // Обновляем каждые 3 секунды
+            setInterval(loadMessages, 3000);
+        } else {
+            document.getElementById('order-info').innerHTML = 'Ошибка: заказ не указан';
+        }
+        
+        // Enter для отправки
+        document.getElementById('message-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
