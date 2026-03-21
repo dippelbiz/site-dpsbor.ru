@@ -172,18 +172,19 @@
         <div class="orders-table">
             <table id="orders-table">
                 <thead>
-                    <tr>
+                     <tr>
                         <th>№ заказа</th>
                         <th>Клиент</th>
                         <th>Состав</th>
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                    </thead>
+                    </tr>
+                </thead>
                 <tbody id="orders-list">
-                    68e<td colspan="6" style="text-align: center;">Загрузка...68e
+                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
-            пански
+            </table>
         </div>
     </div>
 
@@ -214,7 +215,7 @@
         function renderOrders(orders) {
             const tbody = document.getElementById('orders-list');
             if (!orders || orders.length === 0) {
-                tbody.innerHTML = '68e<td colspan="6" style="text-align: center;">Нет заказов</td>68e';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет заказов</td></tr>';
                 return;
             }
             
@@ -234,6 +235,7 @@
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
                 const isCompleted = order.status === 'completed';
+                const hasChat = order.wazzup_chat_id;
                 
                 return `
                     <tr>
@@ -245,8 +247,7 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${isProcessing ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат с покупателем</button>` : ''}
-                            ${isCompleted ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
+                            ${hasChat ? `<button class="chat-btn" onclick="openChat('${order.wazzup_chat_id}')">💬 Чат</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -282,9 +283,12 @@
             }
         }
         
-        function openChat(orderId) {
-            // Открываем чат в новом окне с указанием заказа
-            window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
+        function openChat(chatId) {
+            if (chatId) {
+                window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank');
+            } else {
+                alert('Чат ещё не создан');
+            }
         }
         
         async function loadUser() {
