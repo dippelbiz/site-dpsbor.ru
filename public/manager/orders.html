@@ -179,10 +179,10 @@
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                    </tr>
+                     </tr>
                 </thead>
                 <tbody id="orders-list">
-                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                     <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -234,7 +234,6 @@
                 
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
-                const isCompleted = order.status === 'completed';
                 const hasChat = order.wazzup_chat_id;
                 
                 return `
@@ -285,9 +284,9 @@
         
         function openChat(chatId) {
             if (chatId) {
-                window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank');
+                window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank', 'width=800,height=600');
             } else {
-                alert('Чат ещё не создан');
+                alert('Чат ещё не создан. Нажмите "Взять в работу", чтобы создать чат.');
             }
         }
         
