@@ -276,7 +276,7 @@
             </div>
             <table id="warehouse-table">
                 <thead id="warehouse-thead"></thead>
-                <tbody id="warehouse-list">发展<td colspan="3">Загрузка...发展</tbody>
+                <tbody id="warehouse-list"><tr><td colspan="3">Загрузка...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -563,7 +563,7 @@
                     <option value="">Выберите товар</option>
                     ${productsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
                 </select>
-                <div id="packaging-available-${idx}" class="available-stock">Доступно на складе: -- кг</div>
+                <div id="packaging-available-${idx}" class="available-stock">Не расфасовано на складе: -- кг</div>
                 <select class="packaging-variant" id="packaging-variant-${idx}" onchange="updatePackagingAvailability('${idx}')">
                     <option value="">Сначала выберите товар</option>
                 </select>
@@ -584,7 +584,7 @@
             
             if (!productId) { 
                 variantSelect.innerHTML = '<option value="">Сначала выберите товар</option>'; 
-                availableDiv.innerHTML = 'Доступно на складе: -- кг';
+                availableDiv.innerHTML = 'Не расфасовано на складе: -- кг';
                 availableDiv.className = 'available-stock';
                 return; 
             }
@@ -612,10 +612,10 @@
             const itemDiv = document.getElementById(`packaging-item-${idx}`);
             
             if (data.available > 0) {
-                availableDiv.innerHTML = `✅ Доступно на складе: ${data.available} кг`;
+                availableDiv.innerHTML = `✅ Не расфасовано на складе: ${data.available} кг`;
                 availableDiv.className = 'available-stock success';
             } else {
-                availableDiv.innerHTML = `❌ Нет товара на складе! Доступно: ${data.available} кг`;
+                availableDiv.innerHTML = `❌ Нет нерасфасованного товара! Доступно: ${data.available} кг`;
                 availableDiv.className = 'available-stock warning';
             }
             
@@ -636,7 +636,7 @@
             const availableKg = parseFloat(itemDiv?.getAttribute('data-available-kg') || 0);
             
             if (!variantId) {
-                availableDiv.innerHTML = availableKg > 0 ? `✅ Доступно на складе: ${availableKg} кг` : `❌ Нет товара на складе! Доступно: ${availableKg} кг`;
+                availableDiv.innerHTML = availableKg > 0 ? `✅ Не расфасовано на складе: ${availableKg} кг` : `❌ Нет нерасфасованного товара! Доступно: ${availableKg} кг`;
                 piecesInput.style.border = '1px solid #ddd';
                 return;
             }
@@ -649,16 +649,16 @@
             
             if (pieces > 0 && totalKg > 0) {
                 if (totalKg > availableKg) {
-                    availableDiv.innerHTML = `❌ Недостаточно товара! Доступно: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
+                    availableDiv.innerHTML = `❌ Недостаточно нерасфасованного товара! Доступно: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
                     availableDiv.className = 'available-stock warning';
                     piecesInput.style.border = '1px solid #dc3545';
                 } else {
-                    availableDiv.innerHTML = `✅ Достаточно товара! Доступно: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
+                    availableDiv.innerHTML = `✅ Достаточно товара! Не расфасовано: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
                     availableDiv.className = 'available-stock success';
                     piecesInput.style.border = '1px solid #28a745';
                 }
             } else {
-                availableDiv.innerHTML = `Доступно на складе: ${availableKg} кг (${variantName} весит ${weightKg} кг)`;
+                availableDiv.innerHTML = `Не расфасовано на складе: ${availableKg} кг (${variantName} весит ${weightKg} кг)`;
                 availableDiv.className = availableKg > 0 ? 'available-stock success' : 'available-stock warning';
                 piecesInput.style.border = '1px solid #ddd';
             }
@@ -685,7 +685,7 @@
                 const totalKg = pieces * weightKg;
                 
                 if (totalKg > availableKg) {
-                    alert(`❌ Недостаточно товара!\nДоступно: ${availableKg} кг\nТребуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг)`);
+                    alert(`❌ Недостаточно нерасфасованного товара!\nДоступно: ${availableKg} кг\nТребуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг)`);
                     return;
                 }
                 
@@ -906,8 +906,8 @@
             const response = await fetch(`/api/manager/seller-stock/${sellerId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
             const tbody = document.getElementById('seller-stock-list');
-            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '成长<td colspan="2">Нет товаров</tbody>';
-            else tbody.innerHTML = data.stock.map(s => `发展<td>${s.product_name} (${s.variant_name})</td><td>${formatNumber(s.quantity)} шт</td>点心`).join('');
+            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
+            else tbody.innerHTML = data.stock.map(s => `<tr><td>${s.product_name} (${s.variant_name})</td><td>${formatNumber(s.quantity)} шт</td></tr>`).join('');
         }
         
         async function openHubStockModal() {
@@ -915,8 +915,8 @@
             const response = await fetch('/api/manager/hub-stock', { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
             const tbody = document.getElementById('hub-stock-list');
-            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '成长<td colspan="2">Нет товаров</tbody>';
-            else tbody.innerHTML = data.stock.map(h => `发展<td>${h.product_name}</td><td>${h.quantity_kg} кг</td>点心`).join('');
+            if (!data.stock || data.stock.length === 0) tbody.innerHTML = '<tr><td colspan="2">Нет товаров</td></tr>';
+            else tbody.innerHTML = data.stock.map(h => `<tr><td>${h.product_name}</td><td>${h.quantity_kg} кг</td></tr>`).join('');
             document.getElementById('hub-stock-modal').style.display = 'block';
         }
         
