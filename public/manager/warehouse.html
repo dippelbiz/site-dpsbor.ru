@@ -332,7 +332,15 @@
         <div class="modal-content" style="max-width: 800px;">
             <h3>👥 Остатки на складах продавцов</h3>
             <div id="seller-buttons" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;"></div>
-            <table><thead><tr><th>Товар</th><th>Количество (шт)</th></tr></thead><tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody></table>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>Количество (шт)</th>
+                    </tr>
+                </thead>
+                <tbody id="seller-stock-list"><tr><td colspan="2">Выберите продавца</td></tr></tbody>
+            </table>
             <div class="modal-buttons"><button class="close-btn" onclick="closeModal('seller-stock-modal')">Закрыть</button></div>
         </div>
     </div>
@@ -341,7 +349,15 @@
     <div id="hub-stock-modal" class="modal">
         <div class="modal-content">
             <h3>🏪 Нерасфасованный товар</h3>
-            <table><thead><tr><th>Товар</th><th>Остаток (кг)</th></tr></thead><tbody id="hub-stock-list"><tr><td colspan="2">Загрузка...</td></tr></tbody></table>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>Остаток (кг)</th>
+                    </tr>
+                </thead>
+                <tbody id="hub-stock-list"><tr><td colspan="2">Загрузка...</td></tr></tbody>
+            </table>
             <div class="modal-buttons"><button class="close-btn" onclick="closeModal('hub-stock-modal')">Закрыть</button></div>
         </div>
     </div>
@@ -550,7 +566,7 @@
             loadCurrentStock();
         }
         
-        // ========== ФАСОВКА (с информативной проверкой доступности) ==========
+        // ========== ФАСОВКА ==========
         function addPackagingItem() {
             const container = document.getElementById('packaging-items-container');
             const idx = Date.now() + '_' + Math.random();
@@ -598,7 +614,6 @@
             variantSelect.innerHTML = '<option value="">Выберите упаковку</option>' + 
                 data.variants.map(v => `<option value="${v.id}" data-weight="${v.weight_kg}" data-price="${v.price}">${v.name} (${v.weight_kg} кг, ${v.price} руб)</option>`).join('');
             
-            // Загружаем доступное количество на хабе
             await updateHubAvailability(productId, idx);
         }
         
@@ -619,7 +634,6 @@
                 availableDiv.className = 'available-stock warning';
             }
             
-            // Сохраняем доступное количество в data-атрибут для проверки
             if (itemDiv) {
                 itemDiv.setAttribute('data-available-kg', data.available);
                 itemDiv.setAttribute('data-product-id', productId);
@@ -641,24 +655,22 @@
                 return;
             }
             
-            // Получаем вес упаковки
             const selectedOption = variantSelect.selectedOptions[0];
             const weightKg = parseFloat(selectedOption?.dataset?.weight || 0);
             const totalKg = pieces * weightKg;
-            const variantName = selectedOption?.text?.split('(')[0]?.trim() || 'упаковка';
             
             if (pieces > 0 && totalKg > 0) {
                 if (totalKg > availableKg) {
-                    availableDiv.innerHTML = `❌ Недостаточно нерасфасованного товара! Доступно: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
+                    availableDiv.innerHTML = `❌ Недостаточно нерасфасованного товара! Доступно: ${availableKg} кг, требуется: ${totalKg} кг`;
                     availableDiv.className = 'available-stock warning';
                     piecesInput.style.border = '1px solid #dc3545';
                 } else {
-                    availableDiv.innerHTML = `✅ Достаточно товара! Не расфасовано: ${availableKg} кг, требуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг = ${totalKg} кг)`;
+                    availableDiv.innerHTML = `✅ Достаточно товара! Не расфасовано: ${availableKg} кг, требуется: ${totalKg} кг`;
                     availableDiv.className = 'available-stock success';
                     piecesInput.style.border = '1px solid #28a745';
                 }
             } else {
-                availableDiv.innerHTML = `Не расфасовано на складе: ${availableKg} кг (${variantName} весит ${weightKg} кг)`;
+                availableDiv.innerHTML = `Не расфасовано на складе: ${availableKg} кг`;
                 availableDiv.className = availableKg > 0 ? 'available-stock success' : 'available-stock warning';
                 piecesInput.style.border = '1px solid #ddd';
             }
@@ -685,7 +697,7 @@
                 const totalKg = pieces * weightKg;
                 
                 if (totalKg > availableKg) {
-                    alert(`❌ Недостаточно нерасфасованного товара!\nДоступно: ${availableKg} кг\nТребуется: ${totalKg} кг (${pieces} шт × ${weightKg} кг)`);
+                    alert(`❌ Недостаточно нерасфасованного товара!\nДоступно: ${availableKg} кг\nТребуется: ${totalKg} кг`);
                     return;
                 }
                 
