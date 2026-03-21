@@ -290,7 +290,10 @@ app.delete('/api/cart/remove', async (req, res) => {
 app.get('/api/orders/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
-    const result = await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC', [userId]);
+    const result = await pool.query(
+      'SELECT * FROM orders WHERE user_telegram_id = $1 ORDER BY id DESC',
+      [userId]
+    );
     const orders = result.rows.map(order => {
       if (order.items) order.items = JSON.parse(order.items);
       if (order.contact) order.contact = JSON.parse(order.contact);
@@ -302,7 +305,6 @@ app.get('/api/orders/:userId', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 // Получение точек самовывоза
 app.get('/api/pickup-locations', async (req, res) => {
   try {
