@@ -117,6 +117,7 @@
         .action-buttons {
             display: flex;
             gap: 5px;
+            flex-wrap: wrap;
         }
         .take-btn {
             background: #f39c12;
@@ -180,9 +181,9 @@
                         <th>Действия</th>
                     </thead>
                 <tbody id="orders-list">
-                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                    68e<td colspan="6" style="text-align: center;">Загрузка...68e
                 </tbody>
-            </table>
+            пански
         </div>
     </div>
 
@@ -213,7 +214,7 @@
         function renderOrders(orders) {
             const tbody = document.getElementById('orders-list');
             if (!orders || orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет заказов</td></tr>';
+                tbody.innerHTML = '68e<td colspan="6" style="text-align: center;">Нет заказов</td>68e';
                 return;
             }
             
@@ -244,7 +245,7 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${isProcessing ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
+                            ${isProcessing ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат с покупателем</button>` : ''}
                             ${isCompleted ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
                         </td>
                     </tr>
@@ -262,7 +263,8 @@
                 alert('✅ Заказ взят в работу');
                 loadOrders();
             } else {
-                alert('Ошибка при взятии заказа');
+                const error = await response.json();
+                alert('Ошибка: ' + (error.error || 'Не удалось взять заказ'));
             }
         }
         
@@ -281,6 +283,7 @@
         }
         
         function openChat(orderId) {
+            // Открываем чат в новом окне с указанием заказа
             window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
         }
         
