@@ -416,43 +416,37 @@
             return Math.floor(num).toString();
         }
         
-        async function showMyStock() {
-            if (!currentUserRole || currentUserRole === 'warehouse_seller') return;
-            currentView = 'my';
-            document.getElementById('my-stock-btn').classList.add('active');
-            document.getElementById('main-stock-btn').classList.remove('active');
-            document.getElementById('stock-title').innerHTML = '📦 Мои остатки';
-            document.getElementById('warehouse-thead').innerHTML = `
-                <tr>
-                    <th>Товар</th>
-                    <th>В наличии (шт)</th>
-                    <th>Ожидает перемещения (шт)</th>
-                    <th>Всего (с учётом заявок)</th>
-                </tr>
-            `;
-            const tbody = document.getElementById('warehouse-list');
-            tbody.innerHTML = '<tr><td colspan="4">Загрузка...</td></tr>';
-            const stock = await loadMyStock();
-            if (stock.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4">Нет товаров на вашем складе</td></tr>';
-            } else {
-                tbody.innerHTML = stock.map(item => {
-                    const totalWithPending = (item.quantity || 0) + (item.pending_quantity || 0);
-                    return `
-                        <tr>
-                            <td>
-                                <strong>${item.product_name}</strong><br>
-                                <small style="color:#666">${item.variant_name}</small>
-                            </td>
-                            <td class="stock-badge">${formatNumber(item.quantity)} шт</td>
-                            <td style="color: #f39c12;">${formatNumber(item.pending_quantity)} шт</td>
-                            <td>${formatNumber(totalWithPending)} шт</td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-        }
-        
+async function showMyStock() {
+    if (!currentUserRole || currentUserRole === 'warehouse_seller') return;
+    currentView = 'my';
+    document.getElementById('my-stock-btn').classList.add('active');
+    document.getElementById('main-stock-btn').classList.remove('active');
+    document.getElementById('stock-title').innerHTML = '📦 Мои остатки';
+    document.getElementById('warehouse-thead').innerHTML = `
+        <tr>
+            <th>Товар</th>
+            <th>В наличии (шт)</th>
+            <th>Ожидает перемещения (шт)</th>
+        </tr>
+    `;
+    const tbody = document.getElementById('warehouse-list');
+    tbody.innerHTML = '<tr><td colspan="3">Загрузка...</td></tr>';
+    const stock = await loadMyStock();
+    if (stock.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3">Нет товаров на вашем складе</td></tr>';
+    } else {
+        tbody.innerHTML = stock.map(item => `
+            <tr>
+                <td>
+                    <strong>${item.product_name}</strong><br>
+                    <small style="color:#666">${item.variant_name}</small>
+                </td>
+                <td class="stock-badge">${formatNumber(item.quantity)} шт</td>
+                <td style="color: #f39c12;">${formatNumber(item.pending_quantity)} шт</td>
+            </tr>
+        `).join('');
+    }
+}
         async function showMainStock() {
             currentView = 'main';
             document.getElementById('main-stock-btn').classList.add('active');
