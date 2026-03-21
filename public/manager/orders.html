@@ -74,6 +74,7 @@
             gap: 10px;
             margin-bottom: 20px;
             align-items: center;
+            flex-wrap: wrap;
         }
         select, button {
             padding: 8px 16px;
@@ -167,6 +168,7 @@
                 <option value="cancelled">Отменённые</option>
             </select>
             <button onclick="loadOrders()">Обновить</button>
+            <button onclick="openAllChats()" style="background: #3498db;">💬 Все чаты Wazzup</button>
         </div>
         
         <div class="orders-table">
@@ -179,10 +181,10 @@
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                    </tr>
+                      </tr>
                 </thead>
                 <tbody id="orders-list">
-                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                      <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -234,7 +236,6 @@
                 
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
-                const hasChat = order.wazzup_chat_id;
                 
                 return `
                     <tr>
@@ -246,11 +247,20 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${hasChat ? `<button class="chat-btn" onclick="openChat('${order.wazzup_chat_id}')">💬 Чат</button>` : ''}
+                            <button class="chat-btn" onclick="openChatByOrderNumber('${order.order_number}')">💬 Чат</button>
                         </td>
                     </tr>
                 `;
             }).join('');
+        }
+        
+        function openAllChats() {
+            window.open('https://app.wazzup24.com', '_blank');
+        }
+        
+        function openChatByOrderNumber(orderNumber) {
+            // Открываем Wazzup с поиском по номеру заказа
+            window.open(`https://app.wazzup24.com/?search=${encodeURIComponent(orderNumber)}`, '_blank');
         }
         
         async function takeOrder(orderId) {
@@ -261,13 +271,8 @@
             });
             
             if (response.ok) {
-                const data = await response.json();
-                if (data.wazzup_chat_id) {
-                    alert('✅ Заказ взят в работу, чат доступен!');
-                } else {
-                    alert('✅ Заказ взят в работу. Когда покупатель напишет нам с номером заказа, появится кнопка чата.');
-                }
-                loadOrders(); // Обновляем список
+                alert('✅ Заказ взят в работу');
+                loadOrders();
             } else {
                 const error = await response.json();
                 alert('Ошибка: ' + (error.error || 'Не удалось взять заказ'));
@@ -285,14 +290,6 @@
                 loadOrders();
             } else {
                 alert('Ошибка при завершении заказа');
-            }
-        }
-        
-        function openChat(chatId) {
-            if (chatId) {
-                window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank', 'width=800,height=600');
-            } else {
-                alert('Чат ещё не создан. Пожалуйста, напишите нам первыми с номером заказа.');
             }
         }
         
