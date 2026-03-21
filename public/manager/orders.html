@@ -261,13 +261,7 @@
             });
             
             if (response.ok) {
-                const data = await response.json();
-                if (data.wazzup_chat_id) {
-                    alert('✅ Заказ взят в работу, чат создан!');
-                } else {
-                    alert('✅ Заказ взят в работу, но чат не создан (проверьте номер телефона в заказе)');
-                }
-                // Обновляем список заказов
+                alert('✅ Заказ взят в работу');
                 loadOrders();
             } else {
                 const error = await response.json();
@@ -293,7 +287,7 @@
             if (chatId) {
                 window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank', 'width=800,height=600');
             } else {
-                alert('Чат ещё не создан');
+                alert('Чат ещё не создан. Пожалуйста, напишите нам первыми с номером заказа.');
             }
         }
         
