@@ -40,7 +40,7 @@ pool.connect((err, client, release) => {
 // ==================== WAzzup ИНТЕГРАЦИЯ ====================
 const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
 
-// Webhook для приёма сообщений от Wazzup
+// Webhook для приёма сообщений от Wazzup (сохраняем сообщения в БД)
 app.post('/api/webhook/wazzup', async (req, res) => {
   console.log('📨 Получено сообщение от Wazzup:', JSON.stringify(req.body, null, 2));
   
@@ -67,12 +67,6 @@ app.post('/api/webhook/wazzup', async (req, res) => {
         if (orderResult.rows.length > 0) {
           orderId = orderResult.rows[0].id;
           console.log(`✅ Заказ найден: ID=${orderId}`);
-          
-          // Сохраняем ID чата в заказе
-          await pool.query(
-            'UPDATE orders SET wazzup_chat_id = $1 WHERE id = $2 AND wazzup_chat_id IS NULL',
-            [message_id, orderId]
-          );
         }
       }
     }
@@ -83,10 +77,6 @@ app.post('/api/webhook/wazzup', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     `, [orderId, channel, message_id, sender_id, sender_name, sender_phone, message_text, direction]);
     
-    if (orderId) {
-      console.log(`🔔 Сообщение привязано к заказу #${orderId}`);
-    }
-    
     res.status(200).json({ success: true });
   } catch (err) {
     console.error('Wazzup webhook error:', err);
@@ -94,7 +84,7 @@ app.post('/api/webhook/wazzup', async (req, res) => {
   }
 });
 
-// Получение чата по заказу
+// Получение чата по заказу (история сообщений)
 app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
   const { orderId } = req.params;
   try {
@@ -547,7 +537,7 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     const offset = (page - 1) * limit;
     
     let query = `
-      SELECT id, order_number, contact, items, total, status, seller_id, user_telegram_id, wazzup_chat_id, created_at, completed_at
+      SELECT id, order_number, contact, items, total, status, seller_id, user_telegram_id, created_at, completed_at
       FROM orders
     `;
     const params = [];
@@ -579,7 +569,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
         status: order.status,
         seller_id: order.seller_id,
         user_telegram_id: order.user_telegram_id,
-        wazzup_chat_id: order.wazzup_chat_id,
         created_at: order.created_at,
         completed_at: order.completed_at
       };
@@ -617,7 +606,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const orderResult = await pool.query(
-      'SELECT user_telegram_id, wazzup_chat_id FROM orders WHERE id = $1 AND status = $2',
+      'SELECT user_telegram_id FROM orders WHERE id = $1 AND status = $2',
       [id, 'new']
     );
     if (orderResult.rows.length === 0) {
@@ -640,7 +629,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     
     await pool.query('COMMIT');
     
-    res.json({ success: true, wazzup_chat_id: order.wazzup_chat_id });
+    res.json({ success: true });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Take order error:', err);
@@ -722,7 +711,7 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
       order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
       order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
     } catch (e) {
-      console.error('Ошибка парсинга:', e.message);
+      console.error('Ошибка парсинга JSON:', e.message);
     }
     
     res.json({ order });
