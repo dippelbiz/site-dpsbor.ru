@@ -179,10 +179,10 @@
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                      </tr>
+                    </tr>
                 </thead>
                 <tbody id="orders-list">
-                      <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -261,8 +261,13 @@
             });
             
             if (response.ok) {
-                alert('✅ Заказ взят в работу');
-                loadOrders();
+                const data = await response.json();
+                if (data.wazzup_chat_id) {
+                    alert('✅ Заказ взят в работу, чат доступен!');
+                } else {
+                    alert('✅ Заказ взят в работу. Когда покупатель напишет нам с номером заказа, появится кнопка чата.');
+                }
+                loadOrders(); // Обновляем список
             } else {
                 const error = await response.json();
                 alert('Ошибка: ' + (error.error || 'Не удалось взять заказ'));
