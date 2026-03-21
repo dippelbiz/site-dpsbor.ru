@@ -587,8 +587,36 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     const messenger = contact.messenger || 'telegram';
     const name = contact.name;
     
+    let wazzupChatId = null;
+    
     // Создаём чат в Wazzup
-    const wazzupChatId = await createWazzupChat(phone, messenger, name);
+    if (WAZZUP_API_KEY && phone && phone !== '0000000000') {
+      try {
+        const response = await fetch('https://api.wazzup24.com/v3/chats', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${WAZZUP_API_KEY}`
+          },
+          body: JSON.stringify({
+            channel: messenger,
+            recipient: phone,
+            name: name || 'Клиент'
+          })
+        });
+        
+        if (response.ok) {
+          const chatData = await response.json();
+          wazzupChatId = chatData.id;
+          console.log(`✅ Чат Wazzup создан для заказа ${id}: ${wazzupChatId}`);
+        } else {
+          const error = await response.text();
+          console.error(`❌ Ошибка создания чата: ${response.status} - ${error}`);
+        }
+      } catch (err) {
+        console.error('❌ Ошибка при создании чата:', err.message);
+      }
+    }
     
     await pool.query('BEGIN');
     
@@ -606,7 +634,8 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     
     await pool.query('COMMIT');
     
-    res.json({ success: true });
+    // Возвращаем ID чата в ответе
+    res.json({ success: true, wazzup_chat_id: wazzupChatId });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Take order error:', err);
