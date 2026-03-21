@@ -84,6 +84,162 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// ==================== WAzzup ИНТЕГРАЦИЯ ====================
+
+const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
+
+// Webhook для приёма сообщений от Wazzup
+app.post('/api/webhook/wazzup', async (req, res) => {
+  console.log('📨 Получено сообщение от Wazzup:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const data = req.body;
+    
+    const {
+      channel,
+      sender_id,
+      sender_name,
+      sender_phone,
+      message_text,
+      direction
+    } = data;
+    
+    let orderId = null;
+    
+    if (sender_phone) {
+      const orderResult = await pool.query(`
+        SELECT id FROM orders 
+        WHERE contact->>'phone' = $1 
+        ORDER BY created_at DESC LIMIT 1
+      `, [sender_phone]);
+      
+      if (orderResult.rows.length > 0) {
+        orderId = orderResult.rows[0].id;
+      }
+    }
+    
+    await pool.query(`
+      INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, sender_phone, message_text, direction, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    `, [orderId, channel, data.message_id, sender_id, sender_name, sender_phone, message_text, direction]);
+    
+    if (direction === 'incoming' && orderId) {
+      console.log(`🔔 Новое сообщение по заказу #${orderId}: ${message_text?.substring(0, 50)}`);
+    }
+    
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Wazzup webhook error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Получение чата по заказу
+app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
+  const { orderId } = req.params;
+  
+  try {
+    const messages = await pool.query(`
+      SELECT * FROM chat_messages 
+      WHERE order_id = $1 
+      ORDER BY created_at ASC
+    `, [orderId]);
+    
+    res.json({ messages: messages.rows });
+  } catch (err) {
+    console.error('Chat error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Отправка сообщения через Wazzup API
+app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) => {
+  const { orderId } = req.params;
+  const { message } = req.body;
+  
+  if (!message) {
+    return res.status(400).json({ error: 'Сообщение не может быть пустым' });
+  }
+  
+  if (!WAZZUP_API_KEY) {
+    console.log('⚠️ Wazzup API ключ не настроен');
+    return res.status(500).json({ error: 'Wazzup не настроен. Добавьте переменную WAZZUP_API_KEY в Render' });
+  }
+  
+  try {
+    const orderResult = await pool.query(
+      'SELECT contact FROM orders WHERE id = $1',
+      [orderId]
+    );
+    
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Заказ не найден' });
+    }
+    
+    const contact = orderResult.rows[0].contact;
+    const phone = contact.phone;
+    const messenger = contact.messenger || 'telegram';
+    
+    const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [req.userId]);
+    const managerName = userResult.rows[0]?.name || 'Менеджер';
+    
+    const wazzupResponse = await fetch('https://api.wazzup24.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WAZZUP_API_KEY}`
+      },
+      body: JSON.stringify({
+        channel: messenger,
+        recipient: phone,
+        text: message
+      })
+    });
+    
+    if (!wazzupResponse.ok) {
+      const errorText = await wazzupResponse.text();
+      console.error('Wazzup API error:', wazzupResponse.status, errorText);
+      throw new Error(`Wazzup API error: ${wazzupResponse.status}`);
+    }
+    
+    await pool.query(`
+      INSERT INTO chat_messages (order_id, channel, sender_id, sender_name, message_text, direction, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'outgoing', NOW())
+    `, [orderId, messenger, 'manager', managerName, message]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Send message error:', err);
+    res.status(500).json({ error: 'Ошибка отправки сообщения' });
+  }
+});
+
+// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+function normalizeNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  let str = String(value).trim();
+  str = str.replace(',', '.');
+  const parts = str.split('.');
+  if (parts.length > 2) {
+    str = parts[0] + '.' + parts.slice(1).join('');
+  }
+  const num = parseFloat(str);
+  return isNaN(num) ? null : num;
+}
+
+function getDateFilter(period) {
+  switch (period) {
+    case 'today':
+      return `DATE(created_at) = CURRENT_DATE`;
+    case 'week':
+      return `created_at >= NOW() - INTERVAL '7 days'`;
+    case 'month':
+      return `created_at >= NOW() - INTERVAL '30 days'`;
+    default:
+      return `1=1`;
+  }
+}
+
 // ==================== ГЛАВНАЯ СТРАНИЦА ====================
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/website/index.html');
@@ -399,7 +555,7 @@ app.post('/api/manager/auth', async (req, res) => {
   console.log('Auth attempt:', { telegram_id, name });
   
   try {
-    const result = await pool.query(
+    const result = await queryWithRetry(
       'SELECT * FROM users WHERE telegram_id = $1 AND is_active = true',
       [telegram_id]
     );
@@ -497,6 +653,57 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
+app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+    
+    let query = `SELECT id, order_number, contact, total, status, created_at, completed_at FROM orders`;
+    const params = [];
+    
+    if (status) {
+      query += ` WHERE status = $${params.length + 1}`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+    
+    const result = await pool.query(query, params);
+    const orders = result.rows.map(order => ({
+      ...order,
+      contact: typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact
+    }));
+    
+    res.json({ orders });
+  } catch (err) {
+    console.error('Orders error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.put('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  const allowedStatuses = ['new', 'confirmed', 'processing', 'shipped', 'completed', 'cancelled'];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  
+  try {
+    await pool.query(
+      'UPDATE orders SET status = $1, completed_at = CASE WHEN $1 = \'completed\' THEN NOW() ELSE completed_at END WHERE id = $2',
+      [status, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update order error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
@@ -669,7 +876,6 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   }
 });
 
-// Получение списка продавцов (без кладовщиков для отображения в модалке)
 app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query(
     "SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name"
@@ -677,7 +883,6 @@ app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   res.json({ sellers: result.rows });
 });
 
-// Остатки конкретного продавца (с учётом ожидающих перемещения)
 app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
   const { sellerId } = req.params;
   const result = await pool.query(`
@@ -719,7 +924,6 @@ app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
 
 // ==================== ЗАЯВКИ НА ПЕРЕМЕЩЕНИЕ ====================
 
-// Создание заявки на перемещение
 app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => {
   const { variant_id, quantity } = req.body;
   
@@ -760,7 +964,6 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
   }
 });
 
-// Получение списка активных заявок (для дашборда)
 app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -786,7 +989,6 @@ app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получение завершённых задач (подтверждённые и отклонённые)
 app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -815,7 +1017,6 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Подтверждение заявки (правильная логика)
 app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
@@ -830,9 +1031,8 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
     
     const { seller_id, variant_id, quantity } = request.rows[0];
     
-    // Проверяем, достаточно ли зарезервировано товара на главном складе
     const warehouseCheck = await pool.query(
-      'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
+      'SELECT reserved FROM main_warehouse WHERE variant_id = $1',
       [variant_id]
     );
     
@@ -842,7 +1042,6 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
       return res.status(400).json({ error: `Недостаточно зарезервированного товара. Зарезервировано: ${reserved} шт, требуется: ${quantity} шт` });
     }
     
-    // 1. Добавляем товар на склад продавца
     await pool.query(`
       INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
       VALUES ($1, $2, $3, 0)
@@ -850,13 +1049,11 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
         quantity = seller_stock.quantity + EXCLUDED.quantity
     `, [seller_id, variant_id, quantity]);
     
-    // 2. СПИСЫВАЕМ зарезервированный товар с главного склада
     await pool.query(
       'UPDATE main_warehouse SET quantity = quantity - $1, reserved = reserved - $1 WHERE variant_id = $2',
       [quantity, variant_id]
     );
     
-    // 3. Обновляем статус заявки
     await pool.query(
       'UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2',
       ['approved', id]
@@ -870,7 +1067,7 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Ошибка при подтверждении' });
   }
 });
-// Отклонение заявки (только снимает резервирование)
+
 app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
@@ -885,7 +1082,6 @@ app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => 
     
     const { variant_id, quantity } = request.rows[0];
     
-    // Снимаем резервирование с главного склада
     await pool.query(
       'UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2',
       [quantity, variant_id]
