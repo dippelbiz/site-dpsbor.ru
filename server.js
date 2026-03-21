@@ -76,7 +76,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Получение корзины пользователя
 app.get('/api/cart/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
@@ -108,7 +107,6 @@ app.get('/api/cart/:userId', async (req, res) => {
   }
 });
 
-// Добавление в корзину
 app.post('/api/cart/add', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
   const numUserId = parseInt(userId, 10);
@@ -139,7 +137,6 @@ app.post('/api/cart/add', async (req, res) => {
   }
 });
 
-// Обновление количества
 app.post('/api/cart/update', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
   const numUserId = parseInt(userId, 10);
@@ -168,7 +165,6 @@ app.post('/api/cart/update', async (req, res) => {
   }
 });
 
-// Удаление из корзины
 app.delete('/api/cart/remove', async (req, res) => {
   const { userId, productId, variantId } = req.body;
   try {
@@ -183,7 +179,6 @@ app.delete('/api/cart/remove', async (req, res) => {
   }
 });
 
-// Получение заказов пользователя (для покупателя)
 app.get('/api/orders/:userId', async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
   try {
@@ -203,7 +198,6 @@ app.get('/api/orders/:userId', async (req, res) => {
   }
 });
 
-// Получение точек самовывоза
 app.get('/api/pickup-locations', async (req, res) => {
   try {
     const result = await pool.query(
@@ -237,7 +231,6 @@ async function generateOrderNumber(prefix) {
   }
 }
 
-// ==================== СОЗДАНИЕ ЗАКАЗА ====================
 app.post('/api/order', async (req, res) => {
   console.log('='.repeat(60));
   console.log('🔵 НАЧАЛО ОБРАБОТКИ ЗАКАЗА');
@@ -316,7 +309,6 @@ app.post('/api/order', async (req, res) => {
 
     const orderId = insertResult.rows[0].id;
 
-    // Очищаем корзину
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}`);
@@ -376,13 +368,11 @@ async function checkManagerAuth(req, res, next) {
   next();
 }
 
-// Получение информации о текущем пользователе
 app.get('/api/manager/me', checkManagerAuth, async (req, res) => {
   const result = await pool.query('SELECT id, name, role FROM users WHERE id = $1', [req.userId]);
   res.json(result.rows[0]);
 });
 
-// Получение дашборда
 app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   try {
     const userResult = await pool.query('SELECT name, role FROM users WHERE id = $1', [req.userId]);
@@ -432,7 +422,6 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получение списка заказов для менеджера
 app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
@@ -483,7 +472,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Взять заказ в работу
 app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -512,7 +500,6 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Завершить заказ
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -536,7 +523,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
   }
 });
 
-// Получить информацию о заказе
 app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -597,9 +583,114 @@ app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) =
   res.json({ variants: result.rows });
 });
 
+app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
+  const { sellerId } = req.params;
+  
+  const result = await pool.query(`
+    WITH all_variants AS (
+      SELECT 
+        v.id as variant_id,
+        v.name as variant_name,
+        p.id as product_id,
+        p.name as product_name,
+        p.category
+      FROM variants v
+      JOIN products p ON v.product_id = p.id
+      WHERE v.is_active = true
+    ),
+    seller_quantities AS (
+      SELECT 
+        ss.variant_id,
+        ss.quantity,
+        COALESCE(pt.pending_quantity, 0) as pending_quantity
+      FROM seller_stock ss
+      LEFT JOIN (
+        SELECT variant_id, SUM(quantity) as pending_quantity
+        FROM pending_transfers
+        WHERE seller_id = $1 AND status = 'pending'
+        GROUP BY variant_id
+      ) pt ON ss.variant_id = pt.variant_id
+      WHERE ss.seller_id = $1
+    )
+    SELECT 
+      av.variant_id,
+      av.variant_name,
+      av.product_id,
+      av.product_name,
+      av.category,
+      COALESCE(sq.quantity, 0) as quantity,
+      COALESCE(sq.pending_quantity, 0) as pending_quantity
+    FROM all_variants av
+    LEFT JOIN seller_quantities sq ON av.variant_id = sq.variant_id
+    ORDER BY av.category, av.product_name, av.variant_name
+  `, [sellerId]);
+  
+  res.json({ stock: result.rows });
+});
+
+app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT product_id, product_name, quantity_kg 
+      FROM hub_stock 
+      WHERE quantity_kg > 0
+      ORDER BY product_name
+    `);
+    res.json({ stock: result.rows });
+  } catch (err) {
+    console.error('Hub stock error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/manager/hub-stock/:productId', checkManagerAuth, async (req, res) => {
+  const { productId } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT quantity_kg, product_name 
+      FROM hub_stock 
+      WHERE product_id = $1
+    `, [productId]);
+    
+    const available = result.rows[0]?.quantity_kg || 0;
+    res.json({ 
+      available: available,
+      product_name: result.rows[0]?.product_name
+    });
+  } catch (err) {
+    console.error('Hub stock check error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/manager/warehouse-available/:variantId', checkManagerAuth, async (req, res) => {
+  const { variantId } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT quantity, COALESCE(reserved, 0) as reserved
+      FROM main_warehouse 
+      WHERE variant_id = $1
+    `, [variantId]);
+    
+    const quantity = result.rows[0]?.quantity || 0;
+    const reserved = result.rows[0]?.reserved || 0;
+    const available = quantity - reserved;
+    
+    res.json({ 
+      quantity: quantity,
+      reserved: reserved,
+      available: available
+    });
+  } catch (err) {
+    console.error('Warehouse check error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
   let { product_id, quantity_kg, comment } = req.body;
   quantity_kg = normalizeNumber(quantity_kg);
+  
   if (!product_id || !quantity_kg || quantity_kg <= 0) {
     return res.status(400).json({ error: 'Укажите корректное количество (например, 1.5 или 1,5)' });
   }
@@ -641,20 +732,52 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   if (!product_id || !variant_id || !quantity_kg || quantity_kg <= 0) {
     return res.status(400).json({ error: 'Укажите корректное количество' });
   }
-  if (!pieces || pieces <= 0) return res.status(400).json({ error: 'Укажите количество упаковок' });
+  if (!pieces || pieces <= 0) {
+    return res.status(400).json({ error: 'Укажите количество упаковок' });
+  }
   
   try {
     await pool.query('BEGIN');
     
     const hubStock = await pool.query('SELECT quantity_kg FROM hub_stock WHERE product_id = $1', [product_id]);
     const available = hubStock.rows[0]?.quantity_kg || 0;
+    
     if (available < quantity_kg) {
       await pool.query('ROLLBACK');
-      return res.status(400).json({ error: `Недостаточно товара. Доступно: ${available} кг` });
+      return res.status(400).json({ 
+        error: `Недостаточно товара для фасовки! Доступно: ${available} кг, требуется: ${quantity_kg} кг`,
+        available: available,
+        required: quantity_kg
+      });
     }
     
-    await pool.query('UPDATE hub_stock SET quantity_kg = quantity_kg - $1, updated_at = NOW() WHERE product_id = $2', 
-      [quantity_kg, product_id]);
+    const variantInfo = await pool.query(`
+      SELECT v.name, v.weight_kg, p.name as product_name
+      FROM variants v
+      JOIN products p ON v.product_id = p.id
+      WHERE v.id = $1
+    `, [variant_id]);
+    
+    if (variantInfo.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: 'Вариант товара не найден' });
+    }
+    
+    const variant = variantInfo.rows[0];
+    const expectedKg = pieces * variant.weight_kg;
+    
+    if (Math.abs(expectedKg - quantity_kg) > 0.01) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: `Несоответствие веса! ${pieces} упаковок по ${variant.weight_kg} кг = ${expectedKg} кг, а указано ${quantity_kg} кг`
+      });
+    }
+    
+    await pool.query(`
+      UPDATE hub_stock 
+      SET quantity_kg = quantity_kg - $1, updated_at = NOW() 
+      WHERE product_id = $2
+    `, [quantity_kg, product_id]);
     
     await pool.query(`
       INSERT INTO main_warehouse (variant_id, quantity, reserved, last_updated)
@@ -667,10 +790,21 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
     await pool.query(`
       INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
       VALUES ($1, 'hub', 'packaging', $2, $3, $4)
-    `, [variant_id, pieces, req.userId, `Фасовка из ${quantity_kg} кг`]);
+    `, [
+      variant_id, 
+      pieces, 
+      req.userId, 
+      `Фасовка: ${pieces} уп. (${variant.name}) из ${quantity_kg} кг ${variant.product_name}`
+    ]);
     
     await pool.query('COMMIT');
-    res.json({ success: true });
+    
+    res.json({ 
+      success: true, 
+      message: `Расфасовано ${pieces} упаковок ${variant.name} (${quantity_kg} кг)`,
+      new_hub_quantity: available - quantity_kg
+    });
+    
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Packaging error:', err);
@@ -678,50 +812,9 @@ app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) 
   }
 });
 
-app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
-  const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
-  res.json({ sellers: result.rows });
-});
-
-app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
-  const { sellerId } = req.params;
-  const result = await pool.query(`
-    SELECT p.name as product_name, v.name as variant_name, ss.quantity,
-           COALESCE(pt.quantity, 0) as pending_quantity
-    FROM seller_stock ss
-    JOIN variants v ON ss.variant_id = v.id
-    JOIN products p ON v.product_id = p.id
-    LEFT JOIN (
-      SELECT variant_id, SUM(quantity) as quantity
-      FROM pending_transfers
-      WHERE seller_id = $1 AND status = 'pending'
-      GROUP BY variant_id
-    ) pt ON ss.variant_id = pt.variant_id
-    WHERE ss.seller_id = $1
-    ORDER BY p.name, v.name
-  `, [sellerId]);
-  res.json({ stock: result.rows });
-});
-
-app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT product_name, quantity_kg 
-      FROM hub_stock 
-      WHERE quantity_kg > 0
-      ORDER BY product_name
-    `);
-    res.json({ stock: result.rows });
-  } catch (err) {
-    console.error('Hub stock error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
-// ==================== ЗАЯВКИ НА ПЕРЕМЕЩЕНИЕ ====================
-
 app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => {
   const { variant_id, quantity } = req.body;
+  
   if (!variant_id || !quantity || quantity <= 0) {
     return res.status(400).json({ error: 'Укажите корректное количество' });
   }
@@ -729,28 +822,60 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
   try {
     await pool.query('BEGIN');
     
-    // Проверяем наличие товара на главном складе
-    const warehouseCheck = await pool.query(
-      'SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1',
-      [variant_id]
-    );
-    const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
+    const variantInfo = await pool.query(`
+      SELECT v.name, v.weight_kg, p.name as product_name
+      FROM variants v
+      JOIN products p ON v.product_id = p.id
+      WHERE v.id = $1
+    `, [variant_id]);
+    
+    if (variantInfo.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: 'Вариант товара не найден' });
+    }
+    
+    const warehouseCheck = await pool.query(`
+      SELECT quantity, COALESCE(reserved, 0) as reserved
+      FROM main_warehouse 
+      WHERE variant_id = $1
+    `, [variant_id]);
+    
+    const currentQuantity = warehouseCheck.rows[0]?.quantity || 0;
+    const currentReserved = warehouseCheck.rows[0]?.reserved || 0;
+    const available = currentQuantity - currentReserved;
     
     if (available < quantity) {
       await pool.query('ROLLBACK');
       return res.status(400).json({ 
-        error: `Недостаточно товара на главном складе. Доступно: ${available} шт` 
+        error: `Недостаточно товара на главном складе!`,
+        available: available,
+        required: quantity,
+        total: currentQuantity,
+        reserved: currentReserved,
+        variant_name: variantInfo.rows[0].name,
+        product_name: variantInfo.rows[0].product_name
       });
     }
     
-    // Резервируем товар
+    const existingRequest = await pool.query(`
+      SELECT id, quantity FROM pending_transfers 
+      WHERE seller_id = $1 AND variant_id = $2 AND status = 'pending'
+    `, [req.userId, variant_id]);
+    
+    if (existingRequest.rows.length > 0) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: `У вас уже есть активная заявка на этот товар!`,
+        existing_quantity: existingRequest.rows[0].quantity
+      });
+    }
+    
     await pool.query(`
       UPDATE main_warehouse 
       SET reserved = COALESCE(reserved, 0) + $1 
       WHERE variant_id = $2
     `, [quantity, variant_id]);
     
-    // Создаем заявку на перемещение
     const result = await pool.query(`
       INSERT INTO pending_transfers (seller_id, variant_id, quantity, status, created_at)
       VALUES ($1, $2, $3, 'pending', NOW())
@@ -759,15 +884,20 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     
     await pool.query('COMMIT');
     
-    res.json({ success: true, transfer_id: result.rows[0].id });
+    res.json({ 
+      success: true, 
+      transfer_id: result.rows[0].id,
+      message: `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name} создана`,
+      available_after: available - quantity
+    });
+    
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Transfer request error:', err);
-    res.status(500).json({ error: 'Database error' });
+    res.status(500).json({ error: 'Ошибка при создании заявки' });
   }
 });
 
-// Получение задач на подтверждение (заявки)
 app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -795,14 +925,12 @@ app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Подтверждение заявки
 app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
   try {
     await pool.query('BEGIN');
     
-    // Получаем заявку
     const transfer = await pool.query(`
       SELECT * FROM pending_transfers WHERE id = $1 AND status = 'pending'
     `, [id]);
@@ -814,14 +942,12 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
     
     const { seller_id, variant_id, quantity } = transfer.rows[0];
     
-    // Снимаем резерв с главного склада и списываем товар
     await pool.query(`
       UPDATE main_warehouse 
       SET quantity = quantity - $1, reserved = reserved - $1
       WHERE variant_id = $2
     `, [quantity, variant_id]);
     
-    // Добавляем товар продавцу
     await pool.query(`
       INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
       VALUES ($1, $2, $3, 0)
@@ -829,14 +955,12 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
       DO UPDATE SET quantity = seller_stock.quantity + EXCLUDED.quantity
     `, [seller_id, variant_id, quantity]);
     
-    // Обновляем статус заявки
     await pool.query(`
       UPDATE pending_transfers 
       SET status = 'approved', updated_at = NOW()
       WHERE id = $1
     `, [id]);
     
-    // Записываем операцию
     await pool.query(`
       INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, seller_id, user_id, transfer_id, comment)
       VALUES ($1, 'main', 'transfer_out', $2, $3, $4, $5, 'Перемещение продавцу')
@@ -851,14 +975,12 @@ app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) =>
   }
 });
 
-// Отклонение заявки
 app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   
   try {
     await pool.query('BEGIN');
     
-    // Получаем заявку
     const transfer = await pool.query(`
       SELECT variant_id, quantity FROM pending_transfers WHERE id = $1 AND status = 'pending'
     `, [id]);
@@ -870,14 +992,12 @@ app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => 
     
     const { variant_id, quantity } = transfer.rows[0];
     
-    // Снимаем резерв
     await pool.query(`
       UPDATE main_warehouse 
       SET reserved = reserved - $1
       WHERE variant_id = $2
     `, [quantity, variant_id]);
     
-    // Обновляем статус заявки
     await pool.query(`
       UPDATE pending_transfers 
       SET status = 'rejected', updated_at = NOW()
@@ -893,7 +1013,6 @@ app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => 
   }
 });
 
-// Получение завершенных задач
 app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -923,7 +1042,11 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
   }
 });
 
-// ==================== ЗАПУСК СЕРВЕРА ====================
+app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
+  const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
+  res.json({ sellers: result.rows });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
