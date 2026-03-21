@@ -114,24 +114,50 @@ app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) 
     const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [req.userId]);
     const managerName = userResult.rows[0]?.name || 'Менеджер';
     
-    // Отправляем через Wazzup API
-    const wazzupResponse = await fetch('https://api.wazzup24.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WAZZUP_API_KEY}`
-      },
-      body: JSON.stringify({
-        channel: messenger,
-        recipient: phone,
-        text: message
-      })
-    });
+    // Пробуем разные варианты URL Wazzup
+    const wazzupUrls = [
+      'https://api.wazzup24.com/v3/messages',
+      'https://api.wazzup24.com/v2/messages',
+      'https://app.wazzup24.com/api/v3/messages',
+      'https://app.wazzup24.com/api/v2/messages'
+    ];
     
-    if (!wazzupResponse.ok) {
-      const errorText = await wazzupResponse.text();
-      console.error('Wazzup API error:', wazzupResponse.status, errorText);
-      throw new Error(`Wazzup API error: ${wazzupResponse.status}`);
+    let lastError = null;
+    let success = false;
+    
+    for (const url of wazzupUrls) {
+      try {
+        console.log(`📤 Попытка отправки через ${url}`);
+        const wazzupResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${WAZZUP_API_KEY}`
+          },
+          body: JSON.stringify({
+            channel: messenger,
+            recipient: phone,
+            text: message
+          })
+        });
+        
+        if (wazzupResponse.ok) {
+          console.log(`✅ Сообщение отправлено через ${url}`);
+          success = true;
+          break;
+        } else {
+          const errorText = await wazzupResponse.text();
+          console.log(`❌ Ошибка ${url}: ${wazzupResponse.status} - ${errorText}`);
+          lastError = new Error(`Wazzup API error: ${wazzupResponse.status}`);
+        }
+      } catch (err) {
+        console.log(`❌ Ошибка соединения с ${url}: ${err.message}`);
+        lastError = err;
+      }
+    }
+    
+    if (!success) {
+      throw lastError || new Error('Не удалось отправить сообщение через Wazzup');
     }
     
     // Сохраняем исходящее сообщение
@@ -143,7 +169,7 @@ app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) 
     res.json({ success: true });
   } catch (err) {
     console.error('Send message error:', err);
-    res.status(500).json({ error: 'Ошибка отправки сообщения' });
+    res.status(500).json({ error: 'Ошибка отправки сообщения: ' + err.message });
   }
 });
 
