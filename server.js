@@ -40,54 +40,27 @@ pool.connect((err, client, release) => {
 // ==================== WAzzup ИНТЕГРАЦИЯ ====================
 const WAZZUP_API_KEY = process.env.WAZZUP_API_KEY;
 
-// Webhook для приёма сообщений от Wazzup
-app.post('/api/webhook/wazzup', async (req, res) => {
-  console.log('📨 Получено сообщение от Wazzup:', JSON.stringify(req.body, null, 2));
-  
-  try {
-    const data = req.body;
-    const { channel, sender_id, sender_name, sender_phone, message_text, direction, message_id } = data;
-    let orderId = null;
-    
-    // Пытаемся найти заказ по номеру телефона
-    if (sender_phone) {
-      const orderResult = await pool.query(`
-        SELECT id FROM orders 
-        WHERE contact->>'phone' = $1 
-        ORDER BY created_at DESC LIMIT 1
-      `, [sender_phone]);
-      if (orderResult.rows.length > 0) {
-        orderId = orderResult.rows[0].id;
-        console.log(`🔍 Найден заказ #${orderId} для телефона ${sender_phone}`);
-      }
-    }
-    
-    // Сохраняем сообщение в БД
-    await pool.query(`
-      INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, sender_phone, message_text, direction, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-    `, [orderId, channel, message_id, sender_id, sender_name, sender_phone, message_text, direction]);
-    
-    if (direction === 'incoming' && orderId) {
-      console.log(`🔔 Новое сообщение по заказу #${orderId}: ${message_text?.substring(0, 50)}`);
-    }
-    
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('Wazzup webhook error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Получение чата по заказу
+// Получение чата по заказу (ищем по клиенту)
 app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
   const { orderId } = req.params;
   try {
+    // Находим заказ, чтобы получить user_telegram_id
+    const orderResult = await pool.query('SELECT user_telegram_id FROM orders WHERE id = $1', [orderId]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Заказ не найден' });
+    }
+    
+    const userTelegramId = orderResult.rows[0].user_telegram_id;
+    
+    // Получаем все сообщения этого клиента по всем его заказам
     const messages = await pool.query(`
-      SELECT * FROM chat_messages 
-      WHERE order_id = $1 
-      ORDER BY created_at ASC
-    `, [orderId]);
+      SELECT cm.*, o.order_number 
+      FROM chat_messages cm
+      JOIN orders o ON cm.order_id = o.id
+      WHERE o.user_telegram_id = $1
+      ORDER BY cm.created_at ASC
+    `, [userTelegramId]);
+    
     res.json({ messages: messages.rows });
   } catch (err) {
     console.error('Chat error:', err);
@@ -101,12 +74,13 @@ app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) 
   const { message } = req.body;
   
   if (!message) return res.status(400).json({ error: 'Сообщение не может быть пустым' });
-  if (!WAZZUP_API_KEY) return res.status(500).json({ error: 'Wazzup не настроен. Добавьте WAZZUP_API_KEY в переменные окружения' });
+  if (!WAZZUP_API_KEY) return res.status(500).json({ error: 'Wazzup не настроен' });
   
   try {
-    const orderResult = await pool.query('SELECT contact FROM orders WHERE id = $1', [orderId]);
+    const orderResult = await pool.query('SELECT user_telegram_id, contact FROM orders WHERE id = $1', [orderId]);
     if (orderResult.rows.length === 0) return res.status(404).json({ error: 'Заказ не найден' });
     
+    const userTelegramId = orderResult.rows[0].user_telegram_id;
     const contact = orderResult.rows[0].contact;
     const phone = contact.phone;
     const messenger = contact.messenger || 'telegram';
@@ -114,53 +88,27 @@ app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) 
     const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [req.userId]);
     const managerName = userResult.rows[0]?.name || 'Менеджер';
     
-    // Пробуем разные варианты URL Wazzup
-    const wazzupUrls = [
-      'https://api.wazzup24.com/v3/messages',
-      'https://api.wazzup24.com/v2/messages',
-      'https://app.wazzup24.com/api/v3/messages',
-      'https://app.wazzup24.com/api/v2/messages'
-    ];
+    // Отправляем через Wazzup API
+    const wazzupResponse = await fetch('https://api.wazzup24.com/v3/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WAZZUP_API_KEY}`
+      },
+      body: JSON.stringify({
+        channel: messenger,
+        recipient: phone,
+        text: message
+      })
+    });
     
-    let lastError = null;
-    let success = false;
-    
-    for (const url of wazzupUrls) {
-      try {
-        console.log(`📤 Попытка отправки через ${url}`);
-        const wazzupResponse = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${WAZZUP_API_KEY}`
-          },
-          body: JSON.stringify({
-            channel: messenger,
-            recipient: phone,
-            text: message
-          })
-        });
-        
-        if (wazzupResponse.ok) {
-          console.log(`✅ Сообщение отправлено через ${url}`);
-          success = true;
-          break;
-        } else {
-          const errorText = await wazzupResponse.text();
-          console.log(`❌ Ошибка ${url}: ${wazzupResponse.status} - ${errorText}`);
-          lastError = new Error(`Wazzup API error: ${wazzupResponse.status}`);
-        }
-      } catch (err) {
-        console.log(`❌ Ошибка соединения с ${url}: ${err.message}`);
-        lastError = err;
-      }
+    if (!wazzupResponse.ok) {
+      const errorText = await wazzupResponse.text();
+      console.error('Wazzup API error:', wazzupResponse.status, errorText);
+      throw new Error(`Wazzup API error: ${wazzupResponse.status}`);
     }
     
-    if (!success) {
-      throw lastError || new Error('Не удалось отправить сообщение через Wazzup');
-    }
-    
-    // Сохраняем исходящее сообщение
+    // Сохраняем исходящее сообщение, привязанное к заказу
     await pool.query(`
       INSERT INTO chat_messages (order_id, channel, sender_id, sender_name, message_text, direction, created_at)
       VALUES ($1, $2, $3, $4, $5, 'outgoing', NOW())
@@ -169,7 +117,58 @@ app.post('/api/manager/order/:orderId/send', checkManagerAuth, async (req, res) 
     res.json({ success: true });
   } catch (err) {
     console.error('Send message error:', err);
-    res.status(500).json({ error: 'Ошибка отправки сообщения: ' + err.message });
+    res.status(500).json({ error: 'Ошибка отправки сообщения' });
+  }
+});
+
+// Завершить заказ и отправить уведомление
+app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Получаем информацию о заказе
+    const orderResult = await pool.query('SELECT user_telegram_id, contact FROM orders WHERE id = $1', [id]);
+    if (orderResult.rows.length === 0) return res.status(404).json({ error: 'Заказ не найден' });
+    
+    const userTelegramId = orderResult.rows[0].user_telegram_id;
+    const contact = orderResult.rows[0].contact;
+    const phone = contact.phone;
+    const messenger = contact.messenger || 'telegram';
+    const orderNumber = orderResult.rows[0].order_number;
+    
+    // Обновляем статус заказа
+    await pool.query(
+      'UPDATE orders SET status = $1, completed_at = NOW() WHERE id = $2',
+      ['completed', id]
+    );
+    
+    // Отправляем уведомление клиенту о завершении заказа
+    if (WAZZUP_API_KEY && phone && phone !== '0000000000') {
+      const notification = `✅ Ваш заказ №${orderNumber} завершён! Спасибо за покупку. Вы можете сделать новый заказ на сайте dpsbor.ru`;
+      
+      await fetch('https://api.wazzup24.com/v3/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${WAZZUP_API_KEY}`
+        },
+        body: JSON.stringify({
+          channel: messenger,
+          recipient: phone,
+          text: notification
+        })
+      }).catch(err => console.error('Ошибка отправки уведомления:', err));
+      
+      // Сохраняем уведомление в чат
+      await pool.query(`
+        INSERT INTO chat_messages (order_id, channel, sender_id, sender_name, message_text, direction, created_at)
+        VALUES ($1, $2, $3, $4, $5, 'outgoing', NOW())
+      `, [id, messenger, 'system', 'Система', notification]);
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Complete order error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
@@ -619,7 +618,7 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     const offset = (page - 1) * limit;
     
     let query = `
-      SELECT id, order_number, contact, items, total, status, seller_id, created_at, completed_at
+      SELECT id, order_number, contact, items, total, status, seller_id, user_telegram_id, created_at, completed_at
       FROM orders
     `;
     const params = [];
@@ -641,6 +640,7 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
       total: order.total,
       status: order.status,
       seller_id: order.seller_id,
+      user_telegram_id: order.user_telegram_id,
       created_at: order.created_at,
       completed_at: order.completed_at
     }));
@@ -690,14 +690,51 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Завершить заказ
+// Завершить заказ (отправляет уведомление клиенту)
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
+    const orderResult = await pool.query(
+      'SELECT order_number, user_telegram_id, contact FROM orders WHERE id = $1',
+      [id]
+    );
+    if (orderResult.rows.length === 0) return res.status(404).json({ error: 'Заказ не найден' });
+    
+    const order = orderResult.rows[0];
+    const contact = order.contact;
+    const phone = contact.phone;
+    const messenger = contact.messenger || 'telegram';
+    
+    // Обновляем статус
     await pool.query(
       'UPDATE orders SET status = $1, completed_at = NOW() WHERE id = $2',
       ['completed', id]
     );
+    
+    // Отправляем уведомление клиенту
+    if (WAZZUP_API_KEY && phone && phone !== '0000000000') {
+      const notification = `✅ Ваш заказ №${order.order_number} завершён! Спасибо за покупку. Вы можете сделать новый заказ на сайте dpsbor.ru`;
+      
+      await fetch('https://api.wazzup24.com/v3/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${WAZZUP_API_KEY}`
+        },
+        body: JSON.stringify({
+          channel: messenger,
+          recipient: phone,
+          text: notification
+        })
+      }).catch(err => console.error('Ошибка отправки уведомления:', err));
+      
+      // Сохраняем уведомление в чат
+      await pool.query(`
+        INSERT INTO chat_messages (order_id, channel, sender_id, sender_name, message_text, direction, created_at)
+        VALUES ($1, $2, $3, $4, $5, 'outgoing', NOW())
+      `, [id, messenger, 'system', 'Система', notification]);
+    }
+    
     res.json({ success: true });
   } catch (err) {
     console.error('Complete order error:', err);
