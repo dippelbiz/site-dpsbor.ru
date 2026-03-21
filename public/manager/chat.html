@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чат с клиентом</title>
+    <title>DP SBOR — Чат с покупателем</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -113,7 +113,6 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const orderId = urlParams.get('id');
-        let lastMessageId = 0;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -123,11 +122,11 @@
         
         async function loadOrderInfo() {
             const token = checkAuth();
-            const response = await fetch(`/api/manager/orders?limit=100`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`/api/manager/order/${orderId}`, { headers: { 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
-            const order = data.orders.find(o => o.id == orderId);
-            if (order) {
-                document.getElementById('order-info').innerHTML = `Заказ №${order.order_number} — ${order.contact?.name || 'Клиент'}`;
+            if (data.order) {
+                const contact = data.order.contact || {};
+                document.getElementById('order-info').innerHTML = `Заказ №${data.order.order_number} — ${contact.name || contact.phone || 'Клиент'}`;
             }
         }
         
@@ -144,7 +143,7 @@
         
         function renderMessages(messages) {
             const container = document.getElementById('messages-container');
-            if (messages.length === 0) {
+            if (!messages || messages.length === 0) {
                 container.innerHTML = '<div class="loading">Нет сообщений. Напишите клиенту!</div>';
                 return;
             }
@@ -159,13 +158,7 @@
                 </div>
             `).join('');
             
-            // Скролл вниз
             container.scrollTop = container.scrollHeight;
-            
-            // Сохраняем последний ID
-            if (messages.length > 0) {
-                lastMessageId = messages[messages.length - 1].id;
-            }
         }
         
         async function sendMessage() {
@@ -195,17 +188,14 @@
             return div.innerHTML;
         }
         
-        // Загружаем данные
         if (orderId) {
             loadOrderInfo();
             loadMessages();
-            // Обновляем каждые 3 секунды
-            setInterval(loadMessages, 3000);
+            setInterval(loadMessages, 5000);
         } else {
             document.getElementById('order-info').innerHTML = 'Ошибка: заказ не указан';
         }
         
-        // Enter для отправки
         document.getElementById('message-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
