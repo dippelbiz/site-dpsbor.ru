@@ -172,17 +172,17 @@
         <div class="orders-table">
             <table id="orders-table">
                 <thead>
-                     <tr>
+                      <tr>
                         <th>№ заказа</th>
                         <th>Клиент</th>
                         <th>Состав</th>
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                     </tr>
+                      </tr>
                 </thead>
                 <tbody id="orders-list">
-                     <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                      <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -259,8 +259,15 @@
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
             });
+            
             if (response.ok) {
-                alert('✅ Заказ взят в работу');
+                const data = await response.json();
+                if (data.wazzup_chat_id) {
+                    alert('✅ Заказ взят в работу, чат создан!');
+                } else {
+                    alert('✅ Заказ взят в работу, но чат не создан (проверьте номер телефона в заказе)');
+                }
+                // Обновляем список заказов
                 loadOrders();
             } else {
                 const error = await response.json();
@@ -286,7 +293,7 @@
             if (chatId) {
                 window.open(`https://app.wazzup24.com/chat/${chatId}`, '_blank', 'width=800,height=600');
             } else {
-                alert('Чат ещё не создан. Нажмите "Взять в работу", чтобы создать чат.');
+                alert('Чат ещё не создан');
             }
         }
         
