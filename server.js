@@ -718,7 +718,333 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
 });
 
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
-// ... (остальной код склада остаётся без изменений)
+
+app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        mw.id,
+        v.id as variant_id,
+        v.name as variant_name,
+        p.name as product_name,
+        mw.quantity,
+        mw.reserved,
+        (mw.quantity - mw.reserved) as available
+      FROM main_warehouse mw
+      JOIN variants v ON mw.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      ORDER BY p.name, v.name
+    `);
+    res.json({ warehouse: result.rows });
+  } catch (err) {
+    console.error('Warehouse error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/manager/warehouse/update', checkManagerAuth, async (req, res) => {
+  const { variant_id, quantity, type, comment } = req.body;
+  if (!variant_id || !quantity || !['income', 'outcome'].includes(type)) {
+    return res.status(400).json({ error: 'Invalid data' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    
+    if (type === 'income') {
+      await pool.query(
+        'UPDATE main_warehouse SET quantity = quantity + $1, last_updated = NOW() WHERE variant_id = $2',
+        [quantity, variant_id]
+      );
+    } else {
+      const checkResult = await pool.query('SELECT quantity FROM main_warehouse WHERE variant_id = $1', [variant_id]);
+      if (checkResult.rows[0]?.quantity < quantity) {
+        await pool.query('ROLLBACK');
+        return res.status(400).json({ error: 'Недостаточно товара на складе' });
+      }
+      await pool.query(
+        'UPDATE main_warehouse SET quantity = quantity - $1, last_updated = NOW() WHERE variant_id = $2',
+        [quantity, variant_id]
+      );
+    }
+    
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES ($1, 'main', $2, $3, $4, $5)
+    `, [variant_id, type, quantity, req.userId, comment]);
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Warehouse update error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/manager/products', checkManagerAuth, async (req, res) => {
+  const result = await pool.query('SELECT id, name FROM products ORDER BY name');
+  res.json({ products: result.rows });
+});
+
+app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) => {
+  const { productId } = req.params;
+  const result = await pool.query(
+    'SELECT id, name, weight_kg, price FROM variants WHERE product_id = $1 AND is_active = true ORDER BY weight_kg',
+    [productId]
+  );
+  res.json({ variants: result.rows });
+});
+
+app.post('/api/manager/warehouse/purchase', checkManagerAuth, async (req, res) => {
+  let { product_id, quantity_kg, comment } = req.body;
+  quantity_kg = normalizeNumber(quantity_kg);
+  if (!product_id || !quantity_kg || quantity_kg <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество (например, 1.5 или 1,5)' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    const product = await pool.query('SELECT name FROM products WHERE id = $1', [product_id]);
+    const productName = product.rows[0]?.name;
+    if (!productName) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Товар не найден' });
+    }
+    
+    const result = await pool.query(`
+      INSERT INTO hub_stock (product_id, product_name, quantity_kg, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (product_id) DO UPDATE SET 
+        quantity_kg = hub_stock.quantity_kg + EXCLUDED.quantity_kg,
+        product_name = EXCLUDED.product_name,
+        updated_at = NOW()
+      RETURNING quantity_kg
+    `, [product_id, productName, quantity_kg]);
+    
+    console.log(`✅ Закуплено ${quantity_kg} кг товара ${productName}. Новый остаток: ${result.rows[0].quantity_kg} кг`);
+    
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES (NULL, 'hub', 'purchase', $1, $2, $3)
+    `, [quantity_kg, req.userId, comment || `Закупка ${productName}`]);
+    
+    await pool.query('COMMIT');
+    res.json({ success: true, new_quantity: result.rows[0].quantity_kg });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Purchase error:', err);
+    res.status(500).json({ error: 'Ошибка при закупке' });
+  }
+});
+
+app.post('/api/manager/warehouse/packaging', checkManagerAuth, async (req, res) => {
+  let { product_id, variant_id, quantity_kg, pieces } = req.body;
+  quantity_kg = normalizeNumber(quantity_kg);
+  pieces = normalizeNumber(pieces);
+  if (!product_id || !variant_id || !quantity_kg || quantity_kg <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество' });
+  }
+  if (!pieces || pieces <= 0) return res.status(400).json({ error: 'Укажите количество упаковок' });
+  
+  try {
+    await pool.query('BEGIN');
+    const hubStock = await pool.query('SELECT quantity_kg FROM hub_stock WHERE product_id = $1', [product_id]);
+    const available = hubStock.rows[0]?.quantity_kg || 0;
+    if (available < quantity_kg) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: `Недостаточно товара на хабе. Доступно: ${available} кг, требуется: ${quantity_kg} кг` });
+    }
+    
+    await pool.query('UPDATE hub_stock SET quantity_kg = quantity_kg - $1, updated_at = NOW() WHERE product_id = $2', [quantity_kg, product_id]);
+    
+    await pool.query(`
+      INSERT INTO main_warehouse (variant_id, quantity, reserved, last_updated)
+      VALUES ($1, $2, 0, NOW())
+      ON CONFLICT (variant_id) DO UPDATE SET 
+        quantity = main_warehouse.quantity + EXCLUDED.quantity,
+        last_updated = NOW()
+    `, [variant_id, pieces]);
+    
+    await pool.query(`
+      INSERT INTO warehouse_operations (variant_id, source_type, type, quantity, user_id, comment)
+      VALUES ($1, 'hub', 'packaging', $2, $3, $4)
+    `, [variant_id, pieces, req.userId, `Фасовка из ${quantity_kg} кг`]);
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Packaging error:', err);
+    res.status(500).json({ error: 'Ошибка при фасовке' });
+  }
+});
+
+app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
+  const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
+  res.json({ sellers: result.rows });
+});
+
+app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
+  const { sellerId } = req.params;
+  const result = await pool.query(`
+    SELECT p.name as product_name, v.name as variant_name, ss.quantity,
+           COALESCE(pt.quantity, 0) as pending_quantity
+    FROM seller_stock ss
+    JOIN variants v ON ss.variant_id = v.id
+    JOIN products p ON v.product_id = p.id
+    LEFT JOIN (
+      SELECT variant_id, SUM(quantity) as quantity
+      FROM pending_transfers
+      WHERE seller_id = $1 AND status = 'pending'
+      GROUP BY variant_id
+    ) pt ON ss.variant_id = pt.variant_id
+    WHERE ss.seller_id = $1
+    ORDER BY p.name, v.name
+  `, [sellerId]);
+  res.json({ stock: result.rows });
+});
+
+app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT product_name, quantity_kg 
+      FROM hub_stock 
+      WHERE quantity_kg > 0
+      ORDER BY product_name
+    `);
+    res.json({ stock: result.rows });
+  } catch (err) {
+    console.error('Hub stock error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// ==================== ЗАЯВКИ НА ПЕРЕМЕЩЕНИЕ ====================
+
+app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => {
+  const { variant_id, quantity } = req.body;
+  if (!variant_id || !quantity || quantity <= 0) {
+    return res.status(400).json({ error: 'Укажите корректное количество' });
+  }
+  
+  try {
+    await pool.query('BEGIN');
+    const warehouseCheck = await pool.query('SELECT quantity, reserved FROM main_warehouse WHERE variant_id = $1', [variant_id]);
+    const available = (warehouseCheck.rows[0]?.quantity || 0) - (warehouseCheck.rows[0]?.reserved || 0);
+    if (available < quantity) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: `Недостаточно товара на главном складе. Доступно: ${available} шт` });
+    }
+    
+    await pool.query(`
+      INSERT INTO pending_transfers (seller_id, variant_id, quantity, status, created_at)
+      VALUES ($1, $2, $3, 'pending', NOW())
+    `, [req.userId, variant_id, quantity]);
+    
+    await pool.query('UPDATE main_warehouse SET reserved = reserved + $1 WHERE variant_id = $2', [quantity, variant_id]);
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Transfer request error:', err);
+    res.status(500).json({ error: 'Ошибка при создании заявки' });
+  }
+});
+
+app.get('/api/manager/tasks', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT pt.id, pt.seller_id, u.name as seller_name, v.name as variant_name, p.name as product_name, pt.quantity, pt.created_at
+      FROM pending_transfers pt
+      JOIN users u ON pt.seller_id = u.id
+      JOIN variants v ON pt.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      WHERE pt.status = 'pending'
+      ORDER BY pt.created_at DESC
+    `);
+    res.json({ tasks: result.rows });
+  } catch (err) {
+    console.error('Tasks error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT pt.id, pt.seller_id, u.name as seller_name, v.name as variant_name, p.name as product_name, pt.quantity, pt.status, pt.created_at, pt.updated_at
+      FROM pending_transfers pt
+      JOIN users u ON pt.seller_id = u.id
+      JOIN variants v ON pt.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      WHERE pt.status IN ('approved', 'rejected')
+      ORDER BY pt.updated_at DESC
+      LIMIT 50
+    `);
+    res.json({ tasks: result.rows });
+  } catch (err) {
+    console.error('Completed tasks error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/manager/tasks/:id/approve', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('BEGIN');
+    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
+    if (request.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
+    }
+    
+    const { seller_id, variant_id, quantity } = request.rows[0];
+    const warehouseCheck = await pool.query('SELECT reserved FROM main_warehouse WHERE variant_id = $1', [variant_id]);
+    const reserved = warehouseCheck.rows[0]?.reserved || 0;
+    if (reserved < quantity) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ error: `Недостаточно зарезервированного товара. Зарезервировано: ${reserved} шт, требуется: ${quantity} шт` });
+    }
+    
+    await pool.query(`
+      INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
+      VALUES ($1, $2, $3, 0)
+      ON CONFLICT (seller_id, variant_id) DO UPDATE SET quantity = seller_stock.quantity + EXCLUDED.quantity
+    `, [seller_id, variant_id, quantity]);
+    
+    await pool.query('UPDATE main_warehouse SET quantity = quantity - $1, reserved = reserved - $1 WHERE variant_id = $2', [quantity, variant_id]);
+    await pool.query('UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2', ['approved', id]);
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Approve task error:', err);
+    res.status(500).json({ error: 'Ошибка при подтверждении' });
+  }
+});
+
+app.post('/api/manager/tasks/:id/reject', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('BEGIN');
+    const request = await pool.query('SELECT * FROM pending_transfers WHERE id = $1 AND status = \'pending\'', [id]);
+    if (request.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
+    }
+    
+    const { variant_id, quantity } = request.rows[0];
+    await pool.query('UPDATE main_warehouse SET reserved = reserved - $1 WHERE variant_id = $2', [quantity, variant_id]);
+    await pool.query('UPDATE pending_transfers SET status = $1, updated_at = NOW() WHERE id = $2', ['rejected', id]);
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Reject task error:', err);
+    res.status(500).json({ error: 'Ошибка при отклонении' });
+  }
+});
 
 // ==================== СТАРЫЕ СТРАНИЦЫ ====================
 app.get('/cart.html', (req, res) => {
