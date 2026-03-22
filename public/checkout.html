@@ -110,7 +110,6 @@
             font-weight: bold;
         }
         
-        /* Модальное окно */
         .modal {
             display: none;
             position: fixed;
@@ -293,7 +292,6 @@
 
     <button id="confirm-button">Подтвердить заказ</button>
 
-    <!-- Модальное окно -->
     <div id="success-modal" class="modal">
         <div class="modal-content">
             <h3>✅ Заказ оформлен!</h3>
@@ -553,7 +551,12 @@ ${itemsText}
 
                 const user = tg.initDataUnsafe?.user;
                 
-                // Сохраняем contact с telegram_id и telegram_name
+                console.log('📱 Данные пользователя из Telegram:', {
+                    id: user?.id,
+                    name: user?.first_name,
+                    username: user?.username
+                });
+                
                 const contact = {
                     name: user?.first_name + (user?.last_name ? ' ' + user?.last_name : '') || 'Покупатель',
                     phone: '0000000000',
@@ -563,7 +566,7 @@ ${itemsText}
                     messenger: 'not_selected',
                     username: user?.username,
                     userId: user?.id,
-                    telegram_id: user?.id,  // Основной идентификатор
+                    telegram_id: user?.id ? String(user.id) : null,
                     telegram_name: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Покупатель'
                 };
 
