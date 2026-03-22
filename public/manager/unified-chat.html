@@ -14,7 +14,7 @@
             overflow: hidden;
         }
         .sidebar-chats {
-            width: 280px;
+            width: 320px;
             background: white;
             border-right: 1px solid #ecf0f1;
             display: flex;
@@ -30,20 +30,40 @@
         .sidebar-header h2 {
             font-size: 16px;
         }
-        .sidebar-header p {
-            font-size: 11px;
-            opacity: 0.8;
-            margin-top: 3px;
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ecf0f1;
+            background: white;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            background: #f8f9fa;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            background: white;
+            color: #28a745;
+            border-bottom: 2px solid #28a745;
+        }
+        .tab:hover {
+            background: #e9ecef;
         }
         .chats-list {
             flex: 1;
             overflow-y: auto;
         }
         .chat-item {
-            padding: 10px 12px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ecf0f1;
             cursor: pointer;
             transition: background 0.2s;
+            position: relative;
         }
         .chat-item:hover {
             background: #f8f9fa;
@@ -54,10 +74,16 @@
         }
         .chat-item.has-unread {
             background: #fff3e0;
+            position: relative;
         }
-        .chat-item.completed {
-            opacity: 0.5;
-            background: #f5f5f5;
+        .chat-item.has-unread::before {
+            content: "●";
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #e67e22;
+            font-size: 10px;
         }
         .chat-order {
             font-weight: bold;
@@ -71,7 +97,7 @@
             margin-left: 6px;
         }
         .chat-status.completed {
-            background: #27ae60;
+            background: #95a5a6;
             color: white;
         }
         .chat-status.processing {
@@ -90,7 +116,7 @@
         .chat-last-message {
             font-size: 11px;
             color: #666;
-            margin-top: 4px;
+            margin-top: 5px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -114,7 +140,7 @@
         }
         .chat-header {
             background: white;
-            padding: 10px 15px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ecf0f1;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
@@ -125,7 +151,28 @@
         .chat-header p {
             font-size: 11px;
             color: #7f8c8d;
-            margin-top: 2px;
+            margin-top: 3px;
+        }
+        .old-orders-list {
+            background: #f8f9fa;
+            padding: 8px 12px;
+            font-size: 11px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+        }
+        .old-orders-label {
+            color: #7f8c8d;
+            font-weight: normal;
+        }
+        .old-order-badge {
+            background: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            color: #2c3e50;
         }
         .messages-container {
             flex: 1;
@@ -169,7 +216,7 @@
         }
         .chat-input textarea {
             flex: 1;
-            padding: 6px 10px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
             border-radius: 6px;
             resize: none;
@@ -181,7 +228,7 @@
             background: #28a745;
             color: white;
             border: none;
-            padding: 6px 12px;
+            padding: 8px 16px;
             border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
@@ -220,8 +267,11 @@
 <body>
     <div class="sidebar-chats">
         <div class="sidebar-header">
-            <h2>💬 Чаты</h2>
-            <p>Активные диалоги</p>
+            <h2>💬 Диалоги</h2>
+        </div>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('active')">Активные</button>
+            <button class="tab" onclick="switchTab('completed')">Завершенные</button>
         </div>
         <div class="chats-list" id="chats-list">
             <div class="loading">Загрузка...</div>
@@ -238,12 +288,26 @@
         let currentOrderId = null;
         let currentRecipient = null;
         let currentOrderStatus = null;
+        let currentOldOrders = [];
+        let currentTab = 'active';
+        let allChats = { active: [], completed: [] };
         let pollInterval = null;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) { window.location.href = '/manager/'; return false; }
             return token;
+        }
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+            if (tab === 'active') {
+                document.querySelector('.tab:first-child').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+            }
+            renderChats(allChats[currentTab]);
         }
         
         async function loadChats() {
@@ -253,7 +317,8 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await response.json();
-                renderChats(data.chats);
+                allChats = data;
+                renderChats(allChats[currentTab]);
             } catch (err) {
                 console.error('Error loading chats:', err);
             }
@@ -262,7 +327,7 @@
         function renderChats(chats) {
             const container = document.getElementById('chats-list');
             if (!chats || chats.length === 0) {
-                container.innerHTML = '<div class="loading">Нет активных диалогов</div>';
+                container.innerHTML = '<div class="loading">Нет диалогов</div>';
                 return;
             }
             
@@ -271,17 +336,20 @@
                 let statusText = '';
                 if (chat.status === 'completed') {
                     statusClass = 'completed';
-                    statusText = '✅';
+                    statusText = '✅ Завершен';
                 } else if (chat.status === 'processing') {
                     statusClass = 'processing';
-                    statusText = '📋';
+                    statusText = '📋 В работе';
                 } else if (chat.status === 'new') {
                     statusClass = 'new';
-                    statusText = '🆕';
+                    statusText = '🆕 Новый';
                 }
                 
+                // Подсветка только если последнее сообщение от покупателя
+                const hasUnread = chat.lastMessageDirection === 'incoming';
+                
                 return `
-                    <div class="chat-item ${chat.hasUnread ? 'has-unread' : ''} ${chat.status === 'completed' ? 'completed' : ''}" 
+                    <div class="chat-item ${hasUnread ? 'has-unread' : ''} ${chat.status === 'completed' ? 'completed' : ''}" 
                          onclick="loadChat(${chat.orderId})"
                          data-order-id="${chat.orderId}">
                         <div class="chat-preview">
@@ -311,6 +379,7 @@
                 const data = await response.json();
                 currentRecipient = data.recipient;
                 currentOrderStatus = data.status;
+                currentOldOrders = data.old_orders || [];
                 renderChatWindow(data);
             } catch (err) {
                 console.error('Error loading chat:', err);
@@ -324,6 +393,14 @@
             const isProcessing = data.status === 'processing';
             const canChat = isProcessing || data.status === 'new';
             
+            // Отображаем старые заказы этого пользователя
+            const oldOrdersHtml = currentOldOrders.length > 0 ? `
+                <div class="old-orders-list">
+                    <span class="old-orders-label">📜 История заказов:</span>
+                    ${currentOldOrders.map(order => `<span class="old-order-badge">№${order.order_number} (${order.status === 'completed' ? '✅' : '📋'})</span>`).join('')}
+                </div>
+            ` : '';
+            
             container.innerHTML = `
                 <div class="chat-header">
                     <h3>Заказ №${data.order_number}
@@ -331,6 +408,7 @@
                     </h3>
                     <p>👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p>
                 </div>
+                ${oldOrdersHtml}
                 <div class="messages-container" id="messages-container">
                     ${renderMessages(data.messages)}
                 </div>
@@ -344,7 +422,8 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             
             if (canChat) {
-                document.getElementById('message-input').addEventListener('keydown', (e) => {
+                const input = document.getElementById('message-input');
+                input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         sendMessage();
@@ -418,6 +497,7 @@
                 if (response.ok) {
                     input.value = '';
                     await loadChat(currentOrderId);
+                    await loadChats();
                 } else {
                     const error = await response.json();
                     alert('Ошибка: ' + error.error);
