@@ -358,22 +358,29 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
             
+            console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
+            
             let orderId = null;
             let userId = null;
             
-            // Ищем заказ ТОЛЬКО по telegram_id
+            // Ищем заказ по telegram_id в contact или user_telegram_id
             const orderResult = await pool.query(`
-                SELECT id, user_telegram_id FROM orders 
+                SELECT id, user_telegram_id, order_number, status FROM orders 
                 WHERE contact->>'telegram_id' = $1
+                   OR user_telegram_id = $2::bigint
                 ORDER BY created_at DESC LIMIT 1
-            `, [messageData.senderId]);
+            `, [messageData.senderId, messageData.senderId]);
             
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
                 userId = orderResult.rows[0].user_telegram_id;
+                console.log(`✅ Найден заказ №${orderResult.rows[0].order_number} (статус: ${orderResult.rows[0].status})`);
+            } else {
+                console.log(`⚠️ Заказ для telegram_id ${messageData.senderId} не найден`);
             }
             
-            await pool.query(`
+            // Сохраняем сообщение
+            const insertResult = await pool.query(`
                 INSERT INTO chat_messages (
                     order_id, channel, external_id, 
                     sender_id, sender_name, message_text, 
@@ -390,7 +397,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 messageData.messageText
             ]);
             
-            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
+            console.log(`✅ Сообщение сохранено в БД (ID: ${insertResult.rows[0].id}) от ${messageData.senderName} (ID: ${messageData.senderId})`);
         }
         
         res.sendStatus(200);
@@ -508,11 +515,10 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         res.status(500).json({ error: 'Database error' });
     }
 });
-
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
-        // Показываем только заказы в статусе 'processing' и 'new' (активные)
+        // Получаем все заказы с сообщениями
         const result = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
@@ -540,12 +546,13 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
                 ) as unread_count
             FROM orders o
-            WHERE o.status IN ('new', 'processing')
-              AND EXISTS (
+            WHERE EXISTS (
                 SELECT 1 FROM chat_messages WHERE order_id = o.id
             )
             ORDER BY last_message_date DESC NULLS LAST
         `);
+        
+        console.log(`📊 Найдено заказов с сообщениями: ${result.rows.length}`);
         
         const chats = result.rows.map(row => {
             const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
@@ -565,7 +572,12 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
             };
         });
         
-        res.json({ chats });
+        // Показываем только активные заказы (new и processing)
+        const activeChats = chats.filter(chat => chat.status === 'new' || chat.status === 'processing');
+        
+        console.log(`💬 Активных чатов: ${activeChats.length}`);
+        
+        res.json({ chats: activeChats });
     } catch (err) {
         console.error('Ошибка получения списка чатов:', err);
         res.status(500).json({ error: 'Database error' });
