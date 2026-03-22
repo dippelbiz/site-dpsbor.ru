@@ -149,7 +149,6 @@
             border-radius: 8px;
         }
         
-        /* Кнопка копирования */
         .copy-button {
             background: #28a745;
             color: white;
@@ -176,7 +175,6 @@
             background: #6c757d;
         }
         
-        /* Инструкция */
         .instruction {
             background: #f8f9fa;
             border-radius: 10px;
@@ -201,7 +199,6 @@
             line-height: 1.4;
         }
         
-        /* Кнопки мессенджеров */
         .messenger-buttons {
             display: flex;
             gap: 10px;
@@ -312,12 +309,10 @@
                 <p style="margin-top: 10px; color: #28a745;">Мы ответим в ближайшее время!</p>
             </div>
             
-            <!-- Кнопка копирования -->
             <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
                 <span>📋</span> Копировать заказ
             </button>
             
-            <!-- Кнопки мессенджеров -->
             <div class="messenger-buttons">
                 <button class="messenger-button telegram" onclick="goToTelegram()">
                     Telegram
@@ -327,7 +322,6 @@
                 </button>
             </div>
             
-            <!-- Кнопка отмены заказа -->
             <button class="cancel-button" onclick="cancelOrder()">
                 ❌ Отменить заказ
             </button>
@@ -506,16 +500,12 @@ ${itemsText}
         }
 
         function goToTelegram() {
-            // Открываем страницу заказов в новой вкладке
             window.open('orders.html', '_blank');
-            // В текущей вкладке открываем Telegram
             window.location.href = MESSENGER_LINKS.telegram;
         }
 
         function goToVK() {
-            // Открываем страницу заказов в новой вкладке
             window.open('orders.html', '_blank');
-            // В текущей вкладке открываем ВКонтакте
             window.location.href = MESSENGER_LINKS.vk;
         }
 
@@ -562,6 +552,8 @@ ${itemsText}
                 }
 
                 const user = tg.initDataUnsafe?.user;
+                
+                // Сохраняем contact с telegram_id и telegram_name
                 const contact = {
                     name: user?.first_name + (user?.last_name ? ' ' + user?.last_name : '') || 'Покупатель',
                     phone: '0000000000',
@@ -570,7 +562,9 @@ ${itemsText}
                     deliveryType: deliveryType,
                     messenger: 'not_selected',
                     username: user?.username,
-                    userId: user?.id
+                    userId: user?.id,
+                    telegram_id: user?.id,  // Основной идентификатор
+                    telegram_name: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Покупатель'
                 };
 
                 if (!cart || !cart.items || cart.items.length === 0) {
