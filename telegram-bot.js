@@ -71,7 +71,7 @@ async function handleIncomingMessage(msg) {
         channel: 'telegram',
         externalId: String(msg.message_id),
         senderId: String(from.id),
-        senderName: `${from.first_name} ${from.last_name || ''}`.trim() || from.username,
+        senderName: `${from.first_name} ${from.last_name || ''}`.trim() || from.first_name,
         messageText: text,
         chatId: chatId,
         username: from.username,
