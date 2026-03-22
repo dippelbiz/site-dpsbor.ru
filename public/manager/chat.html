@@ -20,6 +20,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .order-info {
             font-weight: bold;
@@ -33,19 +34,28 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        .info-bar {
+            background: #f8f9fa;
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #666;
+            border-bottom: 1px solid #ecf0f1;
+        }
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
+            background: #e9ecef;
         }
         .message {
-            max-width: 70%;
-            margin-bottom: 15px;
-            padding: 10px 15px;
+            max-width: 75%;
+            margin-bottom: 10px;
+            padding: 8px 12px;
             border-radius: 10px;
             word-wrap: break-word;
+            font-size: 13px;
         }
         .message.incoming {
             background: white;
@@ -58,8 +68,8 @@
             align-self: flex-end;
         }
         .message-meta {
-            font-size: 11px;
-            margin-top: 5px;
+            font-size: 10px;
+            margin-top: 4px;
             color: #7f8c8d;
         }
         .message.outgoing .message-meta {
@@ -67,7 +77,7 @@
         }
         .chat-input {
             background: white;
-            padding: 15px;
+            padding: 12px;
             border-top: 1px solid #ecf0f1;
             display: flex;
             gap: 10px;
@@ -79,6 +89,8 @@
             border-radius: 8px;
             resize: none;
             font-family: inherit;
+            font-size: 13px;
+            height: 60px;
         }
         .chat-input button {
             background: #28a745;
@@ -87,11 +99,26 @@
             padding: 10px 20px;
             border-radius: 8px;
             cursor: pointer;
+            font-weight: bold;
+            align-self: flex-end;
+        }
+        .chat-input button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
         }
         .loading {
             text-align: center;
             padding: 20px;
             color: #7f8c8d;
+        }
+        .order-completed-badge {
+            background: #27ae60;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            display: inline-block;
+            margin-left: 8px;
         }
     </style>
 </head>
@@ -100,6 +127,7 @@
         <div class="order-info" id="order-info">Загрузка...</div>
         <button class="close-btn" onclick="window.close()">Закрыть</button>
     </div>
+    <div class="info-bar" id="info-bar"></div>
     
     <div class="messages-container" id="messages-container">
         <div class="loading">Загрузка сообщений...</div>
@@ -107,38 +135,75 @@
     
     <div class="chat-input">
         <textarea id="message-input" placeholder="Введите сообщение..." rows="2"></textarea>
-        <button onclick="sendMessage()">Отправить</button>
+        <button id="send-btn" onclick="sendMessage()">Отправить</button>
     </div>
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const orderId = urlParams.get('id');
+        let currentRecipient = null;
+        let currentOrderStatus = null;
+        let pollInterval = null;
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
-            if (!token) { window.location.href = '/manager/'; return false; }
+            if (!token) { 
+                window.location.href = '/manager/'; 
+                return false; 
+            }
             return token;
         }
         
-        async function loadOrderInfo() {
+        async function loadChat() {
             const token = checkAuth();
-            const response = await fetch(`/api/manager/order/${orderId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-            const data = await response.json();
-            if (data.order) {
-                const contact = data.order.contact || {};
-                document.getElementById('order-info').innerHTML = `Заказ №${data.order.order_number} — ${contact.name || contact.phone || 'Клиент'}`;
+            try {
+                const response = await fetch(`/api/manager/order/${orderId}/chat`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('manager_token');
+                    window.location.href = '/manager/';
+                    return;
+                }
+                
+                const data = await response.json();
+                currentRecipient = data.recipient;
+                currentOrderStatus = data.status;
+                
+                const isProcessing = data.status === 'processing';
+                const canChat = isProcessing || data.status === 'new';
+                
+                document.getElementById('order-info').innerHTML = `Заказ №${data.order_number}`;
+                document.getElementById('info-bar').innerHTML = `
+                    👤 ${data.recipient?.name || 'Клиент'} • 📱 ${getChannelName(currentRecipient?.channel)}
+                    ${!canChat ? '<span class="order-completed-badge">Чат недоступен</span>' : ''}
+                `;
+                
+                renderMessages(data.messages);
+                
+                const sendBtn = document.getElementById('send-btn');
+                const messageInput = document.getElementById('message-input');
+                
+                if (!canChat || !currentRecipient?.id) {
+                    sendBtn.disabled = true;
+                    messageInput.disabled = true;
+                    messageInput.placeholder = !currentRecipient?.id ? 'Нет данных для отправки сообщений' : 'Чат доступен только для заказов в работе';
+                } else {
+                    sendBtn.disabled = false;
+                    messageInput.disabled = false;
+                    messageInput.placeholder = 'Введите сообщение...';
+                }
+                
+            } catch (err) {
+                console.error('Error loading chat:', err);
+                document.getElementById('messages-container').innerHTML = '<div class="loading">Ошибка загрузки сообщений</div>';
             }
         }
         
-        async function loadMessages() {
-            const token = checkAuth();
-            try {
-                const response = await fetch(`/api/manager/order/${orderId}/chat`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await response.json();
-                renderMessages(data.messages);
-            } catch (err) {
-                console.error('Error loading messages:', err);
-            }
+        function getChannelName(channel) {
+            const names = { 'telegram': 'Telegram', 'vk': 'ВКонтакте', 'whatsapp': 'WhatsApp' };
+            return names[channel] || channel || 'Неизвестный канал';
         }
         
         function renderMessages(messages) {
@@ -148,92 +213,118 @@
                 return;
             }
             
-            container.innerHTML = messages.map(msg => `
-                <div class="message ${msg.direction}">
-                    <div>${escapeHtml(msg.message_text)}</div>
-                    <div class="message-meta">
-                        ${msg.sender_name || (msg.direction === 'incoming' ? 'Клиент' : 'Вы')} • 
-                        ${new Date(msg.created_at).toLocaleString()}
+            container.innerHTML = messages.map(msg => {
+                const date = new Date(msg.created_at);
+                const formattedDate = date.toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const isOutgoing = msg.direction === 'outgoing';
+                const senderName = isOutgoing ? 'Вы' : (msg.sender_name || 'Клиент');
+                
+                return `
+                    <div class="message ${msg.direction}">
+                        <div>${escapeHtml(msg.message_text)}</div>
+                        <div class="message-meta">
+                            ${senderName} • ${formattedDate}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
             
             container.scrollTop = container.scrollHeight;
         }
         
-       async function sendMessage() {
-    const input = document.getElementById('message-input');
-    const text = input.value.trim();
-    if (!text) return;
-    if (!currentRecipient?.id) {
-        alert('Нет получателя для отправки сообщения');
-        return;
-    }
-    
-    const token = checkAuth();
-    const sendBtn = document.querySelector('.chat-input button');
-    const originalText = sendBtn.textContent;
-    
-    sendBtn.disabled = true;
-    sendBtn.textContent = 'Отправка...';
-    
-    try {
-        const response = await fetch('/api/chat/send', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${token}` 
-            },
-            body: JSON.stringify({
-                order_id: currentOrderId,
-                channel: currentRecipient.channel,
-                recipient_id: currentRecipient.id,
-                message_text: text
-            })
-        });
-        
-        if (response.ok) {
-            input.value = '';
-            await loadChat(currentOrderId);
-        } else {
-            const error = await response.json();
-            alert('Ошибка: ' + error.error);
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            
+            if (!text) return;
+            
+            if (!currentRecipient?.id) {
+                alert('Нет получателя для отправки сообщения');
+                return;
+            }
+            
+            if (currentOrderStatus !== 'processing' && currentOrderStatus !== 'new') {
+                alert('Чат доступен только для заказов в работе');
+                return;
+            }
+            
+            const token = checkAuth();
+            const sendBtn = document.getElementById('send-btn');
+            const originalText = sendBtn.textContent;
+            
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Отправка...';
+            
+            try {
+                const response = await fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        channel: currentRecipient.channel,
+                        recipient_id: currentRecipient.id,
+                        message_text: text
+                    })
+                });
+                
+                if (response.ok) {
+                    input.value = '';
+                    await loadChat();
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + error.error);
+                }
+            } catch (err) {
+                console.error('Send error:', err);
+                alert('Ошибка при отправке сообщения');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = originalText;
+            }
         }
-    } catch (err) {
-        console.error('Send error:', err);
-        alert('Ошибка при отправке сообщения');
-    } finally {
-        sendBtn.disabled = false;
-        sendBtn.textContent = originalText;
-    }
-}
-
-// Добавьте обработчик Enter
-document.getElementById('message-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
+        
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
         
+        function startPolling() {
+            pollInterval = setInterval(() => {
+                if (document.hasFocus()) {
+                    loadChat();
+                }
+            }, 3000);
+        }
+        
         if (orderId) {
-            loadOrderInfo();
-            loadMessages();
-            setInterval(loadMessages, 5000);
+            checkAuth();
+            loadChat();
+            startPolling();
         } else {
             document.getElementById('order-info').innerHTML = 'Ошибка: заказ не указан';
         }
         
+        // Обработчик Enter на клавиатуре
         document.getElementById('message-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
+        });
+        
+        // Очищаем интервал при закрытии
+        window.addEventListener('beforeunload', () => {
+            if (pollInterval) clearInterval(pollInterval);
         });
     </script>
 </body>
