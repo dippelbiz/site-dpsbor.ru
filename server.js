@@ -496,6 +496,15 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at ASC
         `, [orderId]);
         
+        // Получаем все старые заказы этого пользователя
+        const oldOrdersResult = await pool.query(`
+            SELECT order_number, status, created_at 
+            FROM orders 
+            WHERE user_telegram_id = $1 
+              AND id != $2
+            ORDER BY created_at DESC
+        `, [order.user_telegram_id, orderId]);
+        
         // Получаем recipient только по telegram_id
         let recipientId = null;
         let recipientChannel = null;
@@ -509,6 +518,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             order_number: order.order_number,
             status: order.status,
             messages: messagesResult.rows,
+            old_orders: oldOrdersResult.rows,
             recipient: {
                 id: recipientId,
                 channel: recipientChannel,
@@ -520,11 +530,12 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         res.status(500).json({ error: 'Database error' });
     }
 });
+
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
-        // Получаем все заказы с сообщениями
-        const result = await pool.query(`
+        // Активные чаты (new и processing)
+        const activeResult = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
                 o.order_number,
@@ -546,20 +557,59 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     LIMIT 1
                 ) as last_message_date,
                 (
+                    SELECT direction 
+                    FROM chat_messages 
+                    WHERE order_id = o.id
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message_direction,
+                (
                     SELECT COUNT(*) 
                     FROM chat_messages 
                     WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
                 ) as unread_count
             FROM orders o
-            WHERE EXISTS (
-                SELECT 1 FROM chat_messages WHERE order_id = o.id
-            )
+            WHERE o.status IN ('new', 'processing')
+              AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
             ORDER BY last_message_date DESC NULLS LAST
         `);
         
-        console.log(`📊 Найдено заказов с сообщениями: ${result.rows.length}`);
+        // Завершенные чаты (completed)
+        const completedResult = await pool.query(`
+            SELECT DISTINCT 
+                o.id as order_id,
+                o.order_number,
+                o.contact,
+                o.user_telegram_id,
+                o.status,
+                (
+                    SELECT message_text 
+                    FROM chat_messages 
+                    WHERE order_id = o.id
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message,
+                (
+                    SELECT created_at 
+                    FROM chat_messages 
+                    WHERE order_id = o.id
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message_date,
+                (
+                    SELECT direction 
+                    FROM chat_messages 
+                    WHERE order_id = o.id
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message_direction
+            FROM orders o
+            WHERE o.status = 'completed'
+              AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
+            ORDER BY last_message_date DESC NULLS LAST
+        `);
         
-        const chats = result.rows.map(row => {
+        const formatChat = (row) => {
             const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
             return {
                 orderId: row.order_id,
@@ -572,17 +622,16 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     day: '2-digit',
                     month: '2-digit'
                 }) : null,
+                lastMessageDirection: row.last_message_direction,
                 hasUnread: row.unread_count > 0,
                 status: row.status
             };
+        };
+        
+        res.json({
+            active: activeResult.rows.map(formatChat),
+            completed: completedResult.rows.map(formatChat)
         });
-        
-        // Показываем только активные заказы (new и processing)
-        const activeChats = chats.filter(chat => chat.status === 'new' || chat.status === 'processing');
-        
-        console.log(`💬 Активных чатов: ${activeChats.length}`);
-        
-        res.json({ chats: activeChats });
     } catch (err) {
         console.error('Ошибка получения списка чатов:', err);
         res.status(500).json({ error: 'Database error' });
