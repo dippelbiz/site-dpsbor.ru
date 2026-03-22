@@ -41,12 +41,13 @@ const PROTOCOL = process.env.NODE_ENV === 'production' ? 'https' : 'http';
 const HOST = process.env.RENDER_EXTERNAL_URL || process.env.RENDER_SITE_URL || 'dpsbor.ru';
 const BASE_URL = `${PROTOCOL}://${HOST}`;
 
+console.log(`🌐 Базовый URL для webhook: ${BASE_URL}`);
+
 if (process.env.TELEGRAM_BOT_TOKEN) {
     telegramBot.initTelegramBot(process.env.TELEGRAM_BOT_TOKEN, BASE_URL);
 } else {
     console.log('⚠️ TELEGRAM_BOT_TOKEN не задан, бот не будет работать');
 }
-
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
