@@ -406,9 +406,10 @@ app.post('/api/telegram/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
-// ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
+    
+    console.log('📤 Отправка сообщения:', { order_id, channel, recipient_id, message_text: message_text?.substring(0, 50) });
     
     if (!recipient_id || !message_text) {
         return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
@@ -429,10 +430,12 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 return res.status(500).json({ error: 'Telegram бот не инициализирован' });
             }
             
+            console.log(`📨 Отправка в Telegram получателю: ${recipient_id}`);
             const sent = await telegramBot.sendTelegramMessage(recipient_id, message_text);
             if (sent) {
                 externalId = String(sent.message_id);
                 sendSuccess = true;
+                console.log(`✅ Сообщение отправлено, message_id: ${externalId}`);
             } else {
                 return res.status(500).json({ error: 'Ошибка отправки сообщения в Telegram' });
             }
@@ -458,6 +461,7 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 message_text
             ]);
             
+            console.log(`✅ Сообщение сохранено в БД, ID: ${result.rows[0].id}`);
             res.json({ success: true, messageId: result.rows[0].id });
         } else {
             res.status(500).json({ error: 'Не удалось отправить сообщение' });
