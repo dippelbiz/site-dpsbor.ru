@@ -512,6 +512,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
+        // Показываем только заказы в статусе 'processing' и 'new' (активные)
         const result = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
@@ -539,7 +540,8 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
                 ) as unread_count
             FROM orders o
-            WHERE EXISTS (
+            WHERE o.status IN ('new', 'processing')
+              AND EXISTS (
                 SELECT 1 FROM chat_messages WHERE order_id = o.id
             )
             ORDER BY last_message_date DESC NULLS LAST
@@ -552,7 +554,12 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                 orderNumber: row.order_number,
                 clientName: contact.name || contact.telegram_name || 'Клиент',
                 lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
-                lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU') : null,
+                lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    day: '2-digit',
+                    month: '2-digit'
+                }) : null,
                 hasUnread: row.unread_count > 0,
                 status: row.status
             };
