@@ -358,25 +358,25 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
             
-            console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
+            console.log(`🔍 Поиск активного заказа для telegram_id: ${messageData.senderId}`);
             
             let orderId = null;
             let userId = null;
             
-            // Ищем заказ по telegram_id в contact или user_telegram_id
+            // Ищем ТОЛЬКО активные заказы (new или processing)
             const orderResult = await pool.query(`
                 SELECT id, user_telegram_id, order_number, status FROM orders 
-                WHERE contact->>'telegram_id' = $1
-                   OR user_telegram_id = $2::bigint
+                WHERE (contact->>'telegram_id' = $1 OR user_telegram_id = $2::bigint)
+                  AND status IN ('new', 'processing')
                 ORDER BY created_at DESC LIMIT 1
             `, [messageData.senderId, messageData.senderId]);
             
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
                 userId = orderResult.rows[0].user_telegram_id;
-                console.log(`✅ Найден заказ №${orderResult.rows[0].order_number} (статус: ${orderResult.rows[0].status})`);
+                console.log(`✅ Найден активный заказ №${orderResult.rows[0].order_number} (статус: ${orderResult.rows[0].status})`);
             } else {
-                console.log(`⚠️ Заказ для telegram_id ${messageData.senderId} не найден`);
+                console.log(`⚠️ Активный заказ для telegram_id ${messageData.senderId} не найден`);
             }
             
             // Сохраняем сообщение
@@ -406,6 +406,8 @@ app.post('/api/telegram/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
+
+// ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
     
@@ -472,7 +474,6 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 // ==================== ПОЛУЧЕНИЕ ЧАТА ПО ЗАКАЗУ ====================
 app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
     const { orderId } = req.params;
