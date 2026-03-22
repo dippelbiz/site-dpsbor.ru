@@ -14,14 +14,16 @@ function initTelegramBot(token, baseUrl) {
     try {
         bot = new TelegramBot(token, { polling: false });
         
-        // Формируем URL для webhook
-        let webhookUrl = `${baseUrl}/api/telegram/webhook`;
+        // Очищаем базовый URL от возможных протоколов и слешей
+        let cleanBaseUrl = baseUrl;
         
-        // Убеждаемся, что URL использует HTTPS для продакшена
-        if (process.env.NODE_ENV === 'production' && !webhookUrl.startsWith('https://')) {
-            webhookUrl = webhookUrl.replace('http://', 'https://');
-            console.log(`🔄 Исправлен протокол на HTTPS: ${webhookUrl}`);
-        }
+        // Убираем http:// или https://
+        cleanBaseUrl = cleanBaseUrl.replace(/^https?:\/\//, '');
+        // Убираем слеш в конце
+        cleanBaseUrl = cleanBaseUrl.replace(/\/$/, '');
+        
+        // Формируем корректный webhook URL (всегда HTTPS для продакшена)
+        const webhookUrl = `https://${cleanBaseUrl}/api/telegram/webhook`;
         
         console.log(`🔗 Установка webhook: ${webhookUrl}`);
         
