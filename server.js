@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
+const telegramBot = require('./telegram-bot');
 
 const app = express();
 app.use(express.json());
@@ -34,6 +35,17 @@ pool.connect((err, client, release) => {
     release();
   }
 });
+
+// ==================== ИНИЦИАЛИЗАЦИЯ TELEGRAM БОТА ====================
+const PROTOCOL = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+const HOST = process.env.RENDER_EXTERNAL_URL || process.env.RENDER_SITE_URL || 'dpsbor.ru';
+const BASE_URL = `${PROTOCOL}://${HOST}`;
+
+if (process.env.TELEGRAM_BOT_TOKEN) {
+    telegramBot.initTelegramBot(process.env.TELEGRAM_BOT_TOKEN, BASE_URL);
+} else {
+    console.log('⚠️ TELEGRAM_BOT_TOKEN не задан, бот не будет работать');
+}
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
@@ -319,6 +331,169 @@ app.post('/api/order', async (req, res) => {
     console.error('❌ Ошибка в /api/order:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ==================== TELEGRAM WEBHOOK ====================
+app.post('/api/telegram/webhook', async (req, res) => {
+    try {
+        const update = req.body;
+        
+        if (update.message && update.message.text) {
+            const messageData = await telegramBot.handleIncomingMessage(update.message);
+            
+            if (!messageData) {
+                return res.sendStatus(200);
+            }
+            
+            let orderId = null;
+            let userId = null;
+            
+            const orderResult = await pool.query(`
+                SELECT id, user_telegram_id FROM orders 
+                WHERE contact->>'telegram_id' = $1 
+                   OR contact->>'telegram_username' = $2
+                   OR contact->>'username' = $2
+                ORDER BY created_at DESC LIMIT 1
+            `, [messageData.senderId, messageData.username]);
+            
+            if (orderResult.rows.length > 0) {
+                orderId = orderResult.rows[0].id;
+                userId = orderResult.rows[0].user_telegram_id;
+            }
+            
+            await pool.query(`
+                INSERT INTO chat_messages (
+                    order_id, channel, external_id, 
+                    sender_id, sender_name, message_text, 
+                    direction, status, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'delivered', NOW())
+                RETURNING id
+            `, [
+                orderId,
+                messageData.channel,
+                messageData.externalId,
+                messageData.senderId,
+                messageData.senderName,
+                messageData.messageText
+            ]);
+            
+            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName}`);
+        }
+        
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('❌ Ошибка в Telegram webhook:', err);
+        res.sendStatus(500);
+    }
+});
+
+// ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
+app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
+    const { order_id, channel, recipient_id, message_text } = req.body;
+    
+    if (!recipient_id || !message_text) {
+        return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
+    }
+    
+    try {
+        let externalId = null;
+        let sendSuccess = false;
+        
+        if (channel === 'telegram') {
+            if (!telegramBot.isInitialized()) {
+                return res.status(500).json({ error: 'Telegram бот не инициализирован' });
+            }
+            
+            const sent = await telegramBot.sendTelegramMessage(recipient_id, message_text);
+            if (sent) {
+                externalId = String(sent.message_id);
+                sendSuccess = true;
+            } else {
+                return res.status(500).json({ error: 'Ошибка отправки сообщения в Telegram' });
+            }
+        } else {
+            return res.status(400).json({ error: `Канал ${channel} пока не поддерживается` });
+        }
+        
+        if (sendSuccess) {
+            const result = await pool.query(`
+                INSERT INTO chat_messages (
+                    order_id, channel, external_id, 
+                    sender_id, sender_name, message_text, 
+                    direction, status, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
+                RETURNING id
+            `, [
+                order_id,
+                channel,
+                externalId,
+                String(req.userId),
+                'Менеджер',
+                message_text
+            ]);
+            
+            res.json({ success: true, messageId: result.rows[0].id });
+        } else {
+            res.status(500).json({ error: 'Не удалось отправить сообщение' });
+        }
+        
+    } catch (err) {
+        console.error('❌ Ошибка отправки сообщения:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== ПОЛУЧЕНИЕ ЧАТА ПО ЗАКАЗУ ====================
+app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
+    const { orderId } = req.params;
+    
+    try {
+        const orderResult = await pool.query(`
+            SELECT contact, user_telegram_id, order_number FROM orders WHERE id = $1
+        `, [orderId]);
+        
+        if (orderResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Заказ не найден' });
+        }
+        
+        const order = orderResult.rows[0];
+        const contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
+        
+        const messagesResult = await pool.query(`
+            SELECT * FROM chat_messages 
+            WHERE order_id = $1 OR (order_id IS NULL AND sender_id = $2)
+            ORDER BY created_at ASC
+        `, [orderId, String(order.user_telegram_id)]);
+        
+        let recipientId = null;
+        let recipientChannel = null;
+        
+        if (contact.telegram_id) {
+            recipientId = contact.telegram_id;
+            recipientChannel = 'telegram';
+        } else if (contact.telegram_username) {
+            recipientId = contact.telegram_username;
+            recipientChannel = 'telegram';
+        } else if (contact.username) {
+            recipientId = contact.username;
+            recipientChannel = 'telegram';
+        }
+        
+        res.json({
+            order_number: order.order_number,
+            messages: messagesResult.rows,
+            recipient: {
+                id: recipientId,
+                channel: recipientChannel,
+                name: contact.name || contact.phone || 'Клиент'
+            }
+        });
+    } catch (err) {
+        console.error('❌ Ошибка получения чата:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
 });
 
 // ==================== ПАНЕЛЬ УПРАВЛЕНИЯ (MANAGER) ====================
