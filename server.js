@@ -37,8 +37,7 @@ pool.connect((err, client, release) => {
 });
 
 // ==================== ИНИЦИАЛИЗАЦИЯ TELEGRAM БОТА ====================
-// Получаем URL сайта из переменной окружения (безопасно)
-// Приоритет: SITE_URL > RENDER_EXTERNAL_URL > RENDER_SITE_URL > dpsbor.ru по умолчанию
+// Получаем URL сайта из переменной окружения
 let BASE_URL = process.env.SITE_URL;
 
 if (!BASE_URL) {
@@ -51,7 +50,6 @@ if (!BASE_URL) {
     }
 }
 
-// Убираем слеш в конце
 BASE_URL = BASE_URL.replace(/\/$/, '');
 
 console.log(`🌐 Базовый URL для webhook: ${BASE_URL}`);
@@ -61,6 +59,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 } else {
     console.log('⚠️ TELEGRAM_BOT_TOKEN не задан, бот не будет работать');
 }
+
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -506,6 +505,89 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         });
     } catch (err) {
         console.error('❌ Ошибка получения чата:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
+app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT DISTINCT 
+                o.id as order_id,
+                o.order_number,
+                o.contact,
+                o.user_telegram_id,
+                (
+                    SELECT message_text 
+                    FROM chat_messages 
+                    WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message,
+                (
+                    SELECT created_at 
+                    FROM chat_messages 
+                    WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ) as last_message_date,
+                (
+                    SELECT COUNT(*) 
+                    FROM chat_messages 
+                    WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
+                ) as unread_count
+            FROM orders o
+            WHERE EXISTS (
+                SELECT 1 FROM chat_messages 
+                WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+            )
+            ORDER BY last_message_date DESC NULLS LAST
+        `);
+        
+        const chats = result.rows.map(row => {
+            const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
+            return {
+                orderId: row.order_id,
+                orderNumber: row.order_number,
+                clientName: contact.name || contact.phone || 'Клиент',
+                lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
+                lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU') : null,
+                hasUnread: row.unread_count > 0
+            };
+        });
+        
+        res.json({ chats });
+    } catch (err) {
+        console.error('Ошибка получения списка чатов:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==================== ИНФОРМАЦИЯ О СООБЩЕНИЯХ ДЛЯ ЗАКАЗА ====================
+app.get('/api/manager/order/:orderId/messages-info', checkManagerAuth, async (req, res) => {
+    const { orderId } = req.params;
+    
+    try {
+        const messagesResult = await pool.query(`
+            SELECT message_text, created_at, direction
+            FROM chat_messages 
+            WHERE order_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+        `, [orderId]);
+        
+        const hasMessages = messagesResult.rows.length > 0;
+        const lastMessage = hasMessages ? messagesResult.rows[0].message_text : null;
+        const lastMessageDate = hasMessages ? messagesResult.rows[0].created_at : null;
+        
+        res.json({
+            hasMessages,
+            lastMessage: lastMessage ? lastMessage.substring(0, 100) : null,
+            lastMessageDate: lastMessageDate ? new Date(lastMessageDate).toLocaleString('ru-RU') : null
+        });
+    } catch (err) {
+        console.error('Ошибка получения информации о сообщениях:', err);
         res.status(500).json({ error: 'Database error' });
     }
 });
