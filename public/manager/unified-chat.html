@@ -11,16 +11,18 @@
             background: #f5f5f5;
             height: 100vh;
             display: flex;
+            overflow: hidden;
         }
         .sidebar-chats {
-            width: 350px;
+            width: 320px;
             background: white;
             border-right: 1px solid #ecf0f1;
             display: flex;
             flex-direction: column;
+            flex-shrink: 0;
         }
         .sidebar-header {
-            padding: 20px;
+            padding: 15px 20px;
             border-bottom: 1px solid #ecf0f1;
             background: #2c3e50;
             color: white;
@@ -28,12 +30,17 @@
         .sidebar-header h2 {
             font-size: 18px;
         }
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
         .chats-list {
             flex: 1;
             overflow-y: auto;
         }
         .chat-item {
-            padding: 15px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ecf0f1;
             cursor: pointer;
             transition: background 0.2s;
@@ -48,9 +55,32 @@
         .chat-item.has-unread {
             background: #fff3e0;
         }
+        .chat-item.completed {
+            opacity: 0.6;
+            background: #f5f5f5;
+        }
         .chat-order {
             font-weight: bold;
             color: #2c3e50;
+            font-size: 14px;
+        }
+        .chat-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 8px;
+        }
+        .chat-status.completed {
+            background: #27ae60;
+            color: white;
+        }
+        .chat-status.processing {
+            background: #f39c12;
+            color: white;
+        }
+        .chat-status.new {
+            background: #3498db;
+            color: white;
         }
         .chat-client {
             font-size: 12px;
@@ -58,15 +88,15 @@
             margin-top: 4px;
         }
         .chat-last-message {
-            font-size: 13px;
+            font-size: 12px;
             color: #666;
-            margin-top: 8px;
+            margin-top: 6px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .chat-time {
-            font-size: 11px;
+            font-size: 10px;
             color: #95a5a6;
             float: right;
         }
@@ -80,34 +110,37 @@
             display: flex;
             flex-direction: column;
             background: #e9ecef;
+            min-width: 0;
         }
         .chat-header {
             background: white;
-            padding: 15px 20px;
+            padding: 12px 20px;
             border-bottom: 1px solid #ecf0f1;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .chat-header h3 {
             color: #2c3e50;
+            font-size: 16px;
         }
         .chat-header p {
             font-size: 12px;
             color: #7f8c8d;
-            margin-top: 5px;
+            margin-top: 3px;
         }
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
         }
         .message {
-            max-width: 70%;
-            margin-bottom: 15px;
-            padding: 10px 15px;
+            max-width: 75%;
+            margin-bottom: 12px;
+            padding: 8px 12px;
             border-radius: 10px;
             word-wrap: break-word;
+            font-size: 13px;
         }
         .message.incoming {
             background: white;
@@ -120,8 +153,8 @@
             align-self: flex-end;
         }
         .message-meta {
-            font-size: 11px;
-            margin-top: 5px;
+            font-size: 10px;
+            margin-top: 4px;
             color: #7f8c8d;
         }
         .message.outgoing .message-meta {
@@ -129,33 +162,40 @@
         }
         .chat-input {
             background: white;
-            padding: 15px;
+            padding: 12px;
             border-top: 1px solid #ecf0f1;
             display: flex;
             gap: 10px;
         }
         .chat-input textarea {
             flex: 1;
-            padding: 10px;
+            padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 8px;
             resize: none;
             font-family: inherit;
-            font-size: 14px;
+            font-size: 13px;
+            height: 60px;
         }
         .chat-input button {
             background: #28a745;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            align-self: flex-end;
+        }
+        .chat-input button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
         }
         .loading {
             text-align: center;
             padding: 20px;
             color: #7f8c8d;
+            font-size: 13px;
         }
         .no-chat-selected {
             flex: 1;
@@ -163,6 +203,15 @@
             align-items: center;
             justify-content: center;
             color: #7f8c8d;
+            font-size: 14px;
+        }
+        .order-completed-badge {
+            background: #27ae60;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            display: inline-block;
         }
     </style>
 </head>
@@ -170,6 +219,7 @@
     <div class="sidebar-chats">
         <div class="sidebar-header">
             <h2>💬 Все диалоги</h2>
+            <p>Активные и завершенные заказы</p>
         </div>
         <div class="chats-list" id="chats-list">
             <div class="loading">Загрузка диалогов...</div>
@@ -185,6 +235,7 @@
     <script>
         let currentOrderId = null;
         let currentRecipient = null;
+        let currentOrderStatus = null;
         let pollInterval = null;
         
         function checkAuth() {
@@ -213,16 +264,34 @@
                 return;
             }
             
-            container.innerHTML = chats.map(chat => `
-                <div class="chat-item ${chat.hasUnread ? 'has-unread' : ''}" onclick="loadChat(${chat.orderId})">
-                    <div class="chat-preview">
-                        <span class="chat-order">Заказ №${chat.orderNumber}</span>
-                        <span class="chat-time">${chat.lastMessageDate || ''}</span>
+            container.innerHTML = chats.map(chat => {
+                let statusClass = '';
+                let statusText = '';
+                if (chat.status === 'completed') {
+                    statusClass = 'completed';
+                    statusText = '✅ Завершен';
+                } else if (chat.status === 'processing') {
+                    statusClass = 'processing';
+                    statusText = '📋 В работе';
+                } else if (chat.status === 'new') {
+                    statusClass = 'new';
+                    statusText = '🆕 Новый';
+                }
+                
+                return `
+                    <div class="chat-item ${chat.hasUnread ? 'has-unread' : ''} ${chat.status === 'completed' ? 'completed' : ''}" 
+                         onclick="loadChat(${chat.orderId})"
+                         data-order-id="${chat.orderId}">
+                        <div class="chat-preview">
+                            <span class="chat-order">Заказ №${chat.orderNumber}</span>
+                            <span class="chat-status ${statusClass}">${statusText}</span>
+                            <span class="chat-time">${chat.lastMessageDate || ''}</span>
+                        </div>
+                        <div class="chat-client">${chat.clientName}</div>
+                        <div class="chat-last-message">${chat.lastMessage || 'Нет сообщений'}</div>
                     </div>
-                    <div class="chat-client">${chat.clientName}</div>
-                    <div class="chat-last-message">${chat.lastMessage || 'Нет сообщений'}</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
         
         async function loadChat(orderId) {
@@ -231,9 +300,7 @@
             
             // Подсвечиваем активный чат
             document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-            const activeItem = Array.from(document.querySelectorAll('.chat-item')).find(
-                el => el.textContent.includes(`Заказ №${orderId}`)
-            );
+            const activeItem = document.querySelector(`.chat-item[data-order-id="${orderId}"]`);
             if (activeItem) activeItem.classList.add('active');
             
             try {
@@ -242,6 +309,7 @@
                 });
                 const data = await response.json();
                 currentRecipient = data.recipient;
+                currentOrderStatus = data.status;
                 renderChatWindow(data);
             } catch (err) {
                 console.error('Error loading chat:', err);
@@ -251,30 +319,36 @@
         function renderChatWindow(data) {
             const container = document.getElementById('main-chat');
             const channelName = getChannelName(currentRecipient?.channel);
+            const isCompleted = data.status === 'completed';
             
             container.innerHTML = `
                 <div class="chat-header">
                     <h3>Заказ №${data.order_number}</h3>
-                    <p>👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p>
+                    <p>
+                        👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}
+                        ${isCompleted ? '<span class="order-completed-badge" style="margin-left: 10px;">✅ Заказ завершен</span>' : ''}
+                    </p>
                 </div>
                 <div class="messages-container" id="messages-container">
                     ${renderMessages(data.messages)}
                 </div>
                 <div class="chat-input">
-                    <textarea id="message-input" placeholder="Введите сообщение..." rows="2"></textarea>
-                    <button onclick="sendMessage()">Отправить</button>
+                    <textarea id="message-input" placeholder="${isCompleted ? 'Заказ завершен, отправка сообщений недоступна' : 'Введите сообщение...'}" rows="2" ${isCompleted ? 'disabled' : ''}></textarea>
+                    <button onclick="sendMessage()" ${isCompleted ? 'disabled' : ''}>Отправить</button>
                 </div>
             `;
             
             const messagesContainer = document.getElementById('messages-container');
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             
-            document.getElementById('message-input').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
+            if (!isCompleted) {
+                document.getElementById('message-input').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
+            }
         }
         
         function renderMessages(messages) {
@@ -306,6 +380,11 @@
         }
         
         async function sendMessage() {
+            if (currentOrderStatus === 'completed') {
+                alert('Заказ завершен, отправка сообщений недоступна');
+                return;
+            }
+            
             const input = document.getElementById('message-input');
             const text = input.value.trim();
             if (!text) return;
