@@ -129,6 +129,10 @@
         .chat-btn {
             background: #3498db;
         }
+        .chat-btn.disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
         .items-list {
             font-size: 12px;
             max-width: 200px;
@@ -223,10 +227,7 @@
                 if (response.status === 401) { logout(); return; }
                 const data = await response.json();
                 ordersData = data.orders;
-                
-                // Загружаем информацию о сообщениях для каждого заказа
                 await loadMessagesInfo();
-                
                 renderOrders(ordersData);
             } catch (err) {
                 console.error('Error loading orders:', err);
@@ -274,6 +275,10 @@
                 
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
+                const isCompleted = order.status === 'completed';
+                
+                // Кнопка чата только для заказов в работе
+                const showChatButton = isProcessing;
                 
                 const hasMessages = order.hasMessages;
                 const lastMessagePreview = order.lastMessage ? 
@@ -289,7 +294,7 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            <button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>
+                            ${showChatButton ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -297,11 +302,11 @@
         }
         
         function openUnifiedChat() {
-            window.open('/manager/unified-chat.html', '_blank', 'width=1200,height=800');
+            window.open('/manager/unified-chat.html', '_blank', 'width=800,height=600');
         }
         
         function openChat(orderId) {
-            window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=700');
+            window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
         }
         
         async function takeOrder(orderId) {
@@ -354,7 +359,6 @@
         loadUser();
         loadOrders();
         
-        // Обновляем список заказов каждые 30 секунд
         setInterval(loadOrders, 30000);
     </script>
 </body>
