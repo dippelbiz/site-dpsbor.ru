@@ -138,18 +138,13 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .has-messages {
-            background: #e8f5e9;
-            border-left: 3px solid #27ae60;
+        /* Подсветка для заказов в работе */
+        .row-processing {
+            background: #fff8e7;
+            border-left: 4px solid #f39c12;
         }
-        .message-preview {
-            font-size: 11px;
-            color: #666;
-            margin-top: 4px;
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        .row-processing:hover {
+            background: #fff3e0;
         }
     </style>
 </head>
@@ -205,7 +200,6 @@
 
     <script>
         let currentUserRole = '';
-        let ordersData = [];
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -222,30 +216,9 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (response.status === 401) { logout(); return; }
                 const data = await response.json();
-                ordersData = data.orders;
-                await loadMessagesInfo();
-                renderOrders(ordersData);
+                renderOrders(data.orders);
             } catch (err) {
                 console.error('Error loading orders:', err);
-            }
-        }
-        
-        async function loadMessagesInfo() {
-            const token = checkAuth();
-            for (let order of ordersData) {
-                try {
-                    const response = await fetch(`/api/manager/order/${order.id}/messages-info`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        order.hasMessages = data.hasMessages;
-                        order.lastMessage = data.lastMessage;
-                        order.lastMessageDate = data.lastMessageDate;
-                    }
-                } catch (err) {
-                    console.error('Error loading messages info:', err);
-                }
             }
         }
         
@@ -271,17 +244,17 @@
                 
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
+                const isCompleted = order.status === 'completed';
                 
                 // Кнопка чата ТОЛЬКО для заказов в работе
                 const showChatButton = isProcessing;
                 
-                const hasMessages = order.hasMessages;
-                const lastMessagePreview = order.lastMessage ? 
-                    `<div class="message-preview">📨 ${order.lastMessage.substring(0, 40)}${order.lastMessage.length > 40 ? '...' : ''}</div>` : '';
+                // Подсветка строки для заказов в работе
+                const rowClass = isProcessing ? 'row-processing' : '';
                 
                 return `
-                    <tr class="${hasMessages ? 'has-messages' : ''}">
-                        <td><strong>${order.order_number}</strong>${lastMessagePreview}</td>
+                    <tr class="${rowClass}">
+                        <td><strong>${order.order_number}</strong></td>
                         <td>${order.contact?.name || order.contact?.phone || '-'}</td>
                         <td class="items-list">${itemsHtml}</td>
                         <td>${order.total} ₽</td>
@@ -354,6 +327,7 @@
         loadUser();
         loadOrders();
         
+        // Обновляем каждые 30 секунд
         setInterval(loadOrders, 30000);
     </script>
 </body>
