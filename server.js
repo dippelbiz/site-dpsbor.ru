@@ -361,13 +361,12 @@ app.post('/api/telegram/webhook', async (req, res) => {
             let orderId = null;
             let userId = null;
             
+            // Ищем заказ ТОЛЬКО по telegram_id
             const orderResult = await pool.query(`
                 SELECT id, user_telegram_id FROM orders 
-                WHERE contact->>'telegram_id' = $1 
-                   OR contact->>'telegram_username' = $2
-                   OR contact->>'username' = $2
+                WHERE contact->>'telegram_id' = $1
                 ORDER BY created_at DESC LIMIT 1
-            `, [messageData.senderId, messageData.username]);
+            `, [messageData.senderId]);
             
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
@@ -391,7 +390,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 messageData.messageText
             ]);
             
-            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName}`);
+            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
         }
         
         res.sendStatus(200);
@@ -400,7 +399,6 @@ app.post('/api/telegram/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
-
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
@@ -480,17 +478,12 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at ASC
         `, [orderId, String(order.user_telegram_id)]);
         
+        // Получаем recipient только по telegram_id
         let recipientId = null;
         let recipientChannel = null;
         
         if (contact.telegram_id) {
             recipientId = contact.telegram_id;
-            recipientChannel = 'telegram';
-        } else if (contact.telegram_username) {
-            recipientId = contact.telegram_username;
-            recipientChannel = 'telegram';
-        } else if (contact.username) {
-            recipientId = contact.username;
             recipientChannel = 'telegram';
         }
         
@@ -500,7 +493,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipient: {
                 id: recipientId,
                 channel: recipientChannel,
-                name: contact.name || contact.phone || 'Клиент'
+                name: contact.name || contact.telegram_name || 'Клиент'
             }
         });
     } catch (err) {
@@ -535,12 +528,16 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                 (
                     SELECT COUNT(*) 
                     FROM chat_messages 
-                    WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
+                    WHERE (order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR)))
+                      AND direction = 'incoming' 
+                      AND status != 'read'
                 ) as unread_count
             FROM orders o
-            WHERE EXISTS (
+            WHERE o.user_telegram_id IS NOT NULL
+              AND EXISTS (
                 SELECT 1 FROM chat_messages 
-                WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+                WHERE order_id = o.id 
+                   OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
             )
             ORDER BY last_message_date DESC NULLS LAST
         `);
@@ -550,7 +547,7 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
             return {
                 orderId: row.order_id,
                 orderNumber: row.order_number,
-                clientName: contact.name || contact.phone || 'Клиент',
+                clientName: contact.name || contact.telegram_name || 'Клиент',
                 lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
                 lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU') : null,
                 hasUnread: row.unread_count > 0
@@ -563,7 +560,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
         res.status(500).json({ error: 'Database error' });
     }
 });
-
 // ==================== ИНФОРМАЦИЯ О СООБЩЕНИЯХ ДЛЯ ЗАКАЗА ====================
 app.get('/api/manager/order/:orderId/messages-info', checkManagerAuth, async (req, res) => {
     const { orderId } = req.params;
