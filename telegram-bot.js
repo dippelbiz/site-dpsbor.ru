@@ -5,31 +5,37 @@ let bot = null;
 let botInitialized = false;
 
 // Функция инициализации бота
-function initTelegramBot(token, webhookUrl) {
+function initTelegramBot(token, baseUrl) {
     if (!token) {
-        console.log('⚠️ TELEGRAM_BOT_TOKEN не задан, бот не запущен');
+        console.log('⚠️ TELEGRAM_BOT_TOKEN не задан');
         return null;
     }
     
     try {
-        // Создаем экземпляр бота без polling, будем использовать webhook
         bot = new TelegramBot(token, { polling: false });
         
-        // Устанавливаем вебхук
-        const webhookPath = `${webhookUrl}/api/telegram/webhook`;
+        // Формируем URL для webhook
+        let webhookUrl = `${baseUrl}/api/telegram/webhook`;
         
-        bot.setWebHook(webhookPath).then(() => {
-            console.log(`✅ Telegram webhook установлен: ${webhookPath}`);
+        // Убеждаемся, что URL использует HTTPS для продакшена
+        if (process.env.NODE_ENV === 'production' && !webhookUrl.startsWith('https://')) {
+            webhookUrl = webhookUrl.replace('http://', 'https://');
+            console.log(`🔄 Исправлен протокол на HTTPS: ${webhookUrl}`);
+        }
+        
+        console.log(`🔗 Установка webhook: ${webhookUrl}`);
+        
+        bot.setWebHook(webhookUrl).then(() => {
+            console.log(`✅ Telegram webhook установлен: ${webhookUrl}`);
             botInitialized = true;
         }).catch(err => {
             console.error('❌ Ошибка установки webhook:', err.message);
+            console.error('   Проверьте, что URL доступен из интернета');
         });
         
-        console.log('🤖 Telegram бот инициализирован');
         return bot;
-        
     } catch (err) {
-        console.error('❌ Ошибка инициализации Telegram бота:', err.message);
+        console.error('❌ Ошибка инициализации бота:', err.message);
         return null;
     }
 }
@@ -43,6 +49,7 @@ async function sendTelegramMessage(chatId, text) {
     
     try {
         const sent = await bot.sendMessage(chatId, text);
+        console.log(`✅ Сообщение отправлено в Telegram (chatId: ${chatId})`);
         return sent;
     } catch (err) {
         console.error('❌ Ошибка отправки сообщения в Telegram:', err.message);
@@ -50,13 +57,13 @@ async function sendTelegramMessage(chatId, text) {
     }
 }
 
-// Функция обработки входящего сообщения (будет вызываться из server.js)
+// Функция обработки входящего сообщения
 async function handleIncomingMessage(msg) {
     const chatId = msg.chat.id;
     const text = msg.text;
     const from = msg.from;
     
-    console.log(`📨 Telegram сообщение от ${from.id} (${from.first_name}): ${text.substring(0, 50)}`);
+    console.log(`📨 Telegram сообщение от ${from.id} (${from.first_name}): ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
     
     return {
         channel: 'telegram',
@@ -71,11 +78,21 @@ async function handleIncomingMessage(msg) {
     };
 }
 
+// Получить статус бота
+function isInitialized() {
+    return botInitialized;
+}
+
+// Получить экземпляр бота
+function getBot() {
+    return bot;
+}
+
 // Экспортируем функции
 module.exports = {
     initTelegramBot,
     sendTelegramMessage,
     handleIncomingMessage,
-    getBot: () => bot,
-    isInitialized: () => botInitialized
+    isInitialized,
+    getBot
 };
