@@ -89,17 +89,18 @@
             padding: 2px 5px;
             border-radius: 8px;
             margin-left: 6px;
+            display: inline-block;
         }
         .chat-status.completed {
             background: #95a5a6;
             color: white;
         }
         .chat-status.processing {
-            background: #f39c12;
+            background: #3498db;
             color: white;
         }
         .chat-status.new {
-            background: #3498db;
+            background: #2ecc71;
             color: white;
         }
         .chat-client {
@@ -330,13 +331,13 @@
                 let statusText = '';
                 if (chat.status === 'completed') {
                     statusClass = 'completed';
-                    statusText = '✅ Завершен';
+                    statusText = 'Завершен';
                 } else if (chat.status === 'processing') {
                     statusClass = 'processing';
-                    statusText = '📋 В работе';
+                    statusText = 'В работе';
                 } else if (chat.status === 'new') {
                     statusClass = 'new';
-                    statusText = '🆕 Новый';
+                    statusText = 'Новый';
                 }
                 
                 const hasUnread = chat.lastMessageDirection === 'incoming';
@@ -374,8 +375,25 @@
                 currentOrderStatus = data.status;
                 currentOldOrders = data.old_orders || [];
                 renderChatWindow(data);
+                
+                // После открытия чата, отмечаем сообщения как прочитанные
+                await markMessagesAsRead(orderId);
             } catch (err) {
                 console.error('Error loading chat:', err);
+            }
+        }
+        
+        async function markMessagesAsRead(orderId) {
+            const token = checkAuth();
+            try {
+                await fetch(`/api/manager/chat/mark-read/${orderId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                // Обновляем список чатов, чтобы убрать подсветку
+                loadChats();
+            } catch (err) {
+                console.error('Error marking messages as read:', err);
             }
         }
         
