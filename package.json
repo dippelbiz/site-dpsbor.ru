@@ -1,18 +1,19 @@
 {
-  "name": "telegram-mini-shop",
+  "name": "dpsbor-shop",
   "version": "1.0.0",
-  "description": "Mini app for Telegram with catalog, cart and orders",
+  "description": "Интернет-магазин орехов и сухофруктов ДП СБОР",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["shop", "nuts", "dried fruits", "ecommerce"],
+  "author": "DP SBOR",
   "license": "ISC",
   "dependencies": {
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
-    "pg": "^8.18.0"
+    "pg": "^8.18.0",
+    "node-telegram-bot-api": "^0.69.0"
   }
 }
