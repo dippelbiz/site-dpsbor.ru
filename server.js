@@ -530,7 +530,43 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         res.status(500).json({ error: 'Database error' });
     }
 });
+// ==================== ПРОВЕРКА НЕПРОЧИТАННЫХ СООБЩЕНИЙ ====================
+app.get('/api/manager/order/:orderId/unread', checkManagerAuth, async (req, res) => {
+    const { orderId } = req.params;
+    
+    try {
+        const result = await pool.query(`
+            SELECT COUNT(*) > 0 as has_unread
+            FROM chat_messages 
+            WHERE order_id = $1 
+              AND direction = 'incoming' 
+              AND status != 'read'
+        `, [orderId]);
+        
+        res.json({ hasUnread: result.rows[0].has_unread });
+    } catch (err) {
+        console.error('Ошибка проверки непрочитанных сообщений:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
 
+// ==================== ОТМЕТИТЬ СООБЩЕНИЯ КАК ПРОЧИТАННЫЕ ====================
+app.post('/api/manager/chat/mark-read/:orderId', checkManagerAuth, async (req, res) => {
+    const { orderId } = req.params;
+    
+    try {
+        await pool.query(`
+            UPDATE chat_messages 
+            SET status = 'read' 
+            WHERE order_id = $1 AND direction = 'incoming'
+        `, [orderId]);
+        
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Ошибка отметки сообщений как прочитанных:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
