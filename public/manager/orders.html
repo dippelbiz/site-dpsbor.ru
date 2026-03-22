@@ -120,6 +120,7 @@
             display: flex;
             gap: 5px;
             flex-wrap: wrap;
+            position: relative;
         }
         .take-btn {
             background: #f39c12;
@@ -131,14 +132,10 @@
             background: #3498db;
             position: relative;
         }
-        .chat-btn.has-unread {
-            background: #e67e22;
-        }
-        .chat-btn.has-unread::after {
-            content: "";
+        .unread-dot {
             position: absolute;
-            top: -3px;
-            right: -3px;
+            top: -4px;
+            right: -4px;
             width: 10px;
             height: 10px;
             background-color: #e74c3c;
@@ -311,7 +308,7 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${showChatButton ? `<button class="chat-btn ${hasUnread ? 'has-unread' : ''}" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
+                            ${showChatButton ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат${hasUnread ? '<span class="unread-dot"></span>' : ''}</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -324,7 +321,6 @@
         
         function openChat(orderId) {
             window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
-            // Отмечаем как прочитанное при открытии
             markAsRead(orderId);
         }
         
