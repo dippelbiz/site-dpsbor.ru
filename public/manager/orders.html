@@ -129,10 +129,6 @@
         .chat-btn {
             background: #3498db;
         }
-        .chat-btn.disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-        }
         .items-list {
             font-size: 12px;
             max-width: 200px;
@@ -275,9 +271,8 @@
                 
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
-                const isCompleted = order.status === 'completed';
                 
-                // Кнопка чата только для заказов в работе
+                // Кнопка чата ТОЛЬКО для заказов в работе
                 const showChatButton = isProcessing;
                 
                 const hasMessages = order.hasMessages;
