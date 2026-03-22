@@ -110,11 +110,24 @@
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 12px;
+            font-weight: bold;
         }
-        .status-new { background: #3498db; color: white; }
-        .status-processing { background: #f39c12; color: white; }
-        .status-completed { background: #27ae60; color: white; }
-        .status-cancelled { background: #e74c3c; color: white; }
+        .status-new { 
+            background: #2ecc71; 
+            color: white; 
+        }
+        .status-processing { 
+            background: #3498db; 
+            color: white; 
+        }
+        .status-completed { 
+            background: #27ae60; 
+            color: white; 
+        }
+        .status-cancelled { 
+            background: #e74c3c; 
+            color: white; 
+        }
         .action-buttons {
             display: flex;
             gap: 5px;
@@ -138,13 +151,28 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        /* Подсветка для заказов в работе */
+        
+        /* Подсветка строк по статусам */
+        .row-new {
+            background: rgba(46, 204, 113, 0.1);
+            border-left: 4px solid #2ecc71;
+        }
+        .row-new:hover {
+            background: rgba(46, 204, 113, 0.2);
+        }
+        
         .row-processing {
-            background: #fff8e7;
-            border-left: 4px solid #f39c12;
+            background: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid #3498db;
         }
         .row-processing:hover {
-            background: #fff3e0;
+            background: rgba(52, 152, 219, 0.2);
+        }
+        
+        /* Завершенные и отмененные без подсветки, только при наведении */
+        .row-completed:hover,
+        .row-cancelled:hover {
+            background: #f8f9fa;
         }
     </style>
 </head>
@@ -170,10 +198,10 @@
         <div class="filters">
             <select id="status-filter">
                 <option value="all">Все статусы</option>
-                <option value="new">Новые</option>
-                <option value="processing">В работе</option>
-                <option value="completed">Выполненные</option>
-                <option value="cancelled">Отменённые</option>
+                <option value="new">🟢 Новые</option>
+                <option value="processing">🔵 В работе</option>
+                <option value="completed">✅ Выполненные</option>
+                <option value="cancelled">❌ Отменённые</option>
             </select>
             <button onclick="loadOrders()">Обновить</button>
             <button onclick="openUnifiedChat()" style="background: #9b59b6;">💬 Все чаты</button>
@@ -245,12 +273,22 @@
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
                 const isCompleted = order.status === 'completed';
+                const isCancelled = order.status === 'cancelled';
                 
                 // Кнопка чата ТОЛЬКО для заказов в работе
                 const showChatButton = isProcessing;
                 
-                // Подсветка строки для заказов в работе
-                const rowClass = isProcessing ? 'row-processing' : '';
+                // Определяем класс подсветки строки
+                let rowClass = '';
+                if (isNew) {
+                    rowClass = 'row-new';
+                } else if (isProcessing) {
+                    rowClass = 'row-processing';
+                } else if (isCompleted) {
+                    rowClass = 'row-completed';
+                } else if (isCancelled) {
+                    rowClass = 'row-cancelled';
+                }
                 
                 return `
                     <tr class="${rowClass}">
