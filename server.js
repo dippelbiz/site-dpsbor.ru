@@ -37,9 +37,24 @@ pool.connect((err, client, release) => {
 });
 
 // ==================== ИНИЦИАЛИЗАЦИЯ TELEGRAM БОТА ====================
-const PROTOCOL = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-const HOST = process.env.RENDER_EXTERNAL_URL || process.env.RENDER_SITE_URL || 'dpsbor.ru';
-const BASE_URL = `${PROTOCOL}://${HOST}`;
+// Определяем базовый URL для webhook
+let BASE_URL;
+
+if (process.env.RENDER_EXTERNAL_URL) {
+    // Render автоматически дает URL с протоколом
+    BASE_URL = process.env.RENDER_EXTERNAL_URL;
+} else if (process.env.RENDER_SITE_URL) {
+    // Если указан RENDER_SITE_URL, добавляем https
+    BASE_URL = process.env.RENDER_SITE_URL.startsWith('https') 
+        ? process.env.RENDER_SITE_URL 
+        : `https://${process.env.RENDER_SITE_URL}`;
+} else {
+    // По умолчанию для продакшена используем dpsbor.ru
+    BASE_URL = 'https://dpsbor.ru';
+}
+
+// Убираем лишний слеш в конце, если есть
+BASE_URL = BASE_URL.replace(/\/$/, '');
 
 console.log(`🌐 Базовый URL для webhook: ${BASE_URL}`);
 
