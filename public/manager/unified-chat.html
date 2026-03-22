@@ -69,15 +69,8 @@
             background: #f8f9fa;
         }
         .chat-item.active {
-            background: #e8f5e9;
-            border-left: 3px solid #27ae60;
-        }
-        .chat-item.has-unread {
             background: rgba(52, 152, 219, 0.15);
             border-left: 3px solid #3498db;
-        }
-        .chat-item.has-unread:hover {
-            background: rgba(52, 152, 219, 0.25);
         }
         .chat-order {
             font-weight: bold;
@@ -125,6 +118,15 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+        .unread-dot {
+            position: absolute;
+            top: 12px;
+            left: 8px;
+            width: 8px;
+            height: 8px;
+            background-color: #e74c3c;
+            border-radius: 50%;
         }
         .main-chat {
             flex: 1;
@@ -343,9 +345,10 @@
                 const hasUnread = chat.lastMessageDirection === 'incoming';
                 
                 return `
-                    <div class="chat-item ${hasUnread ? 'has-unread' : ''}" 
+                    <div class="chat-item ${currentOrderId === chat.orderId ? 'active' : ''}" 
                          onclick="loadChat(${chat.orderId})"
                          data-order-id="${chat.orderId}">
+                        ${hasUnread ? '<span class="unread-dot"></span>' : ''}
                         <div class="chat-preview">
                             <span class="chat-order">№${chat.orderNumber}</span>
                             <span class="chat-status ${statusClass}">${statusText}</span>
@@ -362,6 +365,7 @@
             const token = checkAuth();
             currentOrderId = orderId;
             
+            // Обновляем активный класс в списке
             document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
             const activeItem = document.querySelector(`.chat-item[data-order-id="${orderId}"]`);
             if (activeItem) activeItem.classList.add('active');
@@ -376,7 +380,7 @@
                 currentOldOrders = data.old_orders || [];
                 renderChatWindow(data);
                 
-                // После открытия чата, отмечаем сообщения как прочитанные
+                // Отмечаем сообщения как прочитанные
                 await markMessagesAsRead(orderId);
             } catch (err) {
                 console.error('Error loading chat:', err);
@@ -390,7 +394,7 @@
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                // Обновляем список чатов, чтобы убрать подсветку
+                // Обновляем список чатов, чтобы убрать красную точку
                 loadChats();
             } catch (err) {
                 console.error('Error marking messages as read:', err);
