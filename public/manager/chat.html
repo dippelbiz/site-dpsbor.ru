@@ -161,27 +161,60 @@
             container.scrollTop = container.scrollHeight;
         }
         
-        async function sendMessage() {
-            const input = document.getElementById('message-input');
-            const text = input.value.trim();
-            if (!text) return;
-            
-            const token = checkAuth();
-            const response = await fetch(`/api/manager/order/${orderId}/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ message: text })
-            });
-            
-            if (response.ok) {
-                input.value = '';
-                loadMessages();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + error.error);
-            }
-        }
+       async function sendMessage() {
+    const input = document.getElementById('message-input');
+    const text = input.value.trim();
+    if (!text) return;
+    if (!currentRecipient?.id) {
+        alert('Нет получателя для отправки сообщения');
+        return;
+    }
+    
+    const token = checkAuth();
+    const sendBtn = document.querySelector('.chat-input button');
+    const originalText = sendBtn.textContent;
+    
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Отправка...';
+    
+    try {
+        const response = await fetch('/api/chat/send', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({
+                order_id: currentOrderId,
+                channel: currentRecipient.channel,
+                recipient_id: currentRecipient.id,
+                message_text: text
+            })
+        });
         
+        if (response.ok) {
+            input.value = '';
+            await loadChat(currentOrderId);
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + error.error);
+        }
+    } catch (err) {
+        console.error('Send error:', err);
+        alert('Ошибка при отправке сообщения');
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalText;
+    }
+}
+
+// Добавьте обработчик Enter
+document.getElementById('message-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
