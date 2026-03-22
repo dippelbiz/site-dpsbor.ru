@@ -408,6 +408,12 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     }
     
     try {
+        // Проверяем статус заказа
+        const orderCheck = await pool.query('SELECT status FROM orders WHERE id = $1', [order_id]);
+        if (orderCheck.rows.length > 0 && orderCheck.rows[0].status === 'completed') {
+            return res.status(403).json({ error: 'Заказ завершен, отправка сообщений недоступна' });
+        }
+        
         let externalId = null;
         let sendSuccess = false;
         
@@ -462,7 +468,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
     
     try {
         const orderResult = await pool.query(`
-            SELECT contact, user_telegram_id, order_number FROM orders WHERE id = $1
+            SELECT contact, user_telegram_id, order_number, status FROM orders WHERE id = $1
         `, [orderId]);
         
         if (orderResult.rows.length === 0) {
@@ -474,9 +480,9 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         
         const messagesResult = await pool.query(`
             SELECT * FROM chat_messages 
-            WHERE order_id = $1 OR (order_id IS NULL AND sender_id = $2)
+            WHERE order_id = $1
             ORDER BY created_at ASC
-        `, [orderId, String(order.user_telegram_id)]);
+        `, [orderId]);
         
         // Получаем recipient только по telegram_id
         let recipientId = null;
@@ -489,6 +495,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         
         res.json({
             order_number: order.order_number,
+            status: order.status,
             messages: messagesResult.rows,
             recipient: {
                 id: recipientId,
@@ -511,33 +518,29 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                 o.order_number,
                 o.contact,
                 o.user_telegram_id,
+                o.status,
                 (
                     SELECT message_text 
                     FROM chat_messages 
-                    WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+                    WHERE order_id = o.id
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message,
                 (
                     SELECT created_at 
                     FROM chat_messages 
-                    WHERE order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+                    WHERE order_id = o.id
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message_date,
                 (
                     SELECT COUNT(*) 
                     FROM chat_messages 
-                    WHERE (order_id = o.id OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR)))
-                      AND direction = 'incoming' 
-                      AND status != 'read'
+                    WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
                 ) as unread_count
             FROM orders o
-            WHERE o.user_telegram_id IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM chat_messages 
-                WHERE order_id = o.id 
-                   OR (order_id IS NULL AND sender_id = CAST(o.user_telegram_id AS VARCHAR))
+            WHERE EXISTS (
+                SELECT 1 FROM chat_messages WHERE order_id = o.id
             )
             ORDER BY last_message_date DESC NULLS LAST
         `);
@@ -550,7 +553,8 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                 clientName: contact.name || contact.telegram_name || 'Клиент',
                 lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
                 lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU') : null,
-                hasUnread: row.unread_count > 0
+                hasUnread: row.unread_count > 0,
+                status: row.status
             };
         });
         
