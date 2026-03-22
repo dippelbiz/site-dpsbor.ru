@@ -549,32 +549,38 @@ ${itemsText}
                     }
                 }
 
-                const user = tg.initDataUnsafe?.user;
-                
-                console.log('📱 Данные пользователя из Telegram:', {
-                    id: user?.id,
-                    name: user?.first_name,
-                    username: user?.username
-                });
-                
-                const contact = {
-                    name: user?.first_name + (user?.last_name ? ' ' + user?.last_name : '') || 'Покупатель',
-                    phone: '0000000000',
-                    address: address,
-                    paymentMethod: paymentMethod,
-                    deliveryType: deliveryType,
-                    messenger: 'not_selected',
-                    username: user?.username,
-                    userId: user?.id,
-                    telegram_id: user?.id ? String(user.id) : null,
-                    telegram_name: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Покупатель'
-                };
+               const user = tg.initDataUnsafe?.user;
 
-                if (!cart || !cart.items || cart.items.length === 0) {
-                    alert('Корзина пуста');
-                    e.target.disabled = false;
-                    return;
-                }
+console.log('📱 Данные пользователя из Telegram:', {
+    id: user?.id,
+    first_name: user?.first_name,
+    last_name: user?.last_name,
+    username: user?.username
+});
+
+// Формируем имя правильно
+let userName = 'Покупатель';
+if (user?.first_name) {
+    userName = user.first_name;
+    if (user?.last_name) {
+        userName += ' ' + user.last_name;
+    }
+}
+
+const contact = {
+    name: userName,  // Теперь имя будет правильным
+    phone: '0000000000',
+    address: address,
+    paymentMethod: paymentMethod,
+    deliveryType: deliveryType,
+    messenger: 'not_selected',
+    username: user?.username,
+    userId: user?.id,
+    telegram_id: user?.id ? String(user.id) : null,
+    telegram_name: userName
+};
+
+console.log('📦 Сохраняемый contact:', contact);
 
                 const orderData = {
                     userId: userId,
