@@ -138,6 +138,19 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .has-messages {
+            background: #e8f5e9;
+            border-left: 3px solid #27ae60;
+        }
+        .message-preview {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -168,23 +181,23 @@
                 <option value="cancelled">Отменённые</option>
             </select>
             <button onclick="loadOrders()">Обновить</button>
-            <button onclick="openAllChats()" style="background: #3498db;">💬 Все чаты Wazzup</button>
+            <button onclick="openUnifiedChat()" style="background: #9b59b6;">💬 Все чаты</button>
         </div>
         
         <div class="orders-table">
             <table id="orders-table">
                 <thead>
-                      <tr>
+                    <tr>
                         <th>№ заказа</th>
                         <th>Клиент</th>
                         <th>Состав</th>
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                      </tr>
+                    </tr>
                 </thead>
                 <tbody id="orders-list">
-                      <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
+                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -192,6 +205,7 @@
 
     <script>
         let currentUserRole = '';
+        let ordersData = [];
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -208,9 +222,33 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (response.status === 401) { logout(); return; }
                 const data = await response.json();
-                renderOrders(data.orders);
+                ordersData = data.orders;
+                
+                // Загружаем информацию о сообщениях для каждого заказа
+                await loadMessagesInfo();
+                
+                renderOrders(ordersData);
             } catch (err) {
                 console.error('Error loading orders:', err);
+            }
+        }
+        
+        async function loadMessagesInfo() {
+            const token = checkAuth();
+            for (let order of ordersData) {
+                try {
+                    const response = await fetch(`/api/manager/order/${order.id}/messages-info`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        order.hasMessages = data.hasMessages;
+                        order.lastMessage = data.lastMessage;
+                        order.lastMessageDate = data.lastMessageDate;
+                    }
+                } catch (err) {
+                    console.error('Error loading messages info:', err);
+                }
             }
         }
         
@@ -237,9 +275,13 @@
                 const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
                 
+                const hasMessages = order.hasMessages;
+                const lastMessagePreview = order.lastMessage ? 
+                    `<div class="message-preview">📨 ${order.lastMessage.substring(0, 40)}${order.lastMessage.length > 40 ? '...' : ''}</div>` : '';
+                
                 return `
-                    <tr>
-                        <td><strong>${order.order_number}</strong></td>
+                    <tr class="${hasMessages ? 'has-messages' : ''}">
+                        <td><strong>${order.order_number}</strong>${lastMessagePreview}</td>
                         <td>${order.contact?.name || order.contact?.phone || '-'}</td>
                         <td class="items-list">${itemsHtml}</td>
                         <td>${order.total} ₽</td>
@@ -247,20 +289,19 @@
                         <td class="action-buttons">
                             ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
                             ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            <button class="chat-btn" onclick="openChatByOrderNumber('${order.order_number}')">💬 Чат</button>
+                            <button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>
                         </td>
                     </tr>
                 `;
             }).join('');
         }
         
-        function openAllChats() {
-            window.open('https://app.wazzup24.com', '_blank');
+        function openUnifiedChat() {
+            window.open('/manager/unified-chat.html', '_blank', 'width=1200,height=800');
         }
         
-        function openChatByOrderNumber(orderNumber) {
-            // Открываем Wazzup с поиском по номеру заказа
-            window.open(`https://app.wazzup24.com/?search=${encodeURIComponent(orderNumber)}`, '_blank');
+        function openChat(orderId) {
+            window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=700');
         }
         
         async function takeOrder(orderId) {
@@ -312,6 +353,9 @@
         
         loadUser();
         loadOrders();
+        
+        // Обновляем список заказов каждые 30 секунд
+        setInterval(loadOrders, 30000);
     </script>
 </body>
 </html>
