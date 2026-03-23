@@ -1004,8 +1004,8 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\n` +
                      `Спасибо, что выбрали DP SBOR!\n\n` +
-                     `Для оформления нового заказа перейдите на сайт:\n` +
-                     `https://dpsbor.ru\n\n` +
+                     `Оформить новый заказ:\n` +
+                     `Перейдите на сайт dpsbor.ru\n\n` +
                      `Будем рады видеть вас снова!`;
       
       try {
