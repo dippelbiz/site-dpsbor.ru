@@ -370,13 +370,12 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Обновляем заказ: добавляем telegram_id
+                // Используем отдельные параметры с явным приведением типов
                 const updateResult = await pool.query(`
                     UPDATE orders 
-                    SET user_telegram_id = $1, 
+                    SET user_telegram_id = $1::bigint, 
                         contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
                     WHERE order_number = $3
-                    RETURNING id
                 `, [telegramId, telegramName, orderNumber]);
 
                 if (updateResult.rowCount > 0) {
@@ -389,7 +388,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
             
-            // Обычное сообщение (обработка входящих сообщений)
+            // Обычное сообщение
             const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) {
                 return res.sendStatus(200);
@@ -400,9 +399,10 @@ app.post('/api/telegram/webhook', async (req, res) => {
             let orderId = null;
             let userId = null;
             
+            // Исправлено: параметры разделены, чтобы избежать конфликта типов
             const orderResult = await pool.query(`
                 SELECT id, user_telegram_id, order_number, status FROM orders 
-                WHERE (contact->>'telegram_id' = $1 OR user_telegram_id = $2::bigint)
+                WHERE (contact->>'telegram_id' = $1::text OR user_telegram_id = $2::bigint)
                   AND status IN ('new', 'processing')
                 ORDER BY created_at DESC LIMIT 1
             `, [messageData.senderId, messageData.senderId]);
