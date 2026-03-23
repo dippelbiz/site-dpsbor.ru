@@ -343,18 +343,18 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Получаем данные пользователя из Telegram
+        // Получаем данные пользователя из Telegram WebApp
         const user = tg.initDataUnsafe?.user;
         console.log('📱 Данные пользователя из Telegram:', user);
 
-        // Определяем userId и telegram_id
-        let userId = user?.id || 1;
-        let telegramId = user?.id ? String(user.id) : null;
-        let userName = 'Покупатель';
-        if (user?.first_name) {
-            userName = user.first_name;
-            if (user?.last_name) userName += ' ' + user.last_name;
-        }
+        // Определяем реальный Telegram ID (если пользователь зашёл через Telegram)
+        const telegramId = user?.id ? String(user.id) : null;
+        const userName = user?.first_name 
+            ? (user.first_name + (user.last_name ? ' ' + user.last_name : ''))
+            : 'Покупатель';
+
+        // Используем userId только если он реальный (не 1)
+        const userId = telegramId ? parseInt(telegramId) : 1;
 
         const requestId = crypto.randomUUID();
 
@@ -580,7 +580,7 @@ ${itemsText}
                     messenger: messenger,
                     username: user?.username,
                     userId: userId,
-                    telegram_id: telegramId,  // Это ключевое поле!
+                    telegram_id: telegramId,   // !!! ВАЖНО !!!
                     telegram_name: userName
                 };
 
