@@ -573,7 +573,7 @@ app.post('/api/manager/chat/mark-read/:orderId', checkManagerAuth, async (req, r
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
-        // Активные чаты (new и processing)
+        // Активные чаты (new и processing) - ВСЕ заказы, у которых есть сообщения
         const activeResult = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
