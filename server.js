@@ -327,28 +327,10 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // ✅ Определяем user_telegram_id
+    // ✅ Определяем user_telegram_id только из contact.telegram_id, игнорируем userId=1
     let userTelegramId = null;
-    
-    // Приоритет: берём из contact.telegram_id (обязательно)
-    if (contact.telegram_id) {
+    if (contact.telegram_id && !isNaN(parseInt(contact.telegram_id)) && parseInt(contact.telegram_id) > 0) {
       userTelegramId = parseInt(contact.telegram_id);
-    } 
-    // Если нет, но есть userId (и это не 1, который используется по умолчанию)
-    else if (userId && userId !== 1) {
-      userTelegramId = parseInt(userId);
-    }
-    
-    // Дополнительная попытка найти по telegram_name или username
-    if (!userTelegramId && (contact.telegram_name || contact.username)) {
-      const existingUser = await pool.query(`
-        SELECT user_telegram_id FROM orders 
-        WHERE contact->>'telegram_name' = $1 OR contact->>'username' = $2
-        LIMIT 1
-      `, [contact.telegram_name, contact.username]);
-      if (existingUser.rows.length > 0) {
-        userTelegramId = existingUser.rows[0].user_telegram_id;
-      }
     }
 
     console.log(`👤 Сохраняем user_telegram_id: ${userTelegramId}`);
