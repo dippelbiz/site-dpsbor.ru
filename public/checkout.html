@@ -290,6 +290,14 @@
         </div>
     </div>
 
+    <div class="section">
+        <div class="section-title">Способ связи</div>
+        <div class="radio-group-vertical">
+            <label><input type="radio" name="messenger" value="telegram" checked> Telegram</label>
+            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
+        </div>
+    </div>
+
     <button id="confirm-button">Подтвердить заказ</button>
 
     <div id="success-modal" class="modal">
@@ -530,6 +538,7 @@ ${itemsText}
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
+                const messenger = document.querySelector('input[name="messenger"]:checked').value;
 
                 let address = '';
                 if (deliveryType === 'pickup') {
@@ -549,38 +558,44 @@ ${itemsText}
                     }
                 }
 
-               const user = tg.initDataUnsafe?.user;
+                const user = tg.initDataUnsafe?.user;
+                
+                console.log('📱 Данные пользователя из Telegram:', {
+                    id: user?.id,
+                    first_name: user?.first_name,
+                    last_name: user?.last_name,
+                    username: user?.username
+                });
+                
+                // Формируем имя правильно
+                let userName = 'Покупатель';
+                if (user?.first_name) {
+                    userName = user.first_name;
+                    if (user?.last_name) {
+                        userName += ' ' + user.last_name;
+                    }
+                }
+                
+                const contact = {
+                    name: userName,
+                    phone: '0000000000',
+                    address: address,
+                    paymentMethod: paymentMethod,
+                    deliveryType: deliveryType,
+                    messenger: messenger,
+                    username: user?.username,
+                    userId: user?.id,
+                    telegram_id: user?.id ? String(user.id) : null,
+                    telegram_name: userName
+                };
 
-console.log('📱 Данные пользователя из Telegram:', {
-    id: user?.id,
-    first_name: user?.first_name,
-    last_name: user?.last_name,
-    username: user?.username
-});
+                console.log('📦 Сохраняемый contact:', contact);
 
-// Формируем имя правильно
-let userName = 'Покупатель';
-if (user?.first_name) {
-    userName = user.first_name;
-    if (user?.last_name) {
-        userName += ' ' + user.last_name;
-    }
-}
-
-const contact = {
-    name: userName,  // Теперь имя будет правильным
-    phone: '0000000000',
-    address: address,
-    paymentMethod: paymentMethod,
-    deliveryType: deliveryType,
-    messenger: 'not_selected',
-    username: user?.username,
-    userId: user?.id,
-    telegram_id: user?.id ? String(user.id) : null,
-    telegram_name: userName
-};
-
-console.log('📦 Сохраняемый contact:', contact);
+                if (!cart || !cart.items || cart.items.length === 0) {
+                    alert('Корзина пуста');
+                    e.target.disabled = false;
+                    return;
+                }
 
                 const orderData = {
                     userId: userId,
