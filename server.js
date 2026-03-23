@@ -359,6 +359,7 @@ app.post('/api/order', async (req, res) => {
 app.post('/api/telegram/webhook', async (req, res) => {
     try {
         const update = req.body;
+        
         if (update.message && update.message.text) {
             const text = update.message.text;
             
@@ -369,23 +370,20 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Сначала обновляем user_telegram_id и статус
-                const updateResult = await pool.query(`
-                    UPDATE orders 
-                    SET user_telegram_id = $1, 
-                        status = 'processing'
-                    WHERE order_number = $2
-                    RETURNING id
-                `, [telegramId, orderNumber]);
-
-                if (updateResult.rowCount > 0) {
-                    // Затем обновляем contact (JSON)
-                    await pool.query(`
-                        UPDATE orders 
-                        SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
-                        WHERE id = $3
-                    `, [String(telegramId), telegramName, updateResult.rows[0].id]);
-
+                // Обновляем заказ: два отдельных запроса для избежания конфликта типов
+                const updateUserResult = await pool.query(
+                    'UPDATE orders SET user_telegram_id = $1, status = $2 WHERE order_number = $3',
+                    [telegramId, 'processing', orderNumber]
+                );
+                
+                if (updateUserResult.rowCount > 0) {
+                    // Обновляем JSON contact отдельно
+                    await pool.query(
+                        `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1, 'telegram_name', $2)
+                         WHERE order_number = $3`,
+                        [String(telegramId), telegramName, orderNumber]
+                    );
+                    
                     await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.`);
                     console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
                 } else {
@@ -394,21 +392,19 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 }
                 return res.sendStatus(200);
             }
-
+            
             // Обычное сообщение
             const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) return res.sendStatus(200);
-
+            
             console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
             let orderId = null;
             const telegramIdNum = parseInt(messageData.senderId, 10);
             if (!isNaN(telegramIdNum)) {
-                const orderResult = await pool.query(`
-                    SELECT id FROM orders 
-                    WHERE user_telegram_id = $1
-                      AND status IN ('new', 'processing')
-                    ORDER BY created_at DESC LIMIT 1
-                `, [telegramIdNum]);
+                const orderResult = await pool.query(
+                    'SELECT id FROM orders WHERE user_telegram_id = $1 AND status IN ($2, $3) ORDER BY created_at DESC LIMIT 1',
+                    [telegramIdNum, 'new', 'processing']
+                );
                 if (orderResult.rows.length > 0) {
                     orderId = orderResult.rows[0].id;
                     console.log(`✅ Найден активный заказ ID: ${orderId}`);
@@ -416,22 +412,24 @@ app.post('/api/telegram/webhook', async (req, res) => {
                     console.log(`⚠️ Активный заказ для telegram_id ${messageData.senderId} не найден`);
                 }
             }
-
-            await pool.query(`
-                INSERT INTO chat_messages (
+            
+            await pool.query(
+                `INSERT INTO chat_messages (
                     order_id, channel, external_id, 
                     sender_id, sender_name, message_text, 
                     direction, status, created_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'delivered', NOW())
-            `, [
-                orderId,
-                messageData.channel,
-                messageData.externalId,
-                messageData.senderId,
-                messageData.senderName,
-                messageData.messageText
-            ]);
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                [
+                    orderId,
+                    messageData.channel,
+                    messageData.externalId,
+                    messageData.senderId,
+                    messageData.senderName,
+                    messageData.messageText,
+                    'incoming',
+                    'delivered'
+                ]
+            );
             console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
         }
         res.sendStatus(200);
