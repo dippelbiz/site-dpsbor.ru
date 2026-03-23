@@ -154,13 +154,10 @@
                 return;
             }
 
-            // Сортируем от новых к старым
             orders.sort((a, b) => b.id - a.id);
 
             orders.forEach(order => {
                 const displayNumber = order.order_number || order.id;
-
-                // Формируем список товаров
                 const itemsHtml = order.items.map(item => {
                     const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
                     const itemName = variantDisplay ? `${item.name} (${variantDisplay})` : item.name;
@@ -172,7 +169,6 @@
                     `;
                 }).join('');
 
-                // Информация о доставке и оплате
                 let infoHtml = '';
                 if (order.contact) {
                     const contact = order.contact;
@@ -190,7 +186,6 @@
                     }
                 }
 
-                // Дата заказа
                 let formattedDate = 'Неизвестно';
                 if (order.created_at) {
                     const date = new Date(order.created_at);
