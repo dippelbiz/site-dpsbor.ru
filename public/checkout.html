@@ -6,7 +6,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
-        /* все стили остаются без изменений (как в предыдущей версии) */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -333,7 +332,6 @@
     </div>
 
     <script>
-        // (код скрипта без изменений, только удалена переменная messenger, так как выбор убран)
         const tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -499,6 +497,16 @@ ${itemsText}
             });
         }
 
+        function goToTelegram() {
+            window.open('orders.html', '_blank');
+            window.location.href = MESSENGER_LINKS.telegram;
+        }
+
+        function goToVK() {
+            window.open('orders.html', '_blank');
+            window.location.href = MESSENGER_LINKS.vk;
+        }
+
         async function cancelOrder() {
             if (!confirm('Вы уверены, что хотите отменить заказ?')) return;
             
@@ -553,7 +561,7 @@ ${itemsText}
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: 'telegram', // по умолчанию, но не используется
+                    messenger: 'telegram',
                     username: user?.username,
                     userId: userId,
                     telegram_id: telegramId,
