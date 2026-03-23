@@ -170,6 +170,11 @@
             border-radius: 10px;
             font-size: 10px;
             color: #2c3e50;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .old-order-badge:hover {
+            background: #d5dbdb;
         }
         .messages-container {
             flex: 1;
@@ -410,7 +415,11 @@
             const oldOrdersHtml = currentOldOrders.length > 0 ? `
                 <div class="old-orders-list">
                     <span class="old-orders-label">📜 История заказов:</span>
-                    ${currentOldOrders.map(order => `<span class="old-order-badge">№${order.order_number} (${order.status === 'completed' ? '✅' : '📋'})</span>`).join('')}
+                    ${currentOldOrders.map(order => `
+                        <span class="old-order-badge" onclick="loadChatByOrderNumber('${order.order_number}')">
+                            №${order.order_number} ${order.status === 'completed' ? '✅' : '📋'}
+                        </span>
+                    `).join('')}
                 </div>
             ` : '';
             
@@ -442,6 +451,22 @@
                         sendMessage();
                     }
                 });
+            }
+        }
+        
+        // Функция для загрузки чата по номеру заказа (для истории)
+        async function loadChatByOrderNumber(orderNumber) {
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/order-by-number/${orderNumber}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                if (data.orderId) {
+                    loadChat(data.orderId);
+                }
+            } catch (err) {
+                console.error('Error loading chat by order number:', err);
             }
         }
         
