@@ -290,13 +290,7 @@
         </div>
     </div>
 
-    <div class="section">
-        <div class="section-title">Способ связи</div>
-        <div class="radio-group-vertical">
-            <label><input type="radio" name="messenger" value="telegram" checked> Telegram</label>
-            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
-        </div>
-    </div>
+    <!-- Блок выбора способа связи УДАЛЁН -->
 
     <button id="confirm-button">Подтвердить заказ</button>
 
@@ -550,7 +544,6 @@ ${itemsText}
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
-                const messenger = document.querySelector('input[name="messenger"]:checked').value;
 
                 let address = '';
                 if (deliveryType === 'pickup') {
@@ -570,14 +563,14 @@ ${itemsText}
                     }
                 }
 
-                // Формируем contact с правильным telegram_id
+                // Формируем contact с правильным telegram_id (и без выбора мессенджера)
                 const contact = {
                     name: userName,
                     phone: '0000000000',
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: messenger,
+                    messenger: 'telegram', // по умолчанию Telegram
                     username: user?.username,
                     userId: userId,
                     telegram_id: telegramId,   // !!! ВАЖНО !!!
