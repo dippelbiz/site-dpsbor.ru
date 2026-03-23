@@ -335,7 +335,7 @@
         // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.ready(); // гарантирует, что WebApp готов
+        tg.ready();
 
         // Получаем данные пользователя
         const user = tg.initDataUnsafe?.user;
@@ -347,8 +347,9 @@
             ? (user.first_name + (user.last_name ? ' ' + user.last_name : ''))
             : 'Покупатель';
 
-        // Используем telegramId как основной идентификатор; если его нет – оставляем null
-        const userId = telegramId ? parseInt(telegramId) : null;
+        // userId для использования в корзине и запросах:
+        // если есть реальный Telegram ID – используем его, иначе 1 (гость)
+        const userId = telegramId ? parseInt(telegramId) : 1;
 
         const requestId = crypto.randomUUID();
 
@@ -399,9 +400,8 @@ ${itemsText}
         }
 
         async function loadCart() {
-            // Если userId = null (гость), используем временный ID (1)
-            const cartUserId = userId || 1;
-            const res = await fetch(`/api/cart/${cartUserId}`);
+            // Используем userId (1 для гостей)
+            const res = await fetch(`/api/cart/${userId}`);
             cart = await res.json();
         }
 
@@ -574,7 +574,7 @@ ${itemsText}
                     deliveryType: deliveryType,
                     messenger: 'telegram',
                     username: user?.username,
-                    userId: userId,         // может быть null
+                    userId: userId,
                     telegram_id: telegramId,
                     telegram_name: userName
                 };
@@ -588,7 +588,7 @@ ${itemsText}
                 }
 
                 const orderData = {
-                    userId: userId,          // передаём userId (может быть null)
+                    userId: userId,
                     contact: contact,
                     requestId: requestId,
                     total: currentOrderTotal,
