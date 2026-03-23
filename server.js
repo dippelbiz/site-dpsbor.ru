@@ -369,16 +369,23 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
+                // Сначала обновляем user_telegram_id и статус
                 const updateResult = await pool.query(`
                     UPDATE orders 
                     SET user_telegram_id = $1, 
-                        status = 'processing',
-                        contact = contact || jsonb_build_object('telegram_id', $2, 'telegram_name', $3)
-                    WHERE order_number = $4
+                        status = 'processing'
+                    WHERE order_number = $2
                     RETURNING id
-                `, [telegramId, String(telegramId), telegramName, orderNumber]);
+                `, [telegramId, orderNumber]);
 
                 if (updateResult.rowCount > 0) {
+                    // Затем обновляем contact (JSON)
+                    await pool.query(`
+                        UPDATE orders 
+                        SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
+                        WHERE id = $3
+                    `, [String(telegramId), telegramName, updateResult.rows[0].id]);
+
                     await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.`);
                     console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
                 } else {
