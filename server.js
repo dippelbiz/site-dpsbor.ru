@@ -370,16 +370,20 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
+                // Обновляем заказ: добавляем telegram_id и переводим в статус processing
                 const updateResult = await pool.query(`
                     UPDATE orders 
-                    SET user_telegram_id = $1::bigint, 
+                    SET user_telegram_id = $1, 
+                        status = 'processing',
                         contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
                     WHERE order_number = $3
+                    RETURNING id
                 `, [telegramId, telegramName, orderNumber]);
 
                 if (updateResult.rowCount > 0) {
-                    await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} привязан! Теперь вы будете получать уведомления и можете общаться с менеджером.`);
-                    console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId}`);
+                    // Отправляем подтверждение
+                    await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.`);
+                    console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
                 } else {
                     await telegramBot.sendTelegramMessage(telegramId, `❌ Заказ №${orderNumber} не найден. Проверьте номер или обратитесь к менеджеру.`);
                     console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
@@ -396,20 +400,18 @@ app.post('/api/telegram/webhook', async (req, res) => {
             console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
             
             let orderId = null;
-            let userId = null;
             
-            // Исправленный запрос с явным приведением типов
+            // Поиск активного заказа (новый или в работе) по telegram_id
             const orderResult = await pool.query(`
-                SELECT id, user_telegram_id, order_number, status FROM orders 
-                WHERE (contact->>'telegram_id' = $1::text OR user_telegram_id = $2::bigint)
+                SELECT id FROM orders 
+                WHERE user_telegram_id = $1
                   AND status IN ('new', 'processing')
                 ORDER BY created_at DESC LIMIT 1
-            `, [messageData.senderId, messageData.senderId]);
+            `, [messageData.senderId]);
             
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
-                userId = orderResult.rows[0].user_telegram_id;
-                console.log(`✅ Найден активный заказ №${orderResult.rows[0].order_number} (статус: ${orderResult.rows[0].status})`);
+                console.log(`✅ Найден активный заказ ID: ${orderId}`);
             } else {
                 console.log(`⚠️ Активный заказ для telegram_id ${messageData.senderId} не найден`);
             }
