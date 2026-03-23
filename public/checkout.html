@@ -290,6 +290,14 @@
         </div>
     </div>
 
+    <div class="section">
+        <div class="section-title">Способ связи</div>
+        <div class="radio-group-vertical">
+            <label><input type="radio" name="messenger" value="telegram" checked> Telegram</label>
+            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
+        </div>
+    </div>
+
     <button id="confirm-button">Подтвердить заказ</button>
 
     <div id="success-modal" class="modal">
@@ -335,7 +343,19 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        const userId = tg.initDataUnsafe?.user?.id || 1;
+        // Получаем данные пользователя из Telegram
+        const user = tg.initDataUnsafe?.user;
+        console.log('📱 Данные пользователя из Telegram:', user);
+
+        // Определяем userId и telegram_id
+        let userId = user?.id || 1;
+        let telegramId = user?.id ? String(user.id) : null;
+        let userName = 'Покупатель';
+        if (user?.first_name) {
+            userName = user.first_name;
+            if (user?.last_name) userName += ' ' + user.last_name;
+        }
+
         const requestId = crypto.randomUUID();
 
         let cart = null;
@@ -530,6 +550,7 @@ ${itemsText}
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
+                const messenger = document.querySelector('input[name="messenger"]:checked').value;
 
                 let address = '';
                 if (deliveryType === 'pickup') {
@@ -549,33 +570,17 @@ ${itemsText}
                     }
                 }
 
-                const user = tg.initDataUnsafe?.user;
-                
-                console.log('📱 Данные пользователя из Telegram:', {
-                    id: user?.id,
-                    first_name: user?.first_name,
-                    last_name: user?.last_name,
-                    username: user?.username
-                });
-                
-                // Формируем имя правильно
-                let userName = 'Покупатель';
-                if (user?.first_name) {
-                    userName = user.first_name;
-                    if (user?.last_name) {
-                        userName += ' ' + user.last_name;
-                    }
-                }
-                
+                // Формируем contact с правильным telegram_id
                 const contact = {
                     name: userName,
                     phone: '0000000000',
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
+                    messenger: messenger,
                     username: user?.username,
-                    userId: user?.id,
-                    telegram_id: user?.id ? String(user.id) : null,
+                    userId: userId,
+                    telegram_id: telegramId,  // Это ключевое поле!
                     telegram_name: userName
                 };
 
