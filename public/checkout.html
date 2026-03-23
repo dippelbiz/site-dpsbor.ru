@@ -290,8 +290,6 @@
         </div>
     </div>
 
-    <!-- Блок выбора способа связи УДАЛЁН -->
-
     <button id="confirm-button">Подтвердить заказ</button>
 
     <div id="success-modal" class="modal">
@@ -334,21 +332,23 @@
     </div>
 
     <script>
+        // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
         tg.expand();
+        tg.ready(); // гарантирует, что WebApp готов
 
-        // Получаем данные пользователя из Telegram WebApp
+        // Получаем данные пользователя
         const user = tg.initDataUnsafe?.user;
         console.log('📱 Данные пользователя из Telegram:', user);
 
-        // Определяем реальный Telegram ID (если пользователь зашёл через Telegram)
+        // Определяем реальный Telegram ID (если пользователь авторизован)
         const telegramId = user?.id ? String(user.id) : null;
         const userName = user?.first_name 
             ? (user.first_name + (user.last_name ? ' ' + user.last_name : ''))
             : 'Покупатель';
 
-        // Используем userId только если он реальный (не 1)
-        const userId = telegramId ? parseInt(telegramId) : 1;
+        // Используем telegramId как основной идентификатор; если его нет – оставляем null
+        const userId = telegramId ? parseInt(telegramId) : null;
 
         const requestId = crypto.randomUUID();
 
@@ -399,7 +399,9 @@ ${itemsText}
         }
 
         async function loadCart() {
-            const res = await fetch(`/api/cart/${userId}`);
+            // Если userId = null (гость), используем временный ID (1)
+            const cartUserId = userId || 1;
+            const res = await fetch(`/api/cart/${cartUserId}`);
             cart = await res.json();
         }
 
@@ -563,17 +565,17 @@ ${itemsText}
                     }
                 }
 
-                // Формируем contact с правильным telegram_id (и без выбора мессенджера)
+                // Формируем контакт
                 const contact = {
                     name: userName,
                     phone: '0000000000',
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: 'telegram', // по умолчанию Telegram
+                    messenger: 'telegram',
                     username: user?.username,
-                    userId: userId,
-                    telegram_id: telegramId,   // !!! ВАЖНО !!!
+                    userId: userId,         // может быть null
+                    telegram_id: telegramId,
                     telegram_name: userName
                 };
 
@@ -586,7 +588,7 @@ ${itemsText}
                 }
 
                 const orderData = {
-                    userId: userId,
+                    userId: userId,          // передаём userId (может быть null)
                     contact: contact,
                     requestId: requestId,
                     total: currentOrderTotal,
