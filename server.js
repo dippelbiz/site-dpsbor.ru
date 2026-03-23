@@ -370,18 +370,17 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Обновляем заказ: добавляем telegram_id и переводим в статус processing
+                // Обновляем заказ: используем отдельные параметры для разных типов
                 const updateResult = await pool.query(`
                     UPDATE orders 
                     SET user_telegram_id = $1, 
                         status = 'processing',
-                        contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
-                    WHERE order_number = $3
+                        contact = contact || jsonb_build_object('telegram_id', $2, 'telegram_name', $3)
+                    WHERE order_number = $4
                     RETURNING id
-                `, [telegramId, telegramName, orderNumber]);
+                `, [telegramId, String(telegramId), telegramName, orderNumber]);
 
                 if (updateResult.rowCount > 0) {
-                    // Отправляем подтверждение
                     await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.`);
                     console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
                 } else {
@@ -393,18 +392,16 @@ app.post('/api/telegram/webhook', async (req, res) => {
             
             // Обычное сообщение
             const messageData = await telegramBot.handleIncomingMessage(update.message);
-            if (!messageData) {
-                return res.sendStatus(200);
-            }
+            if (!messageData) return res.sendStatus(200);
             
             console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
             
             let orderId = null;
             
-            // Поиск активного заказа (новый или в работе) по telegram_id
+            // Поиск активного заказа (новый или в работе) по user_telegram_id
             const orderResult = await pool.query(`
                 SELECT id FROM orders 
-                WHERE user_telegram_id = $1
+                WHERE user_telegram_id = $1::bigint
                   AND status IN ('new', 'processing')
                 ORDER BY created_at DESC LIMIT 1
             `, [messageData.senderId]);
