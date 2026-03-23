@@ -496,7 +496,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at ASC
         `, [orderId]);
         
-        // Получаем все старые заказы этого пользователя
+        // Получаем ВСЕ старые заказы этого пользователя (включая завершенные)
         const oldOrdersResult = await pool.query(`
             SELECT order_number, status, created_at 
             FROM orders 
@@ -505,12 +505,15 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at DESC
         `, [order.user_telegram_id, orderId]);
         
-        // Получаем recipient только по telegram_id
+        // Получаем recipient по telegram_id
         let recipientId = null;
         let recipientChannel = null;
         
         if (contact.telegram_id) {
             recipientId = contact.telegram_id;
+            recipientChannel = 'telegram';
+        } else if (order.user_telegram_id) {
+            recipientId = String(order.user_telegram_id);
             recipientChannel = 'telegram';
         }
         
@@ -598,19 +601,14 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     WHERE order_id = o.id
                     ORDER BY created_at DESC 
                     LIMIT 1
-                ) as last_message_direction,
-                (
-                    SELECT COUNT(*) 
-                    FROM chat_messages 
-                    WHERE order_id = o.id AND direction = 'incoming' AND status != 'read'
-                ) as unread_count
+                ) as last_message_direction
             FROM orders o
             WHERE o.status IN ('new', 'processing')
               AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
             ORDER BY last_message_date DESC NULLS LAST
         `);
         
-        // Завершенные чаты (completed)
+        // Завершенные чаты (completed) - показываем только те, у которых есть сообщения
         const completedResult = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
@@ -638,7 +636,14 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     WHERE order_id = o.id
                     ORDER BY created_at DESC 
                     LIMIT 1
-                ) as last_message_direction
+                ) as last_message_direction,
+                (
+                    SELECT json_agg(json_build_object('order_number', order_number, 'status', status))
+                    FROM orders o2
+                    WHERE o2.user_telegram_id = o.user_telegram_id
+                      AND o2.status = 'completed'
+                      AND o2.id != o.id
+                ) as old_orders
             FROM orders o
             WHERE o.status = 'completed'
               AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
@@ -659,8 +664,8 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     month: '2-digit'
                 }) : null,
                 lastMessageDirection: row.last_message_direction,
-                hasUnread: row.unread_count > 0,
-                status: row.status
+                status: row.status,
+                oldOrders: row.old_orders || []
             };
         };
         
