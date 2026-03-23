@@ -419,7 +419,9 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     }
     
     // Проверяем, что recipient_id - это число (telegram_id)
-    if (isNaN(parseInt(recipient_id))) {
+    const recipientIdNum = parseInt(recipient_id);
+    if (isNaN(recipientIdNum) || recipientIdNum < 100000) {
+        console.error(`❌ Неверный recipient_id: ${recipient_id}`);
         return res.status(400).json({ error: 'Неверный формат получателя' });
     }
     
@@ -438,8 +440,8 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 return res.status(500).json({ error: 'Telegram бот не инициализирован' });
             }
             
-            console.log(`📨 Отправка в Telegram получателю: ${recipient_id}`);
-            const sent = await telegramBot.sendTelegramMessage(recipient_id, message_text);
+            console.log(`📨 Отправка в Telegram получателю: ${recipientIdNum}`);
+            const sent = await telegramBot.sendTelegramMessage(recipientIdNum, message_text);
             if (sent) {
                 externalId = String(sent.message_id);
                 sendSuccess = true;
@@ -502,7 +504,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at ASC
         `, [orderId]);
         
-        // Получаем ВСЕ предыдущие заказы этого пользователя (кроме текущего)
+        // Получаем ВСЕ предыдущие заказы этого пользователя
         const oldOrdersResult = await pool.query(`
             SELECT order_number, status, created_at 
             FROM orders 
@@ -511,7 +513,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at DESC
         `, [order.user_telegram_id, orderId]);
         
-        // Получаем recipient по telegram_id
+        // Получаем recipient - ОБЯЗАТЕЛЬНО используем user_telegram_id если contact.telegram_id пустой
         let recipientId = null;
         let recipientChannel = null;
         
@@ -522,6 +524,8 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipientId = String(order.user_telegram_id);
             recipientChannel = 'telegram';
         }
+        
+        console.log(`📱 Получатель для заказа ${order.order_number}: ${recipientId} (${recipientChannel})`);
         
         res.json({
             order_number: order.order_number,
