@@ -370,7 +370,6 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Используем отдельные параметры с явным приведением типов
                 const updateResult = await pool.query(`
                     UPDATE orders 
                     SET user_telegram_id = $1::bigint, 
@@ -399,7 +398,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
             let orderId = null;
             let userId = null;
             
-            // Исправлено: параметры разделены, чтобы избежать конфликта типов
+            // Исправленный запрос с явным приведением типов
             const orderResult = await pool.query(`
                 SELECT id, user_telegram_id, order_number, status FROM orders 
                 WHERE (contact->>'telegram_id' = $1::text OR user_telegram_id = $2::bigint)
