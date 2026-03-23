@@ -502,7 +502,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             ORDER BY created_at ASC
         `, [orderId]);
         
-        // Получаем ВСЕ старые заказы этого пользователя (включая завершенные)
+        // Получаем ВСЕ предыдущие заказы этого пользователя (кроме текущего)
         const oldOrdersResult = await pool.query(`
             SELECT order_number, status, created_at 
             FROM orders 
@@ -579,7 +579,7 @@ app.post('/api/manager/chat/mark-read/:orderId', checkManagerAuth, async (req, r
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     try {
-        // Активные чаты (new и processing) - ВСЕ заказы, у которых есть сообщения
+        // Активные чаты (new и processing)
         const activeResult = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
@@ -614,38 +614,50 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
             ORDER BY last_message_date DESC NULLS LAST
         `);
         
-        // Завершенные чаты (completed)
+        // Завершенные чаты - ТОЛЬКО ПОСЛЕДНИЙ завершенный заказ для каждого пользователя
         const completedResult = await pool.query(`
-            SELECT DISTINCT 
-                o.id as order_id,
-                o.order_number,
-                o.contact,
-                o.user_telegram_id,
-                o.status,
+            WITH last_completed_orders AS (
+                SELECT DISTINCT ON (user_telegram_id) 
+                    id,
+                    order_number,
+                    contact,
+                    user_telegram_id,
+                    status,
+                    created_at
+                FROM orders 
+                WHERE status = 'completed'
+                  AND user_telegram_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = orders.id)
+                ORDER BY user_telegram_id, created_at DESC
+            )
+            SELECT 
+                lco.id as order_id,
+                lco.order_number,
+                lco.contact,
+                lco.user_telegram_id,
+                lco.status,
                 (
                     SELECT message_text 
                     FROM chat_messages 
-                    WHERE order_id = o.id
+                    WHERE order_id = lco.id
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message,
                 (
                     SELECT created_at 
                     FROM chat_messages 
-                    WHERE order_id = o.id
+                    WHERE order_id = lco.id
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message_date,
                 (
                     SELECT direction 
                     FROM chat_messages 
-                    WHERE order_id = o.id
+                    WHERE order_id = lco.id
                     ORDER BY created_at DESC 
                     LIMIT 1
                 ) as last_message_direction
-            FROM orders o
-            WHERE o.status = 'completed'
-              AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
+            FROM last_completed_orders lco
             ORDER BY last_message_date DESC NULLS LAST
         `);
         
