@@ -357,7 +357,7 @@ app.post('/api/order', async (req, res) => {
 
 // ==================== TELEGRAM WEBHOOK ====================
 app.post('/api/telegram/webhook', async (req, res) => {
-    console.log('📨 Получен webhook запрос'); // Логируем факт получения
+    console.log('📨 Получен webhook запрос');
     try {
         const update = req.body;
         console.log('📨 Тело запроса:', JSON.stringify(update).substring(0, 500));
@@ -373,17 +373,18 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Разделяем обновление на два запроса, чтобы избежать конфликта типов
+                // Используем два отдельных запроса с явным указанием типов
+                // Первый: обновляем user_telegram_id и статус
                 const updateUserResult = await pool.query(
-                    'UPDATE orders SET user_telegram_id = $1, status = $2 WHERE order_number = $3',
+                    'UPDATE orders SET user_telegram_id = $1::bigint, status = $2::text WHERE order_number = $3::text',
                     [telegramId, 'processing', orderNumber]
                 );
                 
                 if (updateUserResult.rowCount > 0) {
-                    // Отдельно обновляем JSON contact
+                    // Второй: обновляем JSON contact
                     await pool.query(
-                        `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1, 'telegram_name', $2)
-                         WHERE order_number = $3`,
+                        `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2::text)
+                         WHERE order_number = $3::text`,
                         [String(telegramId), telegramName, orderNumber]
                     );
                     
@@ -405,7 +406,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
             const telegramIdNum = parseInt(messageData.senderId, 10);
             if (!isNaN(telegramIdNum)) {
                 const orderResult = await pool.query(
-                    'SELECT id FROM orders WHERE user_telegram_id = $1 AND status IN ($2, $3) ORDER BY created_at DESC LIMIT 1',
+                    'SELECT id FROM orders WHERE user_telegram_id = $1::bigint AND status IN ($2::text, $3::text) ORDER BY created_at DESC LIMIT 1',
                     [telegramIdNum, 'new', 'processing']
                 );
                 if (orderResult.rows.length > 0) {
