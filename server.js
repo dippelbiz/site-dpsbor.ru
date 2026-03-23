@@ -272,6 +272,8 @@ app.post('/api/order', async (req, res) => {
     const contact = data.contact;
     const request_id = data.requestId;
 
+    console.log('📋 Получен contact:', JSON.stringify(contact, null, 2));
+
     if (!userId || !items || !total || !contact?.address) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -325,17 +327,20 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
+    // Используем telegram_id из contact
+    const userTelegramId = contact.telegram_id ? parseInt(contact.telegram_id) : userId;
+
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       RETURNING id
-    `, [order_number, userId, seller_id, itemsJson, total_sum, contactJson, 'new', request_id]);
+    `, [order_number, userTelegramId, seller_id, itemsJson, total_sum, contactJson, 'new', request_id]);
 
     const orderId = insertResult.rows[0].id;
 
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
 
-    console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}`);
+    console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, telegram_id: ${userTelegramId}`);
     
     res.status(200).json({ orderNumber: order_number, id: orderId });
 
@@ -415,8 +420,8 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     }
     
     const recipientIdNum = parseInt(recipient_id);
-    if (isNaN(recipientIdNum) || recipientIdNum < 100000) {
-        console.error(`❌ Неверный recipient_id: ${recipient_id}`);
+    if (isNaN(recipientIdNum) || recipientIdNum < 100000000) {
+        console.error(`❌ Неверный recipient_id: ${recipient_id} (должен быть telegram_id)`);
         return res.status(400).json({ error: 'Неверный формат получателя' });
     }
     
@@ -513,12 +518,14 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
         if (contact.telegram_id) {
             recipientId = contact.telegram_id;
             recipientChannel = 'telegram';
+            console.log(`📱 Найден telegram_id в contact: ${recipientId}`);
         } else if (order.user_telegram_id) {
             recipientId = String(order.user_telegram_id);
             recipientChannel = 'telegram';
+            console.log(`📱 Используем user_telegram_id: ${recipientId}`);
+        } else {
+            console.log(`⚠️ Нет telegram_id для заказа ${order.order_number}`);
         }
-        
-        console.log(`📱 Получатель для заказа ${order.order_number}: ${recipientId} (${recipientChannel})`);
         
         res.json({
             order_number: order.order_number,
@@ -919,7 +926,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     await pool.query('COMMIT');
     
     // Отправляем уведомление
-    if (recipientId && telegramBot.isInitialized()) {
+    if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\n` +
                      `Менеджер скоро свяжется с вами для уточнения деталей.\n\n`;
       
@@ -947,6 +954,8 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
       } catch (err) {
         console.error(`❌ Ошибка отправки уведомления о принятии заказа:`, err.message);
       }
+    } else {
+      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, bot=${telegramBot.isInitialized()}`);
     }
     
     res.json({ success: true });
@@ -987,7 +996,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     );
     
     // Отправляем уведомление о завершении
-    if (recipientId && telegramBot.isInitialized()) {
+    if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\n` +
                      `Спасибо, что выбрали DP SBOR!\n\n` +
                      `Для оформления нового заказа перейдите на сайт:\n` +
@@ -1552,6 +1561,7 @@ app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
   res.json({ sellers: result.rows });
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
