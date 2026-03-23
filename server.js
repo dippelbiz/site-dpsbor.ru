@@ -361,8 +361,36 @@ app.post('/api/telegram/webhook', async (req, res) => {
         const update = req.body;
         
         if (update.message && update.message.text) {
-            const messageData = await telegramBot.handleIncomingMessage(update.message);
+            const text = update.message.text;
             
+            // Обработка команды привязки заказа
+            if (text.startsWith('/start order_')) {
+                const orderNumber = text.split('_')[1];
+                const from = update.message.from;
+                const telegramId = from.id;
+                const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
+
+                // Обновляем заказ: добавляем telegram_id
+                const updateResult = await pool.query(`
+                    UPDATE orders 
+                    SET user_telegram_id = $1, 
+                        contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
+                    WHERE order_number = $3
+                    RETURNING id
+                `, [telegramId, telegramName, orderNumber]);
+
+                if (updateResult.rowCount > 0) {
+                    await telegramBot.sendTelegramMessage(telegramId, `✅ Ваш заказ №${orderNumber} привязан! Теперь вы будете получать уведомления и можете общаться с менеджером.`);
+                    console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId}`);
+                } else {
+                    await telegramBot.sendTelegramMessage(telegramId, `❌ Заказ №${orderNumber} не найден. Проверьте номер или обратитесь к менеджеру.`);
+                    console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
+                }
+                return res.sendStatus(200);
+            }
+            
+            // Обычное сообщение (обработка входящих сообщений)
+            const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) {
                 return res.sendStatus(200);
             }
@@ -413,7 +441,6 @@ app.post('/api/telegram/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
-
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
