@@ -608,7 +608,7 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
             ORDER BY last_message_date DESC NULLS LAST
         `);
         
-        // Завершенные чаты (completed) - показываем только те, у которых есть сообщения
+        // Завершенные чаты (completed)
         const completedResult = await pool.query(`
             SELECT DISTINCT 
                 o.id as order_id,
@@ -636,14 +636,7 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     WHERE order_id = o.id
                     ORDER BY created_at DESC 
                     LIMIT 1
-                ) as last_message_direction,
-                (
-                    SELECT json_agg(json_build_object('order_number', order_number, 'status', status))
-                    FROM orders o2
-                    WHERE o2.user_telegram_id = o.user_telegram_id
-                      AND o2.status = 'completed'
-                      AND o2.id != o.id
-                ) as old_orders
+                ) as last_message_direction
             FROM orders o
             WHERE o.status = 'completed'
               AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
@@ -664,8 +657,7 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
                     month: '2-digit'
                 }) : null,
                 lastMessageDirection: row.last_message_direction,
-                status: row.status,
-                oldOrders: row.old_orders || []
+                status: row.status
             };
         };
         
