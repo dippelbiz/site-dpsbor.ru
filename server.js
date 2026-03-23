@@ -357,11 +357,14 @@ app.post('/api/order', async (req, res) => {
 
 // ==================== TELEGRAM WEBHOOK ====================
 app.post('/api/telegram/webhook', async (req, res) => {
+    console.log('📨 Получен webhook запрос'); // Логируем факт получения
     try {
         const update = req.body;
+        console.log('📨 Тело запроса:', JSON.stringify(update).substring(0, 500));
         
         if (update.message && update.message.text) {
             const text = update.message.text;
+            console.log(`📨 Текст сообщения: ${text}`);
             
             // Обработка команды привязки заказа
             if (text.startsWith('/start order_')) {
@@ -370,14 +373,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Обновляем заказ: два отдельных запроса для избежания конфликта типов
+                // Разделяем обновление на два запроса, чтобы избежать конфликта типов
                 const updateUserResult = await pool.query(
                     'UPDATE orders SET user_telegram_id = $1, status = $2 WHERE order_number = $3',
                     [telegramId, 'processing', orderNumber]
                 );
                 
                 if (updateUserResult.rowCount > 0) {
-                    // Обновляем JSON contact отдельно
+                    // Отдельно обновляем JSON contact
                     await pool.query(
                         `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1, 'telegram_name', $2)
                          WHERE order_number = $3`,
