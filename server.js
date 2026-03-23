@@ -359,7 +359,6 @@ app.post('/api/order', async (req, res) => {
 app.post('/api/telegram/webhook', async (req, res) => {
     try {
         const update = req.body;
-        
         if (update.message && update.message.text) {
             const text = update.message.text;
             
@@ -370,7 +369,6 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const telegramId = from.id;
                 const telegramName = `${from.first_name} ${from.last_name || ''}`.trim();
 
-                // Обновляем заказ: используем отдельные параметры для разных типов
                 const updateResult = await pool.query(`
                     UPDATE orders 
                     SET user_telegram_id = $1, 
@@ -389,38 +387,36 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 }
                 return res.sendStatus(200);
             }
-            
+
             // Обычное сообщение
             const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) return res.sendStatus(200);
-            
+
             console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
-            
             let orderId = null;
-            
-            // Поиск активного заказа (новый или в работе) по user_telegram_id
-            const orderResult = await pool.query(`
-                SELECT id FROM orders 
-                WHERE user_telegram_id = $1::bigint
-                  AND status IN ('new', 'processing')
-                ORDER BY created_at DESC LIMIT 1
-            `, [messageData.senderId]);
-            
-            if (orderResult.rows.length > 0) {
-                orderId = orderResult.rows[0].id;
-                console.log(`✅ Найден активный заказ ID: ${orderId}`);
-            } else {
-                console.log(`⚠️ Активный заказ для telegram_id ${messageData.senderId} не найден`);
+            const telegramIdNum = parseInt(messageData.senderId, 10);
+            if (!isNaN(telegramIdNum)) {
+                const orderResult = await pool.query(`
+                    SELECT id FROM orders 
+                    WHERE user_telegram_id = $1
+                      AND status IN ('new', 'processing')
+                    ORDER BY created_at DESC LIMIT 1
+                `, [telegramIdNum]);
+                if (orderResult.rows.length > 0) {
+                    orderId = orderResult.rows[0].id;
+                    console.log(`✅ Найден активный заказ ID: ${orderId}`);
+                } else {
+                    console.log(`⚠️ Активный заказ для telegram_id ${messageData.senderId} не найден`);
+                }
             }
-            
-            const insertResult = await pool.query(`
+
+            await pool.query(`
                 INSERT INTO chat_messages (
                     order_id, channel, external_id, 
                     sender_id, sender_name, message_text, 
                     direction, status, created_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'delivered', NOW())
-                RETURNING id
             `, [
                 orderId,
                 messageData.channel,
@@ -429,10 +425,8 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 messageData.senderName,
                 messageData.messageText
             ]);
-            
-            console.log(`✅ Сообщение сохранено в БД (ID: ${insertResult.rows[0].id}) от ${messageData.senderName} (ID: ${messageData.senderId})`);
+            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
         }
-        
         res.sendStatus(200);
     } catch (err) {
         console.error('❌ Ошибка в Telegram webhook:', err);
