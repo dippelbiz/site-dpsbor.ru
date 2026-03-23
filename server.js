@@ -418,11 +418,16 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
     }
     
+    // Проверяем, что recipient_id - это число (telegram_id)
+    if (isNaN(parseInt(recipient_id))) {
+        return res.status(400).json({ error: 'Неверный формат получателя' });
+    }
+    
     try {
         // Проверяем статус заказа
         const orderCheck = await pool.query('SELECT status FROM orders WHERE id = $1', [order_id]);
-        if (orderCheck.rows.length > 0 && orderCheck.rows[0].status === 'completed') {
-            return res.status(403).json({ error: 'Заказ завершен, отправка сообщений недоступна' });
+        if (orderCheck.rows.length > 0 && orderCheck.rows[0].status !== 'processing') {
+            return res.status(403).json({ error: 'Чат доступен только для заказов в работе' });
         }
         
         let externalId = null;
