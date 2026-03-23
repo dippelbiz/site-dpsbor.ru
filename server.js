@@ -678,6 +678,25 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
         res.status(500).json({ error: 'Database error' });
     }
 });
+// ==================== ПОЛУЧЕНИЕ ЗАКАЗА ПО НОМЕРУ ====================
+app.get('/api/manager/order-by-number/:orderNumber', checkManagerAuth, async (req, res) => {
+    const { orderNumber } = req.params;
+    
+    try {
+        const result = await pool.query(`
+            SELECT id FROM orders WHERE order_number = $1
+        `, [orderNumber]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Заказ не найден' });
+        }
+        
+        res.json({ orderId: result.rows[0].id });
+    } catch (err) {
+        console.error('Ошибка поиска заказа по номеру:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
 // ==================== ИНФОРМАЦИЯ О СООБЩЕНИЯХ ДЛЯ ЗАКАЗА ====================
 app.get('/api/manager/order/:orderId/messages-info', checkManagerAuth, async (req, res) => {
     const { orderId } = req.params;
