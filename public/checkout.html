@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
+        /* все стили остаются без изменений (как в предыдущей версии) */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -293,13 +294,7 @@
         </div>
     </div>
 
-    <div class="section">
-        <div class="section-title">Способ связи</div>
-        <div class="radio-group-vertical">
-            <label><input type="radio" name="messenger" value="telegram" checked> Telegram</label>
-            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
-        </div>
-    </div>
+    <!-- Блок выбора способа связи УДАЛЁН -->
 
     <button id="confirm-button">Подтвердить заказ</button>
 
@@ -338,6 +333,7 @@
     </div>
 
     <script>
+        // (код скрипта без изменений, только удалена переменная messenger, так как выбор убран)
         const tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -526,7 +522,6 @@ ${itemsText}
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
-                const messenger = document.querySelector('input[name="messenger"]:checked').value;
 
                 let address = '';
                 if (deliveryType === 'pickup') {
@@ -558,7 +553,7 @@ ${itemsText}
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: messenger,
+                    messenger: 'telegram', // по умолчанию, но не используется
                     username: user?.username,
                     userId: userId,
                     telegram_id: telegramId,
@@ -600,10 +595,8 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
-                    // Формируем ссылку для бота с номером заказа
                     const telegramLink = `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
-                    // Для VK можно добавить параметр
                     document.getElementById('vk-link').href = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     
                     showModal(result.id || 'temp_id', result.orderNumber, orderMessage);
