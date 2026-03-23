@@ -358,12 +358,13 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
             
-            console.log(`🔍 Поиск активного заказа для telegram_id: ${messageData.senderId}`);
+            console.log(`🔍 Поиск заказа для telegram_id: ${messageData.senderId}`);
             
             let orderId = null;
             let userId = null;
             
-            // Ищем ТОЛЬКО активные заказы (new или processing)
+            // Ищем заказы со статусом 'new' ИЛИ 'processing'
+            // Исключаем завершенные (completed) и отмененные (cancelled)
             const orderResult = await pool.query(`
                 SELECT id, user_telegram_id, order_number, status FROM orders 
                 WHERE (contact->>'telegram_id' = $1 OR user_telegram_id = $2::bigint)
