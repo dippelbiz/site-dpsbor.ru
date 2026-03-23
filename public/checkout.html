@@ -290,14 +290,6 @@
         </div>
     </div>
 
-    <div class="section">
-        <div class="section-title">Способ связи</div>
-        <div class="radio-group-vertical">
-            <label><input type="radio" name="messenger" value="telegram" checked> Telegram</label>
-            <label><input type="radio" name="messenger" value="vk"> ВКонтакте</label>
-        </div>
-    </div>
-
     <button id="confirm-button">Подтвердить заказ</button>
 
     <div id="success-modal" class="modal">
@@ -538,7 +530,6 @@ ${itemsText}
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
                 const deliveryType = document.querySelector('input[name="delivery"]:checked').value;
-                const messenger = document.querySelector('input[name="messenger"]:checked').value;
 
                 let address = '';
                 if (deliveryType === 'pickup') {
@@ -582,7 +573,6 @@ ${itemsText}
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: messenger,
                     username: user?.username,
                     userId: user?.id,
                     telegram_id: user?.id ? String(user.id) : null,
