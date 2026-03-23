@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
+        /* стили не изменились – для краткости оставим как в предыдущей версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -497,16 +498,6 @@ ${itemsText}
             });
         }
 
-        function goToTelegram() {
-            window.open('orders.html', '_blank');
-            window.location.href = MESSENGER_LINKS.telegram;
-        }
-
-        function goToVK() {
-            window.open('orders.html', '_blank');
-            window.location.href = MESSENGER_LINKS.vk;
-        }
-
         async function cancelOrder() {
             if (!confirm('Вы уверены, что хотите отменить заказ?')) return;
             
@@ -603,6 +594,7 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
+                    // ⚠️ Важно: номер заказа – это result.orderNumber (например, "B5")
                     const telegramLink = `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     document.getElementById('vk-link').href = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
