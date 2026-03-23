@@ -93,7 +93,7 @@
             color: white;
         }
         .chat-status.new {
-            background: #2ecc71;
+            background: #f39c12;
             color: white;
         }
         .chat-client {
@@ -264,6 +264,24 @@
             display: inline-block;
             margin-left: 8px;
         }
+        .order-new-badge {
+            background: #f39c12;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            display: inline-block;
+            margin-left: 8px;
+        }
+        .chat-disabled-message {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 12px;
+            background: #f8f9fa;
+            margin: 10px;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -410,7 +428,15 @@
             const container = document.getElementById('main-chat');
             const channelName = getChannelName(currentRecipient?.channel);
             const isCompleted = data.status === 'completed';
-            const canChat = data.status === 'processing' || data.status === 'new';
+            const isNew = data.status === 'new';
+            const isProcessing = data.status === 'processing';
+            
+            // Чат доступен ТОЛЬКО для заказов в работе (processing)
+            // Для новых заказов (new) чат недоступен, но сообщения видны
+            const canChat = isProcessing;
+            
+            const statusBadge = isNew ? '<span class="order-new-badge">🆕 Новый заказ</span>' : 
+                                 (isCompleted ? '<span class="order-completed-badge">✅ Завершен</span>' : '');
             
             const oldOrdersHtml = currentOldOrders.length > 0 ? `
                 <div class="old-orders-list">
@@ -423,10 +449,23 @@
                 </div>
             ` : '';
             
+            // Если заказ новый (new) и не взят в работу, показываем сообщения, но блокируем отправку
+            const chatInputHtml = canChat ? `
+                <div class="chat-input">
+                    <textarea id="message-input" placeholder="Введите сообщение..." rows="2"></textarea>
+                    <button onclick="sendMessage()">Отправить</button>
+                </div>
+            ` : (isNew ? `
+                <div class="chat-disabled-message">
+                    ⚠️ Чтобы отвечать клиенту, сначала возьмите заказ в работу<br>
+                    <small>Нажмите кнопку "Взять в работу" в разделе "Заказы"</small>
+                </div>
+            ` : '');
+            
             container.innerHTML = `
                 <div class="chat-header">
                     <h3>Заказ №${data.order_number}
-                        ${isCompleted ? '<span class="order-completed-badge">✅ Завершен</span>' : ''}
+                        ${statusBadge}
                     </h3>
                     <p>👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p>
                 </div>
@@ -434,10 +473,7 @@
                 <div class="messages-container" id="messages-container">
                     ${renderMessages(data.messages)}
                 </div>
-                <div class="chat-input">
-                    <textarea id="message-input" placeholder="${!canChat ? 'Чат доступен только для заказов в работе' : 'Введите сообщение...'}" rows="2" ${!canChat ? 'disabled' : ''}></textarea>
-                    <button onclick="sendMessage()" ${!canChat ? 'disabled' : ''}>Отправить</button>
-                </div>
+                ${chatInputHtml}
             `;
             
             const messagesContainer = document.getElementById('messages-container');
@@ -445,12 +481,14 @@
             
             if (canChat) {
                 const input = document.getElementById('message-input');
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                });
+                if (input) {
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMessage();
+                        }
+                    });
+                }
             }
         }
         
@@ -499,8 +537,9 @@
         }
         
         async function sendMessage() {
-            if (currentOrderStatus !== 'processing' && currentOrderStatus !== 'new') {
-                alert('Чат доступен только для заказов в работе');
+            // Проверяем, что заказ в работе
+            if (currentOrderStatus !== 'processing') {
+                alert('Чат доступен только для заказов в работе. Сначала возьмите заказ в работу.');
                 return;
             }
             
