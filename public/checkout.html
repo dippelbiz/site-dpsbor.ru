@@ -302,7 +302,9 @@
             <button id="copy-number-btn" class="copy-number-button">Скопировать номер заказа</button>
             
             <div class="instruction">
-                <p>Выберите удобный мессенджер для связи</p>
+                <p>Выберите удобный мессенджер для связи.</p>
+                <p>Пришлите нам ТОЛЬКО номер заказа: <strong id="instruction-order-number"></strong></p>
+                <p>Так мы сможем с Вами связаться🟢</p>
             </div>
             
             <div class="messenger-buttons">
@@ -441,6 +443,7 @@
             currentOrderNumber = orderNumber;
             
             document.getElementById('modal-order-number').innerHTML = `№${orderNumber}`;
+            document.getElementById('instruction-order-number').textContent = orderNumber; // вставляем номер в инструкцию
             document.getElementById('success-modal').style.display = 'block';
             
             const copyBtn = document.getElementById('copy-number-btn');
@@ -555,7 +558,6 @@
                     const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
-                    // Ссылка на ВК без автоматического текста – пользователь скопирует номер сам
                     const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     document.getElementById('vk-link').href = vkLink;
                     
