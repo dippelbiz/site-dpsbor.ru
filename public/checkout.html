@@ -603,7 +603,7 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
-                    const telegramLink = `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
+const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     console.log('🔗 Ссылка для Telegram:', telegramLink);
                     
                     document.getElementById('telegram-link').href = telegramLink;
