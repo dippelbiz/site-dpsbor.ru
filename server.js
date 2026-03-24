@@ -377,10 +377,13 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
     }
     
-    const recipientIdNum = parseInt(recipient_id);
-    if (isNaN(recipientIdNum) || recipientIdNum < 100000000) {
-        console.error(`❌ Неверный recipient_id: ${recipient_id} (должен быть telegram_id)`);
-        return res.status(400).json({ error: 'Неверный формат получателя' });
+    // Проверяем формат recipient_id только для Telegram (должен быть числом > 100000000)
+    if (channel === 'telegram') {
+        const recipientIdNum = parseInt(recipient_id);
+        if (isNaN(recipientIdNum) || recipientIdNum < 100000000) {
+            console.error(`❌ Неверный recipient_id: ${recipient_id} (должен быть telegram_id)`);
+            return res.status(400).json({ error: 'Неверный формат получателя' });
+        }
     }
     
     try {
@@ -397,6 +400,7 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 return res.status(500).json({ error: 'Telegram бот не инициализирован' });
             }
             
+            const recipientIdNum = parseInt(recipient_id);
             console.log(`📨 Отправка в Telegram получателю: ${recipientIdNum}`);
             const sent = await telegramBot.sendTelegramMessage(recipientIdNum, message_text);
             if (sent) {
@@ -451,7 +455,6 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 // ==================== ПОЛУЧЕНИЕ ЧАТА ПО ЗАКАЗУ ====================
 app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
     const { orderId } = req.params;
