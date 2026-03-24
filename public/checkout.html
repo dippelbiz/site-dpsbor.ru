@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
+        /* все стили без изменений – как в последней версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -332,6 +333,10 @@
         let currentOrderNumber = null;
         let currentOrderId = null;
 
+        function createOrderMessage(orderNumber, orderData) {
+            return '';
+        }
+
         async function loadData() {
             await loadProducts();
             await loadCart();
@@ -511,7 +516,7 @@
                     address: address,
                     paymentMethod: paymentMethod,
                     deliveryType: deliveryType,
-                    messenger: 'telegram', // значение не используется для привязки
+                    messenger: 'telegram',
                     username: user?.username,
                     userId: userId,
                     telegram_id: telegramId,
@@ -547,12 +552,11 @@
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    // Ссылка для Telegram
                     const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
-                    // Ссылка для ВК с командой /start order_...
-                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}&text=/start%20order_${result.orderNumber}`;
+                    // Ссылка на ВК без автоматического текста – пользователь скопирует номер сам
+                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     document.getElementById('vk-link').href = vkLink;
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
