@@ -151,8 +151,7 @@ async function handleVKWebhook(req, res) {
             const message = update.object.message;
             const userId = message.from_id;
             const text = message.text;
-            // В ВК объект не содержит поле from, получаем имя через API
-            let senderName = await getUserName(userId);
+            const senderName = await getUserName(userId);
             console.log(`📨 VK сообщение от ${userId} (${senderName}): "${text}"`);
 
             if (text.startsWith('/start order_')) {
