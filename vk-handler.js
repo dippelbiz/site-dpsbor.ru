@@ -46,7 +46,6 @@ async function sendVKMessage(userId, message) {
 
 // Вспомогательная функция привязки заказа к VK ID
 async function bindOrderVK(vkId, orderNumber, senderName) {
-    // Проверяем существование заказа и его статус
     const orderCheck = await pool.query(
         'SELECT id, status FROM orders WHERE order_number = $1',
         [orderNumber]
@@ -62,13 +61,11 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
         return { success: false, message: 'Заказ уже завершён' };
     }
 
-    // Обновляем статус (если ещё не processing)
     const updateResult = await pool.query(
         'UPDATE orders SET status = $1 WHERE order_number = $2 AND status != $3',
         ['processing', orderNumber, 'completed']
     );
 
-    // Получаем полные данные заказа для сообщения
     const orderData = await pool.query(`
         SELECT order_number, total, contact, items 
         FROM orders WHERE order_number = $1
@@ -83,7 +80,6 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
-    // Формируем подробное сообщение (аналогично Telegram)
     let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
@@ -104,7 +100,6 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     messageText += `\nСумма заказа: ${orderRow.total} руб.`;
 
     if (updateResult.rowCount > 0) {
-        // Обновляем contact, добавляя vk_id и vk_name
         const contactJson = JSON.stringify({
             vk_id: String(vkId),
             vk_name: senderName
@@ -113,7 +108,6 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
             `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
             [contactJson, orderNumber]
         );
-        // Переносим непривязанные сообщения (если были до привязки)
         await pool.query(
             `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
              WHERE sender_id = $1::text AND order_id IS NULL AND channel = 'vk'`,
@@ -131,16 +125,16 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
 async function handleVKWebhook(req, res) {
     try {
         const update = req.body;
+        console.log('📨 VK webhook received:', JSON.stringify(update));
+
         // Подтверждение адреса (Callback API требует ответа кодом подтверждения)
         if (update.type === 'confirmation') {
-            if (!VK_CONFIRMATION_CODE) {
-                console.error('❌ VK_CONFIRMATION_CODE не задан');
-                return res.status(500).send('error');
-            }
-            return res.send(VK_CONFIRMATION_CODE);
+            // Используем код из переменной окружения, если он есть, иначе берём из настроек (для первоначальной настройки)
+            const confirmationCode = VK_CONFIRMATION_CODE || 'bed3ca1c';
+            console.log(`✅ VK confirmation: returning ${confirmationCode}`);
+            return res.send(confirmationCode);
         }
 
-        // Обработка нового сообщения
         if (update.type === 'message_new') {
             const message = update.object.message;
             const userId = message.from_id;
@@ -181,7 +175,6 @@ async function handleVKWebhook(req, res) {
 
             // 4. Обычное сообщение – ищем активный заказ по vk_id в contact
             let orderId = null;
-            // Ищем заказ, у которого в contact.vk_id = userId и статус processing
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'vk_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
                 [String(userId), 'processing']
@@ -189,7 +182,7 @@ async function handleVKWebhook(req, res) {
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
             } else {
-                // Если не нашли – попробуем найти недавний заказ без vk_id (на случай, если пользователь пишет до привязки)
+                // Автоматическая привязка к недавнему заказу без vk_id
                 const recentOrder = await pool.query(
                     `SELECT id FROM orders 
                      WHERE (contact->>'vk_id' IS NULL OR contact->>'vk_id' = '') 
@@ -200,7 +193,6 @@ async function handleVKWebhook(req, res) {
                 );
                 if (recentOrder.rows.length > 0) {
                     orderId = recentOrder.rows[0].id;
-                    // Автоматически привязываем заказ к этому пользователю
                     const contactJson = JSON.stringify({
                         vk_id: String(userId),
                         vk_name: senderName
@@ -209,7 +201,6 @@ async function handleVKWebhook(req, res) {
                         `UPDATE orders SET contact = contact || $1::jsonb WHERE id = $2`,
                         [contactJson, orderId]
                     );
-                    // Отправляем подтверждение
                     await sendVKMessage(userId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
                     // Отправляем детали заказа
                     const orderDetails = await pool.query(`
@@ -271,7 +262,6 @@ async function handleVKWebhook(req, res) {
     }
 }
 
-// Дополнительная функция для проверки инициализации
 function isInitialized() {
     return !!(VK_ACCESS_TOKEN && VK_GROUP_ID && pool);
 }
