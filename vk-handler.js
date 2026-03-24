@@ -153,40 +153,7 @@ async function handleVKWebhook(req, res) {
             const senderName = await getUserName(userId);
             console.log(`📨 VK сообщение от ${userId} (${senderName}): "${text}"`);
 
-            // 1. Команда /start order_XXX
-            if (text.startsWith('/start order_')) {
-                const orderNumber = text.split('_')[1];
-                console.log(`🔍 Обработка команды /start order_${orderNumber}`);
-                const result = await bindOrderVK(userId, orderNumber, senderName);
-                if (result.success) {
-                    await sendVKMessage(userId, `✅ ${result.message}`);
-                } else {
-                    await sendVKMessage(userId, `❌ ${result.message}`);
-                }
-                return res.send('ok');
-            }
-
-            // 2. Команда /start без параметра – начинаем диалог
-            if (text === '/start') {
-                await sendVKMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
-                vkBindingStates.set(userId, { step: 'awaiting_order_number' });
-                return res.send('ok');
-            }
-
-            // 3. Если пользователь ожидает ввода номера заказа
-            if (vkBindingStates.get(userId)?.step === 'awaiting_order_number') {
-                const orderNumber = text.trim();
-                const result = await bindOrderVK(userId, orderNumber, senderName);
-                if (result.success) {
-                    await sendVKMessage(userId, `✅ ${result.message}`);
-                } else {
-                    await sendVKMessage(userId, `❌ ${result.message}`);
-                }
-                vkBindingStates.delete(userId);
-                return res.send('ok');
-            }
-
-            // 4. Если текст похож на номер заказа (буква+цифры) – попытка привязать
+            // 1. Проверка, не является ли текст номером заказа (буква+цифры)
             if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
                 const orderNumber = text;
                 console.log(`🔍 Распознан номер заказа: ${orderNumber}`);
@@ -196,6 +163,38 @@ async function handleVKWebhook(req, res) {
                 } else {
                     await sendVKMessage(userId, `❌ ${result.message}`);
                 }
+                return res.send('ok');
+            }
+
+            // 2. Команда /start order_XXX
+            if (text.startsWith('/start order_')) {
+                const orderNumber = text.split('_')[1];
+                const result = await bindOrderVK(userId, orderNumber, senderName);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            }
+
+            // 3. Команда /start без параметра – начинаем диалог
+            if (text === '/start') {
+                await sendVKMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
+                vkBindingStates.set(userId, { step: 'awaiting_order_number' });
+                return res.send('ok');
+            }
+
+            // 4. Если пользователь ожидает ввода номера заказа
+            if (vkBindingStates.get(userId)?.step === 'awaiting_order_number') {
+                const orderNumber = text.trim();
+                const result = await bindOrderVK(userId, orderNumber, senderName);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
+                vkBindingStates.delete(userId);
                 return res.send('ok');
             }
 
