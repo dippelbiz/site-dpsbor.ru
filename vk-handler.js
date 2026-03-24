@@ -4,14 +4,16 @@
 let VK_ACCESS_TOKEN = null;
 let VK_GROUP_ID = null;
 let VK_CONFIRMATION_CODE = null;
+let VK_SECRET_KEY = null;
 let pool = null;
 let vkBindingStates = new Map();
 
 // Инициализация модуля
-function initVK(vkToken, vkGroupId, dbPool, confirmationCode) {
+function initVK(vkToken, vkGroupId, dbPool, confirmationCode, secretKey) {
     VK_ACCESS_TOKEN = vkToken;
     VK_GROUP_ID = vkGroupId;
     VK_CONFIRMATION_CODE = confirmationCode;
+    VK_SECRET_KEY = secretKey;
     pool = dbPool;
     console.log('✅ VK модуль инициализирован');
 }
@@ -124,12 +126,20 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
 // Основной обработчик вебхука ВК
 async function handleVKWebhook(req, res) {
     try {
+        // Проверка секретного ключа (если он задан)
+        if (VK_SECRET_KEY) {
+            const receivedSecret = req.headers['x-vk-secret'];
+            if (receivedSecret !== VK_SECRET_KEY) {
+                console.error(`❌ Неверный секретный ключ VK: получен ${receivedSecret}, ожидается ${VK_SECRET_KEY}`);
+                return res.status(403).send('invalid secret');
+            }
+        }
+
         const update = req.body;
         console.log('📨 VK webhook received:', JSON.stringify(update));
 
-        // Подтверждение адреса (Callback API требует ответа кодом подтверждения)
+        // Подтверждение адреса
         if (update.type === 'confirmation') {
-            // Используем код из переменной окружения, если он есть, иначе берём из настроек (для первоначальной настройки)
             const confirmationCode = VK_CONFIRMATION_CODE || 'bed3ca1c';
             console.log(`✅ VK confirmation: returning ${confirmationCode}`);
             return res.send(confirmationCode);
