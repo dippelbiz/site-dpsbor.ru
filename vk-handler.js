@@ -38,6 +38,7 @@ async function sendVKMessage(userId, message) {
 }
 
 async function bindOrderVK(vkId, orderNumber, senderName) {
+    console.log(`🔍 bindOrderVK: vkId=${vkId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
         'SELECT id, status FROM orders WHERE order_number = $1',
         [orderNumber]
@@ -107,6 +108,7 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
         console.log(`✅ Заказ ${orderNumber} привязан к VK пользователю ${vkId}`);
         return { success: true, message: messageText };
     } else {
+        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
         return { success: true, message: messageText };
     }
 }
@@ -133,6 +135,7 @@ async function handleVKWebhook(req, res) {
 
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
+                console.log(`🔍 Обработка команды /start order_${orderNumber}`);
                 const result = await bindOrderVK(userId, orderNumber, senderName);
                 if (result.success) {
                     await sendVKMessage(userId, `✅ ${result.message}`);
