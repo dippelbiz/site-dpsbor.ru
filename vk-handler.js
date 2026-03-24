@@ -125,6 +125,7 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
 
 // Основной обработчик вебхука ВК
 async function handleVKWebhook(req, res) {
+    console.log('📨 VK webhook вызван'); // всегда печатаем, чтобы знать, что запрос пришёл
     try {
         // Проверка секретного ключа (если он задан)
         if (VK_SECRET_KEY) {
@@ -136,7 +137,7 @@ async function handleVKWebhook(req, res) {
         }
 
         const update = req.body;
-        console.log('📨 VK webhook received:', JSON.stringify(update));
+        console.log('📨 VK webhook body:', JSON.stringify(update));
 
         // Подтверждение адреса
         if (update.type === 'confirmation') {
@@ -151,9 +152,12 @@ async function handleVKWebhook(req, res) {
             const text = message.text;
             const senderName = `${message.from.first_name} ${message.from.last_name || ''}`.trim() || 'Пользователь ВК';
 
+            console.log(`📨 VK сообщение от ${userId}: "${text}"`);
+
             // 1. Обработка команды /start order_XXX
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
+                console.log(`🔍 Обработка команды /start order_${orderNumber}`);
                 const result = await bindOrderVK(userId, orderNumber, senderName);
                 if (result.success) {
                     await sendVKMessage(userId, `✅ ${result.message}`);
