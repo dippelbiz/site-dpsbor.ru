@@ -363,7 +363,6 @@ async function bindOrder(chatId, orderNumber, senderName) {
     const telegramId = chatId;
     const telegramName = senderName;
 
-    // Проверяем существование заказа и его статус
     const orderCheck = await pool.query(
         'SELECT id, status FROM orders WHERE order_number = $1',
         [orderNumber]
@@ -379,37 +378,36 @@ async function bindOrder(chatId, orderNumber, senderName) {
         return { success: false, message: 'Заказ уже завершён' };
     }
 
-    // Если заказ уже привязан к другому пользователю, не меняем
     if (order.user_telegram_id && order.user_telegram_id !== telegramId) {
         console.log(`⚠️ Заказ ${orderNumber} уже привязан к другому пользователю`);
         return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
     }
 
-    // Обновляем user_telegram_id и статус (если он ещё не processing)
     const updateUserResult = await pool.query(
         'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
         [telegramId, 'processing', orderNumber, 'completed']
     );
 
     if (updateUserResult.rowCount > 0) {
-        // Обновляем JSON contact – все значения приводим к text
+        // Создаём JSON объект как строку и передаём как jsonb
+        const contactJson = JSON.stringify({
+            telegram_id: String(telegramId),
+            telegram_name: telegramName
+        });
         await pool.query(
-            `UPDATE orders SET contact = contact || jsonb_build_object(
-                'telegram_id', $1::text,
-                'telegram_name', $2::text
-             ) WHERE order_number = $3`,
-            [String(telegramId), telegramName, orderNumber]
+            `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
+            [contactJson, orderNumber]
         );
-        // Переносим непривязанные сообщения
+
         await pool.query(
-            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $3)
+            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
              WHERE sender_id = $1::text AND order_id IS NULL`,
             [String(telegramId), orderNumber]
         );
+
         console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
         return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
     } else {
-        // Если обновление не затронуло строки (например, уже processing)
         console.log(`⚠️ Заказ ${orderNumber} уже в работе или не требует обновления`);
         return { success: true, message: `Ваш заказ №${orderNumber} уже в работе. Мы свяжемся с вами.` };
     }
