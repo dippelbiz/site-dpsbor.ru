@@ -406,7 +406,7 @@ async function bindOrder(chatId, orderNumber, senderName) {
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
     // Формируем подробное сообщение
-    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    let messageText = ` Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
 
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
