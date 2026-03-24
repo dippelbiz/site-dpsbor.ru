@@ -357,9 +357,10 @@ const insertResult = await pool.query(`
 
 // ==================== TELEGRAM WEBHOOK ====================
 
+// Глобальное хранилище для диалогов привязки (в продакшене лучше использовать БД)
 if (!global.orderBindingStates) global.orderBindingStates = new Map();
 
-// Функция нормализации номера заказа (замена кириллических букв на латинские)
+// Нормализация номера заказа (кириллица -> латиница)
 function normalizeOrderNumber(orderNumber) {
     const cyrillicToLatin = {
         'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'У': 'Y', 'Х': 'X'
@@ -406,8 +407,9 @@ async function bindOrder(chatId, orderNumber, senderName) {
     );
 
     if (updateUserResult.rowCount > 0) {
+        // Явное приведение типов для всех параметров
         await pool.query(
-            `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
+            `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2::text)
              WHERE order_number = $3`,
             [String(telegramId), telegramName, normalizedNumber]
         );
@@ -469,7 +471,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // 4. Обычное сообщение
+            // 4. Обычное сообщение – ищем активный заказ
             const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) return res.sendStatus(200);
 
