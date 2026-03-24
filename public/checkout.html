@@ -33,7 +33,7 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
-            width: 30%;
+            width: 45%;
         }
         .top-nav button:hover {
             background: #28a745;
@@ -124,12 +124,31 @@
         .modal-content {
             background-color: white;
             margin: 20% auto;
-            padding: 25px;
+            padding: 20px;
             border-radius: 15px;
             width: 90%;
             max-width: 340px;
             text-align: center;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 12px;
+            right: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            background: none;
+            border: none;
+            width: auto;
+            padding: 0;
+            margin: 0;
+        }
+        .close-modal:hover {
+            color: #333;
         }
         
         .modal h3 {
@@ -141,68 +160,28 @@
         .order-number {
             font-size: 1.3em;
             color: #28a745;
-            margin: 5px 0 20px 0;
+            margin: 5px 0 15px 0;
             font-weight: bold;
             background: #e8f5e9;
             padding: 8px;
             border-radius: 8px;
         }
         
-        .copy-button {
+        .copy-number-button {
             background: #28a745;
             color: white;
             border: none;
-            padding: 18px;
-            border-radius: 10px;
+            padding: 10px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             width: 100%;
-            margin: 15px 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            margin: 10px 0;
             transition: background 0.2s;
         }
-        
-        .copy-button:hover {
-            background: #218838;
-        }
-        
-        .copy-button.copied {
+        .copy-number-button.copied {
             background: #6c757d;
-        }
-        
-        .secondary-button {
-            background: #6c757d;
-        }
-        .secondary-button:hover {
-            background: #5a6268;
-        }
-        
-        .instruction {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 15px 0;
-            text-align: left;
-        }
-        
-        .instruction p {
-            margin: 5px 0;
-            color: #555;
-        }
-        
-        .instruction ol {
-            margin: 10px 0 0 20px;
-            padding: 0;
-            color: #333;
-        }
-        
-        .instruction li {
-            margin: 8px 0;
-            line-height: 1.4;
         }
         
         .messenger-buttons {
@@ -213,13 +192,12 @@
         
         .messenger-button {
             flex: 1;
-            padding: 14px;
+            padding: 12px;
             border: none;
             border-radius: 8px;
             font-size: 15px;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
             text-align: center;
             text-decoration: none;
             display: inline-block;
@@ -246,24 +224,30 @@
             background: #dc3545;
             color: white;
             border: none;
-            padding: 14px;
+            padding: 8px 12px;
             border-radius: 8px;
             cursor: pointer;
-            width: 100%;
+            width: auto;
+            font-size: 14px;
             margin-top: 10px;
-            font-size: 16px;
-            font-weight: bold;
+            display: inline-block;
         }
         
         .cancel-button:hover {
             background: #c82333;
         }
         
-        .manual-buttons {
-            margin-top: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+        .instruction {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 10px 0;
+            text-align: left;
+            font-size: 14px;
+        }
+        .instruction p {
+            margin: 0;
+            color: #555;
         }
     </style>
 </head>
@@ -271,7 +255,6 @@
     <div class="top-nav">
         <button onclick="location.href='index.html'">Каталог</button>
         <button onclick="location.href='cart.html'">Корзина</button>
-        <button onclick="location.href='orders.html'">Мои заказы</button>
     </div>
 
     <h1>Оформление заказа</h1>
@@ -311,27 +294,22 @@
 
     <div id="success-modal" class="modal">
         <div class="modal-content">
-            <h3>✅ Заказ оформлен!</h3>
+            <button class="close-modal" id="close-modal-btn">&times;</button>
+            <h3>Заказ готов к оформлению</h3>
             <div id="modal-order-number" class="order-number"></div>
+            
+            <button id="copy-number-btn" class="copy-number-button">Скопировать номер заказа</button>
+            
             <div class="instruction">
-                <p><b>📋 Что нужно сделать:</b></p>
-                <ol>
-                    <li>Нажмите кнопку Telegram, чтобы связаться с нами</li>
-                    <li>Если Telegram не открывается, скопируйте номер заказа и отправьте его боту вручную</li>
-                </ol>
-                <p style="margin-top: 10px; color: #28a745;">Мы ответим в ближайшее время!</p>
+                <p>Выберите удобный мессенджер для связи</p>
             </div>
-            <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
-                <span>📋</span> Копировать заказ
-            </button>
+            
             <div class="messenger-buttons">
                 <a id="telegram-link" class="messenger-button telegram" target="_blank">Telegram</a>
                 <a id="vk-link" class="messenger-button vk" target="_blank">ВКонтакте</a>
             </div>
-            <div class="manual-buttons">
-                <button id="copy-order-number" class="copy-button secondary-button">📋 Скопировать номер заказа</button>
-            </div>
-            <button class="cancel-button" onclick="cancelOrder()">❌ Отменить заказ</button>
+            
+            <button id="cancel-order-btn" class="cancel-button">Отменить заказ</button>
         </div>
     </div>
 
@@ -353,30 +331,10 @@
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
         let currentOrderId = null;
-        let currentOrderMessage = '';
-
-        const MESSENGER_LINKS = {
-            telegram: 'https://t.me/dpsbor_site_bot',
-            vk: 'https://vk.me/public236751492'
-        };
 
         function createOrderMessage(orderNumber, orderData) {
-            const itemsText = orderData.items.map(item => {
-                const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                return `${item.name} (${variantDisplay}) - ${item.quantity} шт = ${item.price * item.quantity} руб.`;
-            }).join('\n');
-            
-            const deliveryText = orderData.contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка';
-            const paymentText = orderData.contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод';
-            
-            return `ЗАКАЗ №${orderNumber}
-Способ получения: ${deliveryText}
-Адрес: ${orderData.contact.address}
-Оплата: ${paymentText}
-
-${itemsText}
-
-Итого: ${orderData.total} руб.`;
+            // Not used anymore – we removed full copy button
+            return '';
         }
 
         async function loadData() {
@@ -478,49 +436,49 @@ ${itemsText}
         });
         updateDeliveryBlocks();
 
-        function showModal(orderId, orderNumber, message) {
+        function showModal(orderId, orderNumber) {
             currentOrderId = orderId;
             currentOrderNumber = orderNumber;
-            currentOrderMessage = message;
             
             document.getElementById('modal-order-number').innerHTML = `№${orderNumber}`;
             document.getElementById('success-modal').style.display = 'block';
             
-            const copyBtn = document.getElementById('copy-button');
-            copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
-            copyBtn.classList.remove('copied');
-        }
-
-        function copyOrderMessage() {
-            navigator.clipboard.writeText(currentOrderMessage).then(() => {
-                const copyBtn = document.getElementById('copy-button');
-                copyBtn.innerHTML = '<span>✅</span> Скопировано!';
+            // Copy number button
+            const copyBtn = document.getElementById('copy-number-btn');
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(orderNumber);
+                copyBtn.textContent = 'Номер заказа скопирован';
                 copyBtn.classList.add('copied');
-                
                 setTimeout(() => {
-                    copyBtn.innerHTML = '<span>📋</span> Копировать заказ';
+                    copyBtn.textContent = 'Скопировать номер заказа';
                     copyBtn.classList.remove('copied');
                 }, 2000);
-            }).catch(err => {
-                alert('Не удалось скопировать. Выделите текст вручную и нажмите Ctrl+C');
-            });
+            };
         }
 
         async function cancelOrder() {
             if (!confirm('Вы уверены, что хотите отменить заказ?')) return;
-            
             try {
                 await fetch(`/api/order/${currentOrderId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'Отменен' })
                 });
-                window.location.href = 'orders.html';
+                window.location.href = 'index.html';
             } catch (err) {
                 console.error('Ошибка:', err);
                 alert('Ошибка при отмене заказа');
             }
         }
+
+        // Close modal and go to catalog
+        function closeModalAndGoToCatalog() {
+            document.getElementById('success-modal').style.display = 'none';
+            window.location.href = 'index.html';
+        }
+
+        document.getElementById('close-modal-btn').onclick = closeModalAndGoToCatalog;
+        document.getElementById('cancel-order-btn').onclick = cancelOrder;
 
         const confirmBtn = document.getElementById('confirm-button');
         confirmBtn.addEventListener('click', async (e) => {
@@ -596,27 +554,11 @@ ${itemsText}
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    const fullOrderData = {
-                        ...orderData,
-                        orderNumber: result.orderNumber
-                    };
-                    
-                    const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
-                    
-const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
-                    console.log('🔗 Ссылка для Telegram:', telegramLink);
-                    
+                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     document.getElementById('vk-link').href = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     
-                    // Кнопка копирования номера заказа
-                    const copyOrderNumberBtn = document.getElementById('copy-order-number');
-                    copyOrderNumberBtn.onclick = () => {
-                        navigator.clipboard.writeText(result.orderNumber);
-                        alert(`Номер заказа ${result.orderNumber} скопирован! Отправьте его боту в Telegram.`);
-                    };
-                    
-                    showModal(result.id || 'temp_id', result.orderNumber, orderMessage);
+                    showModal(result.id || 'temp_id', result.orderNumber);
                     
                     cart.items = [];
                     updateCartCount();
