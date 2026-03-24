@@ -6,7 +6,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
-        /* все стили без изменений – см. предыдущие версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -175,6 +174,13 @@
             background: #6c757d;
         }
         
+        .secondary-button {
+            background: #6c757d;
+        }
+        .secondary-button:hover {
+            background: #5a6268;
+        }
+        
         .instruction {
             background: #f8f9fa;
             border-radius: 10px;
@@ -252,6 +258,13 @@
         .cancel-button:hover {
             background: #c82333;
         }
+        
+        .manual-buttons {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -300,28 +313,25 @@
         <div class="modal-content">
             <h3>✅ Заказ оформлен!</h3>
             <div id="modal-order-number" class="order-number"></div>
-            
             <div class="instruction">
                 <p><b>📋 Что нужно сделать:</b></p>
                 <ol>
-                    <li>Нажмите кнопку вашего мессенджера ниже</li>
-                    <li>В открывшемся чате отправьте нам скопированный текст заказа</li>
+                    <li>Нажмите кнопку Telegram, чтобы связаться с нами</li>
+                    <li>Если Telegram не открывается, скопируйте номер заказа и отправьте его боту вручную</li>
                 </ol>
                 <p style="margin-top: 10px; color: #28a745;">Мы ответим в ближайшее время!</p>
             </div>
-            
             <button id="copy-button" class="copy-button" onclick="copyOrderMessage()">
                 <span>📋</span> Копировать заказ
             </button>
-            
             <div class="messenger-buttons">
                 <a id="telegram-link" class="messenger-button telegram" target="_blank">Telegram</a>
                 <a id="vk-link" class="messenger-button vk" target="_blank">ВКонтакте</a>
             </div>
-            
-            <button class="cancel-button" onclick="cancelOrder()">
-                ❌ Отменить заказ
-            </button>
+            <div class="manual-buttons">
+                <button id="copy-order-number" class="copy-button secondary-button">📋 Скопировать номер заказа</button>
+            </div>
+            <button class="cancel-button" onclick="cancelOrder()">❌ Отменить заказ</button>
         </div>
     </div>
 
@@ -593,12 +603,18 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
-                    // ✅ ИСПРАВЛЕННАЯ ССЫЛКА – используем tg:// для приложения
-                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
+                    const telegramLink = `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     console.log('🔗 Ссылка для Telegram:', telegramLink);
                     
                     document.getElementById('telegram-link').href = telegramLink;
                     document.getElementById('vk-link').href = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
+                    
+                    // Кнопка копирования номера заказа
+                    const copyOrderNumberBtn = document.getElementById('copy-order-number');
+                    copyOrderNumberBtn.onclick = () => {
+                        navigator.clipboard.writeText(result.orderNumber);
+                        alert(`Номер заказа ${result.orderNumber} скопирован! Отправьте его боту в Telegram.`);
+                    };
                     
                     showModal(result.id || 'temp_id', result.orderNumber, orderMessage);
                     
