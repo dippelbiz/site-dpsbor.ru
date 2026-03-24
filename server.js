@@ -535,6 +535,190 @@ app.post('/api/telegram/webhook', async (req, res) => {
     }
 });
 
+// ==================== VK WEBHOOK ====================
+app.post('/api/vk/webhook', async (req, res) => {
+    try {
+        const { type, object, group_id, secret } = req.body;
+
+        // Подтверждение адреса (Callback API требует ответа "ok")
+        if (type === 'confirmation') {
+            return res.send(process.env.VK_CONFIRMATION_CODE); // код подтверждения из настроек группы
+        }
+
+        if (type === 'message_new') {
+            const message = object.message;
+            const userId = message.from_id;
+            const text = message.text;
+            const peerId = message.peer_id;
+
+            // Обработка команды /start order_...
+            if (text.startsWith('/start order_')) {
+                const orderNumber = text.split('_')[1];
+                const result = await bindOrderVK(userId, orderNumber);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            }
+
+            // Если команда /start без параметра – начинаем диалог
+            if (text === '/start') {
+                await sendVKMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
+                // Сохраняем состояние ожидания номера заказа
+                if (!global.vkBindingStates) global.vkBindingStates = new Map();
+                global.vkBindingStates.set(userId, { step: 'awaiting_order_number' });
+                return res.send('ok');
+            }
+
+            // Если пользователь ожидает ввода номера
+            if (global.vkBindingStates?.get(userId)?.step === 'awaiting_order_number') {
+                const orderNumber = text.trim();
+                const result = await bindOrderVK(userId, orderNumber);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
+                global.vkBindingStates.delete(userId);
+                return res.send('ok');
+            }
+
+            // Обычное сообщение – ищем активный заказ
+            let orderId = null;
+            if (userId) {
+                const orderResult = await pool.query(
+                    'SELECT id FROM orders WHERE user_telegram_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
+                    [userId, 'processing']
+                );
+                if (orderResult.rows.length > 0) orderId = orderResult.rows[0].id;
+            }
+
+            // Сохраняем сообщение в БД (канал 'vk')
+            await pool.query(
+                `INSERT INTO chat_messages (
+                    order_id, channel, external_id, 
+                    sender_id, sender_name, message_text, 
+                    direction, status, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                [
+                    orderId,
+                    'vk',
+                    String(message.id),
+                    String(userId),
+                    `${message.from.first_name} ${message.from.last_name || ''}`.trim() || 'Клиент',
+                    text,
+                    'incoming',
+                    'delivered'
+                ]
+            );
+            console.log(`✅ Сообщение ВК сохранено от пользователя ${userId}`);
+        }
+
+        res.send('ok');
+    } catch (err) {
+        console.error('❌ Ошибка в VK webhook:', err);
+        res.status(500).send('error');
+    }
+});
+
+// Вспомогательная функция для отправки сообщения ВК
+async function sendVKMessage(userId, text) {
+    if (!process.env.VK_ACCESS_TOKEN || !process.env.VK_GROUP_ID) {
+        console.error('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
+        return;
+    }
+    const url = `https://api.vk.com/method/messages.send?user_id=${userId}&message=${encodeURIComponent(text)}&random_id=${Date.now()}&access_token=${process.env.VK_ACCESS_TOKEN}&v=5.131`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.error) {
+        console.error('Ошибка отправки сообщения ВК:', data.error);
+    }
+}
+
+async function bindOrderVK(vkId, orderNumber) {
+    const telegramId = vkId; // используем vkId как идентификатор
+    const telegramName = `VK пользователь ${vkId}`;
+
+    const orderCheck = await pool.query(
+        'SELECT id, status FROM orders WHERE order_number = $1',
+        [orderNumber]
+    );
+    if (orderCheck.rows.length === 0) {
+        return { success: false, message: 'Заказ не найден' };
+    }
+
+    const order = orderCheck.rows[0];
+    if (order.status === 'completed') {
+        return { success: false, message: 'Заказ уже завершён' };
+    }
+
+    if (order.user_telegram_id && order.user_telegram_id !== vkId) {
+        return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
+    }
+
+    const updateUserResult = await pool.query(
+        'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
+        [vkId, 'processing', orderNumber, 'completed']
+    );
+
+    const orderData = await pool.query(`
+        SELECT order_number, total, contact, items 
+        FROM orders WHERE order_number = $1
+    `, [orderNumber]);
+
+    if (orderData.rows.length === 0) {
+        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
+    }
+
+    const orderRow = orderData.rows[0];
+    const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
+    const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
+
+    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+
+    if (contact.deliveryType === 'pickup') {
+        messageText += `Самовывоз: ${contact.address}\n`;
+    } else if (contact.deliveryType === 'courier') {
+        messageText += `Доставка: ${contact.address}\n`;
+    }
+
+    if (contact.paymentMethod === 'cash') {
+        messageText += `Оплата: наличными\n`;
+    } else if (contact.paymentMethod === 'transfer') {
+        messageText += `Оплата: перевод по номеру\n`;
+    }
+
+    messageText += `\nСостав заказа:\n`;
+    items.forEach(item => {
+        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+        const itemTotal = item.price * item.quantity;
+        messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+    });
+    messageText += `\nСумма заказа: ${orderRow.total} руб.`;
+
+    if (updateUserResult.rowCount > 0) {
+        const contactJson = JSON.stringify({
+            vk_id: String(vkId)
+        });
+        await pool.query(
+            `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
+            [contactJson, orderNumber]
+        );
+        // Переносим непривязанные сообщения (если они были до привязки)
+        await pool.query(
+            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
+             WHERE sender_id = $1::text AND order_id IS NULL AND channel = 'vk'`,
+            [String(vkId), orderNumber]
+        );
+        console.log(`✅ Заказ ${orderNumber} привязан к VK пользователю ${vkId} и переведён в работу`);
+        return { success: true, message: messageText };
+    } else {
+        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
+        return { success: true, message: messageText };
+    }
+}
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
