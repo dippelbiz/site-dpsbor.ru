@@ -33,7 +33,7 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
-            width: 30%;
+            width: 45%;
         }
         .top-nav button:hover {
             background: #28a745;
@@ -115,7 +115,6 @@
     <div class="top-nav">
         <button onclick="location.href='index.html'">Каталог</button>
         <button onclick="location.href='cart.html'">Корзина</button>
-        <button onclick="location.href='orders.html'">Мои заказы</button>
     </div>
 
     <h1>Мои заказы</h1>
@@ -158,6 +157,7 @@
 
             orders.forEach(order => {
                 const displayNumber = order.order_number || order.id;
+
                 const itemsHtml = order.items.map(item => {
                     const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
                     const itemName = variantDisplay ? `${item.name} (${variantDisplay})` : item.name;
