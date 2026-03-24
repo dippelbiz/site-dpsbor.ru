@@ -832,6 +832,7 @@ app.get('/api/manager/dashboard', checkManagerAuth, async (req, res) => {
   }
 });
 
+// ==================== ПОЛУЧЕНИЕ ЗАКАЗОВ ====================
 app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
@@ -845,13 +846,11 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
     `;
     const params = [];
 
-    // Фильтр по статусу
     if (status && status !== 'all') {
       query += ` WHERE status = $${params.length + 1}`;
       params.push(status);
     }
 
-    // Фильтр по продавцу (если не админ)
     if (userRole !== 'admin') {
       if (params.length === 0) {
         query += ` WHERE seller_id = $${params.length + 1}`;
@@ -888,13 +887,6 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
       };
     });
 
-    res.json({ orders });
-  } catch (err) {
-    console.error('Orders error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-    
     res.json({ orders });
   } catch (err) {
     console.error('Orders error:', err);
@@ -1004,7 +996,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   }
 });
 
-// ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ) ====================
+// ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1090,7 +1082,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       ['completed', id]
     );
 
-    // Уведомление покупателю (аналогично предыдущей версии)
+    // Уведомление покупателю
     if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
       try {
@@ -1131,6 +1123,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // ==================== ЗАДАЧИ ИНВЕНТАРИЗАЦИИ ====================
 app.get('/api/manager/inventory-tasks', checkManagerAuth, async (req, res) => {
   try {
@@ -1167,22 +1160,6 @@ app.post('/api/manager/inventory-tasks/:id/resolve', checkManagerAuth, async (re
   }
 });
 
-app.post('/api/manager/inventory-tasks/:id/resolve', checkManagerAuth, async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query(
-            'UPDATE inventory_tasks SET status = $1, resolved_at = NOW() WHERE id = $2',
-            ['resolved', id]
-        );
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Задача не найдена' });
-        }
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Resolve inventory task error:', err);
-        res.status(500).json({ error: 'Database error' });
-    }
-});
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
