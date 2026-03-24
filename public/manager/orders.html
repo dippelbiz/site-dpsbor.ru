@@ -176,7 +176,7 @@
                 <option value="cancelled">Отменённые</option>
             </select>
             <button onclick="loadOrders()">Обновить</button>
-            <button onclick="openUnifiedChat()" style="background: #9b59b6;">💬 Все чаты</button>
+            <button id="all-chats-btn" onclick="openUnifiedChat()" style="background: #9b59b6; display: none;">💬 Все чаты</button>
         </div>
         
         <div class="orders-table">
@@ -189,12 +189,11 @@
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                    </tr>
-                </thead>
+                    </thead>
                 <tbody id="orders-list">
                     <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
-            </table>
+             </table>
         </div>
     </div>
 
@@ -242,7 +241,7 @@
                 ).join('') || '-';
                 
                 const isProcessing = order.status === 'processing';
-                const showChatButton = isProcessing; // чат только для заказов в работе
+                const showChatButton = isProcessing;
                 const showCompleteButton = isProcessing;
                 
                 let rowClass = '';
@@ -294,6 +293,12 @@
                     const data = await response.json();
                     document.getElementById('user-name').textContent = data.user.name;
                     currentUserRole = data.user.role;
+                    const allChatsBtn = document.getElementById('all-chats-btn');
+                    if (currentUserRole === 'admin') {
+                        allChatsBtn.style.display = 'inline-block';
+                    } else {
+                        allChatsBtn.style.display = 'none';
+                    }
                 }
             } catch (err) {}
         }
