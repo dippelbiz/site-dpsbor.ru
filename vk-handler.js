@@ -37,6 +37,28 @@ async function sendVKMessage(userId, message) {
     }
 }
 
+// Получение имени пользователя ВК по ID
+async function getUserName(vkId) {
+    if (!VK_ACCESS_TOKEN) return `Пользователь ВК ${vkId}`;
+    try {
+        const params = new URLSearchParams({
+            access_token: VK_ACCESS_TOKEN,
+            user_ids: vkId,
+            v: '5.131'
+        });
+        const response = await fetch(`https://api.vk.com/method/users.get?${params}`);
+        const data = await response.json();
+        if (data.response && data.response.length > 0) {
+            const user = data.response[0];
+            return `${user.first_name} ${user.last_name}`.trim();
+        }
+        return `Пользователь ВК ${vkId}`;
+    } catch (err) {
+        console.error('❌ Ошибка получения имени ВК:', err);
+        return `Пользователь ВК ${vkId}`;
+    }
+}
+
 async function bindOrderVK(vkId, orderNumber, senderName) {
     console.log(`🔍 bindOrderVK: vkId=${vkId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
@@ -120,7 +142,7 @@ async function handleVKWebhook(req, res) {
         console.log('📨 VK webhook body:', JSON.stringify(update));
 
         if (update.type === 'confirmation') {
-            const confirmationCode = VK_CONFIRMATION_CODE || 'bed3ca1c';
+            const confirmationCode = VK_CONFIRMATION_CODE || '4c6027b2';
             console.log(`✅ VK confirmation: returning ${confirmationCode}`);
             return res.send(confirmationCode);
         }
@@ -129,9 +151,9 @@ async function handleVKWebhook(req, res) {
             const message = update.object.message;
             const userId = message.from_id;
             const text = message.text;
-            const senderName = `${message.from.first_name} ${message.from.last_name || ''}`.trim() || 'Пользователь ВК';
-
-            console.log(`📨 VK сообщение от ${userId}: "${text}"`);
+            // В ВК объект не содержит поле from, получаем имя через API
+            let senderName = await getUserName(userId);
+            console.log(`📨 VK сообщение от ${userId} (${senderName}): "${text}"`);
 
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
