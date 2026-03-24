@@ -357,7 +357,6 @@ const insertResult = await pool.query(`
 
 // ==================== TELEGRAM WEBHOOK ====================
 
-// Глобальное хранилище для диалогов привязки (в продакшене лучше использовать БД)
 if (!global.orderBindingStates) global.orderBindingStates = new Map();
 
 async function bindOrder(chatId, orderNumber, senderName) {
@@ -393,10 +392,12 @@ async function bindOrder(chatId, orderNumber, senderName) {
     );
 
     if (updateUserResult.rowCount > 0) {
-        // Обновляем JSON contact
+        // Обновляем JSON contact – все значения приводим к text
         await pool.query(
-            `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
-             WHERE order_number = $3`,
+            `UPDATE orders SET contact = contact || jsonb_build_object(
+                'telegram_id', $1::text,
+                'telegram_name', $2::text
+             ) WHERE order_number = $3`,
             [String(telegramId), telegramName, orderNumber]
         );
         // Переносим непривязанные сообщения
