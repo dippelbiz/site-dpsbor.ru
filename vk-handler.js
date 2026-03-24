@@ -37,7 +37,6 @@ async function sendVKMessage(userId, message) {
     }
 }
 
-// Получение имени пользователя ВК по ID
 async function getUserName(vkId) {
     if (!VK_ACCESS_TOKEN) return `Пользователь ВК ${vkId}`;
     try {
@@ -154,6 +153,7 @@ async function handleVKWebhook(req, res) {
             const senderName = await getUserName(userId);
             console.log(`📨 VK сообщение от ${userId} (${senderName}): "${text}"`);
 
+            // 1. Команда /start order_XXX
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
                 console.log(`🔍 Обработка команды /start order_${orderNumber}`);
@@ -166,12 +166,14 @@ async function handleVKWebhook(req, res) {
                 return res.send('ok');
             }
 
+            // 2. Команда /start без параметра – начинаем диалог
             if (text === '/start') {
                 await sendVKMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
                 vkBindingStates.set(userId, { step: 'awaiting_order_number' });
                 return res.send('ok');
             }
 
+            // 3. Если пользователь ожидает ввода номера заказа
             if (vkBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderVK(userId, orderNumber, senderName);
@@ -184,7 +186,20 @@ async function handleVKWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // Обычное сообщение – ищем активный заказ по vk_id в contact
+            // 4. Если текст похож на номер заказа (буква+цифры) – попытка привязать
+            if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
+                const orderNumber = text;
+                console.log(`🔍 Распознан номер заказа: ${orderNumber}`);
+                const result = await bindOrderVK(userId, orderNumber, senderName);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            }
+
+            // 5. Обычное сообщение – ищем активный заказ по vk_id в contact
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'vk_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
