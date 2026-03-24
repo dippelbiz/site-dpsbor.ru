@@ -1126,7 +1126,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     res.status(500).json({ error: 'Database error' });
   }
 });
-// ==================== Остатки ушли в минус ====================
+// ==================== ЗАДАЧИ ИНВЕНТАРИЗАЦИИ ====================
 app.get('/api/manager/inventory-tasks', checkManagerAuth, async (req, res) => {
   try {
     const tasks = await pool.query(`
@@ -1143,6 +1143,23 @@ app.get('/api/manager/inventory-tasks', checkManagerAuth, async (req, res) => {
     console.error('Inventory tasks error:', err);
     res.status(500).json({ error: 'Database error' });
   }
+});
+
+app.post('/api/manager/inventory-tasks/:id/resolve', checkManagerAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query(
+            'UPDATE inventory_tasks SET status = $1, resolved_at = NOW() WHERE id = $2',
+            ['resolved', id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Задача не найдена' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Resolve inventory task error:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
 });
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
