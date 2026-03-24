@@ -120,6 +120,12 @@
             display: inline-block;
             margin-left: 8px;
         }
+        .system-message {
+            background: #f8f9fa;
+            color: #2c3e50;
+            border-left: 3px solid #f39c12;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -171,19 +177,69 @@
                 currentRecipient = data.recipient;
                 currentOrderStatus = data.status;
                 
+                // Загружаем полные детали заказа для системного сообщения
+                let fullOrder = null;
+                if (data.status === 'processing') {
+                    const orderDetailsRes = await fetch(`/api/manager/order/${orderId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (orderDetailsRes.ok) {
+                        fullOrder = await orderDetailsRes.json();
+                    }
+                }
+                
+                // Формируем системное сообщение, если нужно
+                let messages = data.messages;
+                if (fullOrder && fullOrder.order && data.status === 'processing') {
+                    const order = fullOrder.order;
+                    const contact = order.contact;
+                    const items = order.items;
+                    
+                    let sysMsg = `✅ Заказ №${order.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+                    if (contact.deliveryType === 'pickup') {
+                        sysMsg += `Самовывоз: ${contact.address}\n`;
+                    } else if (contact.deliveryType === 'courier') {
+                        sysMsg += `Доставка: ${contact.address}\n`;
+                    }
+                    if (contact.paymentMethod === 'cash') {
+                        sysMsg += `Оплата: наличными\n`;
+                    } else if (contact.paymentMethod === 'transfer') {
+                        sysMsg += `Оплата: перевод по номеру\n`;
+                    }
+                    sysMsg += `\nСостав заказа:\n`;
+                    items.forEach(item => {
+                        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                        const itemTotal = item.price * item.quantity;
+                        sysMsg += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+                    });
+                    sysMsg += `\nСумма заказа: ${order.total} руб.`;
+                    
+                    const alreadyHas = messages.some(m => m.message_text === sysMsg && m.sender_name === 'Система');
+                    if (!alreadyHas) {
+                        messages.unshift({
+                            id: null,
+                            direction: 'incoming',
+                            sender_name: 'Система',
+                            message_text: sysMsg,
+                            created_at: new Date().toISOString(),
+                            channel: 'system'
+                        });
+                    }
+                }
+                
+                // Передаём модифицированный массив сообщений в рендер
+                renderChatWindow({ ...data, messages });
+                
+                const sendBtn = document.getElementById('send-btn');
+                const messageInput = document.getElementById('message-input');
                 const isProcessing = data.status === 'processing';
-                const canChat = isProcessing || data.status === 'new';
+                const canChat = isProcessing;
                 
                 document.getElementById('order-info').innerHTML = `Заказ №${data.order_number}`;
                 document.getElementById('info-bar').innerHTML = `
                     👤 ${data.recipient?.name || 'Клиент'} • 📱 ${getChannelName(currentRecipient?.channel)}
                     ${!canChat ? '<span class="order-completed-badge">Чат недоступен</span>' : ''}
                 `;
-                
-                renderMessages(data.messages);
-                
-                const sendBtn = document.getElementById('send-btn');
-                const messageInput = document.getElementById('message-input');
                 
                 if (!canChat || !currentRecipient?.id) {
                     sendBtn.disabled = true;
@@ -195,9 +251,24 @@
                     messageInput.placeholder = 'Введите сообщение...';
                 }
                 
+                // Отметить как прочитанное
+                await markMessagesAsRead(orderId);
+                
             } catch (err) {
                 console.error('Error loading chat:', err);
                 document.getElementById('messages-container').innerHTML = '<div class="loading">Ошибка загрузки сообщений</div>';
+            }
+        }
+        
+        async function markMessagesAsRead(orderId) {
+            const token = checkAuth();
+            try {
+                await fetch(`/api/manager/chat/mark-read/${orderId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (err) {
+                console.error('Error marking messages as read:', err);
             }
         }
         
@@ -206,14 +277,26 @@
             return names[channel] || channel || 'Неизвестный канал';
         }
         
-        function renderMessages(messages) {
-            const container = document.getElementById('messages-container');
-            if (!messages || messages.length === 0) {
-                container.innerHTML = '<div class="loading">Нет сообщений. Напишите клиенту!</div>';
+        function renderChatWindow(data) {
+            const container = document.getElementById('main-chat');
+            if (!container) {
+                // If we are not in the unified-chat, we need a different approach.
+                // But this file is chat.html, not unified-chat.html. We'll just render messages into the existing container.
+                const messagesContainer = document.getElementById('messages-container');
+                messagesContainer.innerHTML = renderMessages(data.messages);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 return;
             }
+            // This part is for unified-chat.html, but we are in chat.html. We'll keep the existing structure.
+            // Actually, we'll just render messages into messages-container.
+        }
+        
+        function renderMessages(messages) {
+            if (!messages || messages.length === 0) {
+                return '<div class="loading">Нет сообщений</div>';
+            }
             
-            container.innerHTML = messages.map(msg => {
+            return messages.map(msg => {
                 const date = new Date(msg.created_at);
                 const formattedDate = date.toLocaleString('ru-RU', {
                     day: '2-digit',
@@ -224,9 +307,10 @@
                 
                 const isOutgoing = msg.direction === 'outgoing';
                 const senderName = isOutgoing ? 'Вы' : (msg.sender_name || 'Клиент');
+                const extraClass = msg.sender_name === 'Система' ? 'system-message' : '';
                 
                 return `
-                    <div class="message ${msg.direction}">
+                    <div class="message ${msg.direction} ${extraClass}">
                         <div>${escapeHtml(msg.message_text)}</div>
                         <div class="message-meta">
                             ${senderName} • ${formattedDate}
@@ -234,8 +318,6 @@
                     </div>
                 `;
             }).join('');
-            
-            container.scrollTop = container.scrollHeight;
         }
         
         async function sendMessage() {
@@ -249,7 +331,7 @@
                 return;
             }
             
-            if (currentOrderStatus !== 'processing' && currentOrderStatus !== 'new') {
+            if (currentOrderStatus !== 'processing') {
                 alert('Чат доступен только для заказов в работе');
                 return;
             }
@@ -322,7 +404,6 @@
             }
         });
         
-        // Очищаем интервал при закрытии
         window.addEventListener('beforeunload', () => {
             if (pollInterval) clearInterval(pollInterval);
         });
