@@ -63,8 +63,7 @@ if (process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID) {
     process.env.VK_ACCESS_TOKEN,
     process.env.VK_GROUP_ID,
     pool,
-    process.env.VK_CONFIRMATION_CODE,
-    process.env.VK_SECRET_KEY   // добавляем секретный ключ
+    process.env.VK_CONFIRMATION_CODE
   );
 } else {
   console.log('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
