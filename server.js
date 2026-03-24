@@ -561,113 +561,127 @@ app.post('/api/manager/chat/mark-read/:orderId', checkManagerAuth, async (req, r
 
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
 app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
-    try {
-        const activeResult = await pool.query(`
-            SELECT DISTINCT 
-                o.id as order_id,
-                o.order_number,
-                o.contact,
-                o.user_telegram_id,
-                o.status,
-                (
-                    SELECT message_text 
-                    FROM chat_messages 
-                    WHERE order_id = o.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message,
-                (
-                    SELECT created_at 
-                    FROM chat_messages 
-                    WHERE order_id = o.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message_date,
-                (
-                    SELECT direction 
-                    FROM chat_messages 
-                    WHERE order_id = o.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message_direction
-            FROM orders o
-            WHERE o.status IN ('new', 'processing')
-              AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
-            ORDER BY last_message_date DESC NULLS LAST
-        `);
-        
-        const completedResult = await pool.query(`
-            WITH last_completed_orders AS (
-                SELECT DISTINCT ON (user_telegram_id) 
-                    id,
-                    order_number,
-                    contact,
-                    user_telegram_id,
-                    status,
-                    created_at
-                FROM orders 
-                WHERE status = 'completed'
-                  AND user_telegram_id IS NOT NULL
-                  AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = orders.id)
-                ORDER BY user_telegram_id, created_at DESC
-            )
-            SELECT 
-                lco.id as order_id,
-                lco.order_number,
-                lco.contact,
-                lco.user_telegram_id,
-                lco.status,
-                (
-                    SELECT message_text 
-                    FROM chat_messages 
-                    WHERE order_id = lco.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message,
-                (
-                    SELECT created_at 
-                    FROM chat_messages 
-                    WHERE order_id = lco.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message_date,
-                (
-                    SELECT direction 
-                    FROM chat_messages 
-                    WHERE order_id = lco.id
-                    ORDER BY created_at DESC 
-                    LIMIT 1
-                ) as last_message_direction
-            FROM last_completed_orders lco
-            ORDER BY last_message_date DESC NULLS LAST
-        `);
-        
-        const formatChat = (row) => {
-            const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
-            return {
-                orderId: row.order_id,
-                orderNumber: row.order_number,
-                clientName: contact.name || contact.telegram_name || contact.vk_name || 'Клиент',
-                lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
-                lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    day: '2-digit',
-                    month: '2-digit'
-                }) : null,
-                lastMessageDirection: row.last_message_direction,
-                status: row.status
-            };
-        };
-        
-        res.json({
-            active: activeResult.rows.map(formatChat),
-            completed: completedResult.rows.map(formatChat)
-        });
-    } catch (err) {
-        console.error('Ошибка получения списка чатов:', err);
-        res.status(500).json({ error: 'Database error' });
+  try {
+    const userRole = req.userRole;
+    const userId = req.userId;
+
+    // Базовый запрос активных чатов (без фильтра по продавцу)
+    let activeQuery = `
+      SELECT DISTINCT 
+        o.id as order_id,
+        o.order_number,
+        o.contact,
+        o.user_telegram_id,
+        o.status,
+        (
+          SELECT message_text 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_date,
+        (
+          SELECT direction 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_direction
+      FROM orders o
+      WHERE o.status IN ('new', 'processing')
+        AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
+    `;
+
+    let completedQuery = `
+      WITH last_completed_orders AS (
+        SELECT DISTINCT ON (user_telegram_id) 
+          id,
+          order_number,
+          contact,
+          user_telegram_id,
+          status,
+          created_at
+        FROM orders 
+        WHERE status = 'completed'
+          AND user_telegram_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = orders.id)
+        ORDER BY user_telegram_id, created_at DESC
+      )
+      SELECT 
+        lco.id as order_id,
+        lco.order_number,
+        lco.contact,
+        lco.user_telegram_id,
+        lco.status,
+        (
+          SELECT message_text 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_date,
+        (
+          SELECT direction 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_direction
+      FROM last_completed_orders lco
+    `;
+
+    // Если пользователь не администратор, добавляем фильтр по seller_id
+    if (userRole !== 'admin') {
+      activeQuery += ` AND o.seller_id = $1`;
+      completedQuery += ` WHERE lco.seller_id = $1`;
     }
+
+    const activeParams = userRole !== 'admin' ? [userId] : [];
+    const completedParams = userRole !== 'admin' ? [userId] : [];
+
+    const activeResult = await pool.query(activeQuery, activeParams);
+    const completedResult = await pool.query(completedQuery, completedParams);
+
+    const formatChat = (row) => {
+      const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
+      return {
+        orderId: row.order_id,
+        orderNumber: row.order_number,
+        clientName: contact.name || contact.telegram_name || contact.vk_name || 'Клиент',
+        lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
+        lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+          day: '2-digit',
+          month: '2-digit'
+        }) : null,
+        lastMessageDirection: row.last_message_direction,
+        status: row.status
+      };
+    };
+
+    res.json({
+      active: activeResult.rows.map(formatChat),
+      completed: completedResult.rows.map(formatChat)
+    });
+  } catch (err) {
+    console.error('Ошибка получения списка чатов:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // ==================== ПОЛУЧЕНИЕ ЗАКАЗА ПО НОМЕРУ ====================
@@ -822,21 +836,34 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
-    
+    const userRole = req.userRole;
+    const userId = req.userId;
+
     let query = `
       SELECT id, order_number, contact, items, total, status, seller_id, user_telegram_id, created_at, completed_at
       FROM orders
     `;
     const params = [];
-    
+
+    // Фильтр по статусу
     if (status && status !== 'all') {
       query += ` WHERE status = $${params.length + 1}`;
       params.push(status);
     }
-    
+
+    // Фильтр по продавцу (если не админ)
+    if (userRole !== 'admin') {
+      if (params.length === 0) {
+        query += ` WHERE seller_id = $${params.length + 1}`;
+      } else {
+        query += ` AND seller_id = $${params.length + 1}`;
+      }
+      params.push(userId);
+    }
+
     query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
-    
+
     const result = await pool.query(query, params);
     const orders = result.rows.map(order => {
       let contact = {};
@@ -860,6 +887,13 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
         completed_at: order.completed_at
       };
     });
+
+    res.json({ orders });
+  } catch (err) {
+    console.error('Orders error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
     
     res.json({ orders });
   } catch (err) {
