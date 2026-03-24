@@ -37,7 +37,6 @@
             color: #ecf0f1;
             text-decoration: none;
             transition: background 0.2s;
-            position: relative;
         }
         .nav-item:hover, .nav-item.active {
             background: #28a745;
@@ -293,6 +292,15 @@
                 <div class="no-tasks">Загрузка...</div>
             </div>
         </div>
+
+        <div id="inventory-tasks-section" class="tasks-section" style="display: none;">
+            <div class="tasks-header">
+                <h3>📦 Задачи инвентаризации</h3>
+            </div>
+            <div id="inventory-tasks-list">
+                <div class="no-tasks">Загрузка...</div>
+            </div>
+        </div>
     </div>
 
     <div id="completed-modal" class="modal">
@@ -319,7 +327,6 @@
     async function loadDashboard() {
         const token = checkAuth();
         try {
-            console.log('Загрузка дашборда...');
             const response = await fetch('/api/manager/dashboard', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -327,9 +334,6 @@
             if (response.status === 401) { logout(); return; }
             
             const data = await response.json();
-            console.log('Данные получены:', data);
-            
-            // СОХРАНЯЕМ РОЛЬ
             currentUserRole = data.user.role;
             
             document.getElementById('user-name').textContent = data.user.name;
@@ -340,8 +344,8 @@
             document.getElementById('completed-count').textContent = data.stats.completed_count;
             document.getElementById('revenue').textContent = data.stats.revenue + ' ₽';
             
-            // После загрузки дашборда загружаем задачи (если нужно)
             await loadTasks();
+            await loadInventoryTasks();
             
         } catch (err) {
             console.error('Ошибка загрузки дашборда:', err);
@@ -353,11 +357,7 @@
     }
     
     async function loadTasks() {
-        console.log('Проверка роли для задач:', currentUserRole);
-        
-        // Показываем задачи только для админа и кладовщика
         if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') {
-            console.log('Задачи не показываются для роли:', currentUserRole);
             return;
         }
         
@@ -399,6 +399,55 @@
         } catch (err) { console.error('Tasks error:', err); }
     }
     
+    async function loadInventoryTasks() {
+        if (currentUserRole !== 'admin') {
+            return;
+        }
+        
+        const token = checkAuth();
+        const section = document.getElementById('inventory-tasks-section');
+        section.style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/manager/inventory-tasks', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const container = document.getElementById('inventory-tasks-list');
+            if (!data.tasks || data.tasks.length === 0) {
+                container.innerHTML = '<div class="no-tasks">Нет задач инвентаризации</div>';
+            } else {
+                container.innerHTML = data.tasks.map(task => `
+                    <div class="task-card" data-id="${task.id}">
+                        <div class="task-info">
+                            <div class="task-seller">👤 ${task.seller_name}</div>
+                            <div class="task-product">📦 ${task.product_name} (${task.variant_name})</div>
+                            <div class="task-quantity">⚠️ ${task.reason}</div>
+                            <div class="task-date">📅 ${new Date(task.created_at).toLocaleString()}</div>
+                        </div>
+                        <div class="task-buttons">
+                            <button class="approve-btn" onclick="resolveInventoryTask(${task.id})">✅ Выполнено</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (err) { console.error('Inventory tasks error:', err); }
+    }
+    
+    async function resolveInventoryTask(taskId) {
+        if (!confirm('Отметить задачу как выполненную?')) return;
+        const token = checkAuth();
+        const response = await fetch(`/api/manager/inventory-tasks/${taskId}/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            alert('✅ Задача отмечена как выполненная');
+            loadInventoryTasks();
+        } else {
+            const error = await response.json();
+            alert('Ошибка: ' + error.error);
+        }
+    }
+    
     async function approveTask(taskId) {
         const token = checkAuth();
         const response = await fetch(`/api/manager/tasks/${taskId}/approve`, {
@@ -407,7 +456,7 @@
         });
         if (response.ok) {
             alert('✅ Заявка подтверждена');
-            loadDashboard();  // перезагружаем всё
+            loadDashboard();
         } else {
             const error = await response.json();
             alert('Ошибка: ' + error.error);
@@ -468,8 +517,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
