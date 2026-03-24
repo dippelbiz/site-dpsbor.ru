@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
+        /* все стили без изменений – см. предыдущие версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -292,8 +293,6 @@
             <input type="text" id="courier-address" class="address-input" placeholder="Адрес доставки">
         </div>
     </div>
-
-    <!-- Блок выбора способа связи УДАЛЁН -->
 
     <button id="confirm-button">Подтвердить заказ</button>
 
@@ -594,7 +593,8 @@ ${itemsText}
                     
                     const orderMessage = createOrderMessage(result.orderNumber, fullOrderData);
                     
-                    const telegramLink = `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
+                    // ✅ ИСПРАВЛЕННАЯ ССЫЛКА – используем tg:// для приложения
+                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     console.log('🔗 Ссылка для Telegram:', telegramLink);
                     
                     document.getElementById('telegram-link').href = telegramLink;
