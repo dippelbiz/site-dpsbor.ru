@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const telegramBot = require('./telegram-bot');
+const vkHandler = require('./vk-handler');
 
 const app = express();
 app.use(express.json());
@@ -36,27 +37,31 @@ pool.connect((err, client, release) => {
   }
 });
 
-// ==================== ИНИЦИАЛИЗАЦИЯ TELEGRAM БОТА ====================
+// ==================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ ====================
 let BASE_URL = process.env.SITE_URL;
-
 if (!BASE_URL) {
-    if (process.env.RENDER_EXTERNAL_URL) {
-        BASE_URL = process.env.RENDER_EXTERNAL_URL;
-    } else if (process.env.RENDER_SITE_URL) {
-        BASE_URL = process.env.RENDER_SITE_URL;
-    } else {
-        BASE_URL = 'https://dpsbor.ru';
-    }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    BASE_URL = process.env.RENDER_EXTERNAL_URL;
+  } else if (process.env.RENDER_SITE_URL) {
+    BASE_URL = process.env.RENDER_SITE_URL;
+  } else {
+    BASE_URL = 'https://dpsbor.ru';
+  }
 }
-
 BASE_URL = BASE_URL.replace(/\/$/, '');
 
-console.log(`🌐 Базовый URL для webhook: ${BASE_URL}`);
-
+// Telegram
 if (process.env.TELEGRAM_BOT_TOKEN) {
-    telegramBot.initTelegramBot(process.env.TELEGRAM_BOT_TOKEN, BASE_URL);
+  telegramBot.initTelegramBot(process.env.TELEGRAM_BOT_TOKEN, BASE_URL, pool);
 } else {
-    console.log('⚠️ TELEGRAM_BOT_TOKEN не задан, бот не будет работать');
+  console.log('⚠️ TELEGRAM_BOT_TOKEN не задан');
+}
+
+// VK
+if (process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID) {
+  vkHandler.initVK(process.env.VK_ACCESS_TOKEN, process.env.VK_GROUP_ID, pool, process.env.VK_CONFIRMATION_CODE);
+} else {
+  console.log('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
@@ -76,7 +81,6 @@ app.get('/', (req, res) => {
 });
 
 // ==================== API ТОВАРОВ И КОРЗИНЫ ====================
-
 app.get('/api/products', async (req, res) => {
   try {
     const products = await pool.query(`
@@ -355,370 +359,10 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
-// ==================== TELEGRAM WEBHOOK ====================
+// ==================== ВЕБХУКИ (перенаправляют в модули) ====================
+app.post('/api/telegram/webhook', telegramBot.handleTelegramWebhook);
+app.post('/api/vk/webhook', vkHandler.handleVKWebhook);
 
-if (!global.orderBindingStates) global.orderBindingStates = new Map();
-
-async function bindOrder(chatId, orderNumber, senderName) {
-    const telegramId = chatId;
-    const telegramName = senderName;
-
-    // 1. Проверяем существование заказа
-    const orderCheck = await pool.query(
-        'SELECT id, status FROM orders WHERE order_number = $1',
-        [orderNumber]
-    );
-    if (orderCheck.rows.length === 0) {
-        console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
-        return { success: false, message: 'Заказ не найден' };
-    }
-
-    const order = orderCheck.rows[0];
-    if (order.status === 'completed') {
-        console.log(`⚠️ Заказ ${orderNumber} уже завершён, привязка не требуется`);
-        return { success: false, message: 'Заказ уже завершён' };
-    }
-
-    if (order.user_telegram_id && order.user_telegram_id !== telegramId) {
-        console.log(`⚠️ Заказ ${orderNumber} уже привязан к другому пользователю`);
-        return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
-    }
-
-    // 2. Обновляем user_telegram_id и статус (если ещё не processing)
-    const updateUserResult = await pool.query(
-        'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
-        [telegramId, 'processing', orderNumber, 'completed']
-    );
-
-    // 3. Получаем полные данные заказа (для формирования сообщения)
-    const orderData = await pool.query(`
-        SELECT order_number, total, contact, items 
-        FROM orders WHERE order_number = $1
-    `, [orderNumber]);
-
-    if (orderData.rows.length === 0) {
-        console.log(`⚠️ Не удалось получить данные заказа ${orderNumber}`);
-        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
-    }
-
-    const orderRow = orderData.rows[0];
-    const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
-    const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
-
-    // Формируем подробное сообщение
-    let messageText = ` Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
-
-    if (contact.deliveryType === 'pickup') {
-        messageText += `Самовывоз: ${contact.address}\n`;
-    } else if (contact.deliveryType === 'courier') {
-        messageText += `Доставка: ${contact.address}\n`;
-    }
-
-    if (contact.paymentMethod === 'cash') {
-        messageText += `Оплата: наличными\n`;
-    } else if (contact.paymentMethod === 'transfer') {
-        messageText += `Оплата: перевод по номеру\n`;
-    }
-
-    messageText += `\nСостав заказа:\n`;
-    items.forEach(item => {
-        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-        const itemTotal = item.price * item.quantity;
-        messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
-    });
-    messageText += `\nСумма заказа: ${orderRow.total} руб.`;
-
-    // Если обновление прошло успешно, сохраняем telegram_id в contact и переносим сообщения
-    if (updateUserResult.rowCount > 0) {
-        const contactJson = JSON.stringify({
-            telegram_id: String(telegramId),
-            telegram_name: telegramName
-        });
-        await pool.query(
-            `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
-            [contactJson, orderNumber]
-        );
-        await pool.query(
-            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
-             WHERE sender_id = $1::text AND order_id IS NULL`,
-            [String(telegramId), orderNumber]
-        );
-        console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
-        return { success: true, message: messageText };
-    } else {
-        // Заказ уже был в работе – отправляем информацию без изменения статуса
-        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
-        return { success: true, message: messageText };
-    }
-}
-
-app.post('/api/telegram/webhook', async (req, res) => {
-    try {
-        const update = req.body;
-        if (update.message && update.message.text) {
-            const text = update.message.text;
-            const from = update.message.from;
-            const chatId = from.id;
-            const firstName = from.first_name;
-            const username = from.username;
-            const senderName = `${firstName}${username ? ` (@${username})` : ''}`.trim();
-
-            // 1. Обработка команды /start order_XXX
-            if (text.startsWith('/start order_')) {
-                const orderNumber = text.split('_')[1];
-                const result = await bindOrder(chatId, orderNumber, senderName);
-                if (result.success) {
-                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
-                } else {
-                    await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
-                }
-                return res.sendStatus(200);
-            }
-
-            // 2. Обработка команды /start без параметра – начинаем диалог
-            if (text === '/start') {
-                await telegramBot.sendTelegramMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
-                global.orderBindingStates.set(chatId, { step: 'awaiting_order_number' });
-                return res.sendStatus(200);
-            }
-
-            // 3. Если пользователь ожидает ввода номера заказа
-            if (global.orderBindingStates.get(chatId)?.step === 'awaiting_order_number') {
-                const orderNumber = text.trim();
-                const result = await bindOrder(chatId, orderNumber, senderName);
-                if (result.success) {
-                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
-                } else {
-                    await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
-                }
-                global.orderBindingStates.delete(chatId);
-                return res.sendStatus(200);
-            }
-
-            // 4. Обычное сообщение – ищем активный заказ
-            const messageData = await telegramBot.handleIncomingMessage(update.message);
-            if (!messageData) return res.sendStatus(200);
-
-            let orderId = null;
-            const telegramIdNum = parseInt(messageData.senderId, 10);
-            if (!isNaN(telegramIdNum)) {
-                const orderResult = await pool.query(
-                    'SELECT id FROM orders WHERE user_telegram_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
-                    [telegramIdNum, 'processing']
-                );
-                if (orderResult.rows.length > 0) orderId = orderResult.rows[0].id;
-            }
-
-            await pool.query(
-                `INSERT INTO chat_messages (
-                    order_id, channel, external_id, 
-                    sender_id, sender_name, message_text, 
-                    direction, status, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-                [
-                    orderId,
-                    messageData.channel,
-                    messageData.externalId,
-                    messageData.senderId,
-                    messageData.senderName,
-                    messageData.messageText,
-                    'incoming',
-                    'delivered'
-                ]
-            );
-            console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
-        }
-        res.sendStatus(200);
-    } catch (err) {
-        console.error('❌ Ошибка в Telegram webhook:', err);
-        res.sendStatus(500);
-    }
-});
-
-// ==================== VK WEBHOOK ====================
-app.post('/api/vk/webhook', async (req, res) => {
-    try {
-        const { type, object, group_id, secret } = req.body;
-
-        // Подтверждение адреса (Callback API требует ответа "ok")
-        if (type === 'confirmation') {
-            return res.send(process.env.VK_CONFIRMATION_CODE); // код подтверждения из настроек группы
-        }
-
-        if (type === 'message_new') {
-            const message = object.message;
-            const userId = message.from_id;
-            const text = message.text;
-            const peerId = message.peer_id;
-
-            // Обработка команды /start order_...
-            if (text.startsWith('/start order_')) {
-                const orderNumber = text.split('_')[1];
-                const result = await bindOrderVK(userId, orderNumber);
-                if (result.success) {
-                    await sendVKMessage(userId, `✅ ${result.message}`);
-                } else {
-                    await sendVKMessage(userId, `❌ ${result.message}`);
-                }
-                return res.send('ok');
-            }
-
-            // Если команда /start без параметра – начинаем диалог
-            if (text === '/start') {
-                await sendVKMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
-                // Сохраняем состояние ожидания номера заказа
-                if (!global.vkBindingStates) global.vkBindingStates = new Map();
-                global.vkBindingStates.set(userId, { step: 'awaiting_order_number' });
-                return res.send('ok');
-            }
-
-            // Если пользователь ожидает ввода номера
-            if (global.vkBindingStates?.get(userId)?.step === 'awaiting_order_number') {
-                const orderNumber = text.trim();
-                const result = await bindOrderVK(userId, orderNumber);
-                if (result.success) {
-                    await sendVKMessage(userId, `✅ ${result.message}`);
-                } else {
-                    await sendVKMessage(userId, `❌ ${result.message}`);
-                }
-                global.vkBindingStates.delete(userId);
-                return res.send('ok');
-            }
-
-            // Обычное сообщение – ищем активный заказ
-            let orderId = null;
-            if (userId) {
-                const orderResult = await pool.query(
-                    'SELECT id FROM orders WHERE user_telegram_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
-                    [userId, 'processing']
-                );
-                if (orderResult.rows.length > 0) orderId = orderResult.rows[0].id;
-            }
-
-            // Сохраняем сообщение в БД (канал 'vk')
-            await pool.query(
-                `INSERT INTO chat_messages (
-                    order_id, channel, external_id, 
-                    sender_id, sender_name, message_text, 
-                    direction, status, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-                [
-                    orderId,
-                    'vk',
-                    String(message.id),
-                    String(userId),
-                    `${message.from.first_name} ${message.from.last_name || ''}`.trim() || 'Клиент',
-                    text,
-                    'incoming',
-                    'delivered'
-                ]
-            );
-            console.log(`✅ Сообщение ВК сохранено от пользователя ${userId}`);
-        }
-
-        res.send('ok');
-    } catch (err) {
-        console.error('❌ Ошибка в VK webhook:', err);
-        res.status(500).send('error');
-    }
-});
-
-// Вспомогательная функция для отправки сообщения ВК
-async function sendVKMessage(userId, text) {
-    if (!process.env.VK_ACCESS_TOKEN || !process.env.VK_GROUP_ID) {
-        console.error('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
-        return;
-    }
-    const url = `https://api.vk.com/method/messages.send?user_id=${userId}&message=${encodeURIComponent(text)}&random_id=${Date.now()}&access_token=${process.env.VK_ACCESS_TOKEN}&v=5.131`;
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data.error) {
-        console.error('Ошибка отправки сообщения ВК:', data.error);
-    }
-}
-
-async function bindOrderVK(vkId, orderNumber) {
-    const telegramId = vkId; // используем vkId как идентификатор
-    const telegramName = `VK пользователь ${vkId}`;
-
-    const orderCheck = await pool.query(
-        'SELECT id, status FROM orders WHERE order_number = $1',
-        [orderNumber]
-    );
-    if (orderCheck.rows.length === 0) {
-        return { success: false, message: 'Заказ не найден' };
-    }
-
-    const order = orderCheck.rows[0];
-    if (order.status === 'completed') {
-        return { success: false, message: 'Заказ уже завершён' };
-    }
-
-    if (order.user_telegram_id && order.user_telegram_id !== vkId) {
-        return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
-    }
-
-    const updateUserResult = await pool.query(
-        'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
-        [vkId, 'processing', orderNumber, 'completed']
-    );
-
-    const orderData = await pool.query(`
-        SELECT order_number, total, contact, items 
-        FROM orders WHERE order_number = $1
-    `, [orderNumber]);
-
-    if (orderData.rows.length === 0) {
-        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
-    }
-
-    const orderRow = orderData.rows[0];
-    const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
-    const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
-
-    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
-
-    if (contact.deliveryType === 'pickup') {
-        messageText += `Самовывоз: ${contact.address}\n`;
-    } else if (contact.deliveryType === 'courier') {
-        messageText += `Доставка: ${contact.address}\n`;
-    }
-
-    if (contact.paymentMethod === 'cash') {
-        messageText += `Оплата: наличными\n`;
-    } else if (contact.paymentMethod === 'transfer') {
-        messageText += `Оплата: перевод по номеру\n`;
-    }
-
-    messageText += `\nСостав заказа:\n`;
-    items.forEach(item => {
-        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-        const itemTotal = item.price * item.quantity;
-        messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
-    });
-    messageText += `\nСумма заказа: ${orderRow.total} руб.`;
-
-    if (updateUserResult.rowCount > 0) {
-        const contactJson = JSON.stringify({
-            vk_id: String(vkId)
-        });
-        await pool.query(
-            `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
-            [contactJson, orderNumber]
-        );
-        // Переносим непривязанные сообщения (если они были до привязки)
-        await pool.query(
-            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
-             WHERE sender_id = $1::text AND order_id IS NULL AND channel = 'vk'`,
-            [String(vkId), orderNumber]
-        );
-        console.log(`✅ Заказ ${orderNumber} привязан к VK пользователю ${vkId} и переведён в работу`);
-        return { success: true, message: messageText };
-    } else {
-        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
-        return { success: true, message: messageText };
-    }
-}
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
@@ -757,6 +401,18 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 console.log(`✅ Сообщение отправлено, message_id: ${externalId}`);
             } else {
                 return res.status(500).json({ error: 'Ошибка отправки сообщения в Telegram' });
+            }
+        } else if (channel === 'vk') {
+            if (!vkHandler.isInitialized()) {
+                return res.status(500).json({ error: 'VK бот не инициализирован' });
+            }
+            const sent = await vkHandler.sendVKMessage(recipient_id, message_text);
+            if (sent) {
+                externalId = String(sent);
+                sendSuccess = true;
+                console.log(`✅ Сообщение отправлено в VK, message_id: ${externalId}`);
+            } else {
+                return res.status(500).json({ error: 'Ошибка отправки сообщения в VK' });
             }
         } else {
             return res.status(400).json({ error: `Канал ${channel} пока не поддерживается` });
@@ -833,8 +489,12 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipientId = String(order.user_telegram_id);
             recipientChannel = 'telegram';
             console.log(`📱 Используем user_telegram_id: ${recipientId}`);
+        } else if (contact.vk_id) {
+            recipientId = contact.vk_id;
+            recipientChannel = 'vk';
+            console.log(`📱 Найден vk_id в contact: ${recipientId}`);
         } else {
-            console.log(`⚠️ Нет telegram_id для заказа ${order.order_number}`);
+            console.log(`⚠️ Нет идентификатора для заказа ${order.order_number}`);
         }
         
         res.json({
@@ -845,7 +505,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipient: {
                 id: recipientId,
                 channel: recipientChannel,
-                name: contact.name || contact.telegram_name || 'Клиент'
+                name: contact.name || contact.telegram_name || contact.vk_name || 'Клиент'
             }
         });
     } catch (err) {
@@ -980,7 +640,7 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
             return {
                 orderId: row.order_id,
                 orderNumber: row.order_number,
-                clientName: contact.name || contact.telegram_name || 'Клиент',
+                clientName: contact.name || contact.telegram_name || contact.vk_name || 'Клиент',
                 lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
                 lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU', {
                     hour: '2-digit',
@@ -1052,7 +712,6 @@ app.get('/api/manager/order/:orderId/messages-info', checkManagerAuth, async (re
 });
 
 // ==================== ПАНЕЛЬ УПРАВЛЕНИЯ (MANAGER) ====================
-
 const validTokens = new Map();
 
 app.post('/api/manager/auth', async (req, res) => {
@@ -1220,10 +879,16 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     const contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
     
     let recipientId = null;
+    let recipientChannel = null;
     if (contact.telegram_id) {
       recipientId = contact.telegram_id;
+      recipientChannel = 'telegram';
     } else if (order.user_telegram_id) {
       recipientId = String(order.user_telegram_id);
+      recipientChannel = 'telegram';
+    } else if (contact.vk_id) {
+      recipientId = contact.vk_id;
+      recipientChannel = 'vk';
     }
     
     await pool.query('BEGIN');
@@ -1236,14 +901,12 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     await pool.query('COMMIT');
     
     // Отправляем уведомление
-    if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
+    if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\nМенеджер скоро свяжется с вами для уточнения деталей.\n\n`;
-      
       try {
         const sent = await telegramBot.sendTelegramMessage(recipientId, message);
         if (sent) {
           console.log(`✅ Уведомление о принятии заказа №${order.order_number} отправлено в Telegram`);
-          
           await pool.query(`
             INSERT INTO chat_messages (
               order_id, channel, external_id, 
@@ -1263,8 +926,33 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
       } catch (err) {
         console.error(`❌ Ошибка отправки уведомления о принятии заказа:`, err.message);
       }
+    } else if (recipientId && recipientChannel === 'vk' && vkHandler.isInitialized()) {
+      const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\nМенеджер скоро свяжется с вами для уточнения деталей.\n\n`;
+      try {
+        const sent = await vkHandler.sendVKMessage(recipientId, message);
+        if (sent) {
+          console.log(`✅ Уведомление о принятии заказа №${order.order_number} отправлено в VK`);
+          await pool.query(`
+            INSERT INTO chat_messages (
+              order_id, channel, external_id, 
+              sender_id, sender_name, message_text, 
+              direction, status, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
+          `, [
+            id,
+            'vk',
+            String(sent),
+            'system',
+            'Система',
+            message,
+          ]);
+        }
+      } catch (err) {
+        console.error(`❌ Ошибка отправки уведомления о принятии заказа:`, err.message);
+      }
     } else {
-      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, bot=${telegramBot.isInitialized()}`);
+      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, channel=${recipientChannel}`);
     }
     
     res.json({ success: true });
@@ -1293,10 +981,16 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     const contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
     
     let recipientId = null;
+    let recipientChannel = null;
     if (contact.telegram_id) {
       recipientId = contact.telegram_id;
+      recipientChannel = 'telegram';
     } else if (order.user_telegram_id) {
       recipientId = String(order.user_telegram_id);
+      recipientChannel = 'telegram';
+    } else if (contact.vk_id) {
+      recipientId = contact.vk_id;
+      recipientChannel = 'vk';
     }
     
     await pool.query(
@@ -1305,14 +999,12 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     );
     
     // Отправляем уведомление о завершении
-    if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
+    if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
-      
       try {
         const sent = await telegramBot.sendTelegramMessage(recipientId, message);
         if (sent) {
           console.log(`✅ Уведомление о завершении заказа №${order.order_number} отправлено в Telegram (${recipientId})`);
-          
           await pool.query(`
             INSERT INTO chat_messages (
               order_id, channel, external_id, 
@@ -1332,8 +1024,33 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       } catch (err) {
         console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
       }
+    } else if (recipientId && recipientChannel === 'vk' && vkHandler.isInitialized()) {
+      const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
+      try {
+        const sent = await vkHandler.sendVKMessage(recipientId, message);
+        if (sent) {
+          console.log(`✅ Уведомление о завершении заказа №${order.order_number} отправлено в VK (${recipientId})`);
+          await pool.query(`
+            INSERT INTO chat_messages (
+              order_id, channel, external_id, 
+              sender_id, sender_name, message_text, 
+              direction, status, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
+          `, [
+            id,
+            'vk',
+            String(sent),
+            'system',
+            'Система',
+            message,
+          ]);
+        }
+      } catch (err) {
+        console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
+      }
     } else {
-      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, bot=${telegramBot.isInitialized()}`);
+      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, channel=${recipientChannel}`);
     }
     
     res.json({ success: true });
@@ -1365,7 +1082,6 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
 });
 
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
-
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
