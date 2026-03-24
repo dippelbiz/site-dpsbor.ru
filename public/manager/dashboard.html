@@ -433,20 +433,26 @@
     }
     
     async function resolveInventoryTask(taskId) {
-        if (!confirm('Отметить задачу как выполненную?')) return;
-        const token = checkAuth();
+    if (!confirm('Отметить задачу как выполненную?')) return;
+    const token = checkAuth();
+    try {
         const response = await fetch(`/api/manager/inventory-tasks/${taskId}/resolve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
         });
+        const data = await response.json();
         if (response.ok) {
             alert('✅ Задача отмечена как выполненная');
             loadInventoryTasks();
         } else {
-            const error = await response.json();
-            alert('Ошибка: ' + error.error);
+            console.error('Ошибка:', data);
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
         }
+    } catch (err) {
+        console.error('Сетевая ошибка:', err);
+        alert('Ошибка соединения');
     }
+}
     
     async function approveTask(taskId) {
         const token = checkAuth();
