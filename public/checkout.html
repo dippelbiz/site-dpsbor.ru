@@ -333,7 +333,6 @@
         let currentOrderId = null;
 
         function createOrderMessage(orderNumber, orderData) {
-            // Not used anymore – we removed full copy button
             return '';
         }
 
@@ -443,7 +442,6 @@
             document.getElementById('modal-order-number').innerHTML = `№${orderNumber}`;
             document.getElementById('success-modal').style.display = 'block';
             
-            // Copy number button
             const copyBtn = document.getElementById('copy-number-btn');
             copyBtn.onclick = () => {
                 navigator.clipboard.writeText(orderNumber);
@@ -471,7 +469,6 @@
             }
         }
 
-        // Close modal and go to catalog
         function closeModalAndGoToCatalog() {
             document.getElementById('success-modal').style.display = 'none';
             window.location.href = 'index.html';
@@ -556,7 +553,10 @@
                     
                     const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
-                    document.getElementById('vk-link').href = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
+                    
+                    // Ссылка для ВК с автоматическим заполнением номера заказа
+                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}&text=Заказ%20№${result.orderNumber}`;
+                    document.getElementById('vk-link').href = vkLink;
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
                     
