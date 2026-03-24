@@ -357,10 +357,8 @@ const insertResult = await pool.query(`
 
 // ==================== TELEGRAM WEBHOOK ====================
 
-// Глобальное хранилище для диалогов привязки (в продакшене лучше использовать БД)
 if (!global.orderBindingStates) global.orderBindingStates = new Map();
 
-// Нормализация номера заказа (кириллица -> латиница)
 function normalizeOrderNumber(orderNumber) {
     const cyrillicToLatin = {
         'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'У': 'Y', 'Х': 'X'
@@ -378,7 +376,7 @@ function normalizeOrderNumber(orderNumber) {
 
 async function bindOrder(chatId, orderNumber, senderName) {
     const telegramId = chatId;
-    const telegramName = senderName;
+    const telegramName = senderName || 'Покупатель';
     const normalizedNumber = normalizeOrderNumber(orderNumber);
 
     const orderCheck = await pool.query(
@@ -407,7 +405,6 @@ async function bindOrder(chatId, orderNumber, senderName) {
     );
 
     if (updateUserResult.rowCount > 0) {
-        // Явное приведение типов для всех параметров
         await pool.query(
             `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2::text)
              WHERE order_number = $3`,
@@ -429,13 +426,15 @@ async function bindOrder(chatId, orderNumber, senderName) {
 app.post('/api/telegram/webhook', async (req, res) => {
     try {
         const update = req.body;
+        console.log('📨 Получен update:', JSON.stringify(update).substring(0, 500));
         if (update.message && update.message.text) {
             const text = update.message.text;
             const from = update.message.from;
             const chatId = from.id;
             const firstName = from.first_name;
             const username = from.username;
-            const senderName = `${firstName}${username ? ` (@${username})` : ''}`.trim();
+            const senderName = `${firstName || ''}${username ? ` (@${username})` : ''}`.trim();
+            console.log(`📨 Текст: ${text}, от: ${chatId}, имя: ${senderName}`);
 
             // 1. /start order_XXX
             if (text.startsWith('/start order_')) {
@@ -452,6 +451,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
 
             // 2. /start без параметра
             if (text === '/start') {
+                console.log('🔵 Обработка /start без параметра');
                 await telegramBot.sendTelegramMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
                 global.orderBindingStates.set(chatId, { step: 'awaiting_order_number' });
                 return res.sendStatus(200);
