@@ -59,11 +59,16 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 
 // VK
 if (process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID) {
-  vkHandler.initVK(process.env.VK_ACCESS_TOKEN, process.env.VK_GROUP_ID, pool, process.env.VK_CONFIRMATION_CODE);
+  vkHandler.initVK(
+    process.env.VK_ACCESS_TOKEN,
+    process.env.VK_GROUP_ID,
+    pool,
+    process.env.VK_CONFIRMATION_CODE,
+    process.env.VK_SECRET_KEY   // добавляем секретный ключ
+  );
 } else {
   console.log('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
 }
-
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
