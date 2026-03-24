@@ -110,37 +110,20 @@
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 12px;
-            font-weight: bold;
         }
-        .status-new { background: #2ecc71; color: white; }
-        .status-processing { background: #3498db; color: white; }
+        .status-processing { background: #f39c12; color: white; }
         .status-completed { background: #27ae60; color: white; }
         .status-cancelled { background: #e74c3c; color: white; }
         .action-buttons {
             display: flex;
             gap: 5px;
             flex-wrap: wrap;
-            position: relative;
-        }
-        .take-btn {
-            background: #f39c12;
         }
         .complete-btn {
             background: #27ae60;
         }
         .chat-btn {
             background: #3498db;
-            position: relative;
-        }
-        .unread-dot {
-            position: absolute;
-            top: -4px;
-            right: -4px;
-            width: 10px;
-            height: 10px;
-            background-color: #e74c3c;
-            border-radius: 50%;
-            border: 1px solid white;
         }
         .items-list {
             font-size: 12px;
@@ -150,14 +133,6 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-        }
-        
-        .row-new {
-            background: rgba(46, 204, 113, 0.1);
-            border-left: 4px solid #2ecc71;
-        }
-        .row-new:hover {
-            background: rgba(46, 204, 113, 0.2);
         }
         
         .row-processing {
@@ -196,10 +171,9 @@
         <div class="filters">
             <select id="status-filter">
                 <option value="all">Все статусы</option>
-                <option value="new">🟢 Новые</option>
-                <option value="processing">🔵 В работе</option>
-                <option value="completed">✅ Выполненные</option>
-                <option value="cancelled">❌ Отменённые</option>
+                <option value="processing">В работе</option>
+                <option value="completed">Выполненные</option>
+                <option value="cancelled">Отменённые</option>
             </select>
             <button onclick="loadOrders()">Обновить</button>
             <button onclick="openUnifiedChat()" style="background: #9b59b6;">💬 Все чаты</button>
@@ -226,7 +200,6 @@
 
     <script>
         let currentUserRole = '';
-        let unreadStatus = {};
         
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
@@ -243,29 +216,9 @@
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (response.status === 401) { logout(); return; }
                 const data = await response.json();
-                await loadUnreadStatus(data.orders);
                 renderOrders(data.orders);
             } catch (err) {
                 console.error('Error loading orders:', err);
-            }
-        }
-        
-        async function loadUnreadStatus(orders) {
-            const token = checkAuth();
-            for (let order of orders) {
-                if (order.status === 'processing') {
-                    try {
-                        const response = await fetch(`/api/manager/order/${order.id}/unread`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        if (response.ok) {
-                            const data = await response.json();
-                            unreadStatus[order.id] = data.hasUnread;
-                        }
-                    } catch (err) {
-                        console.error('Error loading unread status:', err);
-                    }
-                }
             }
         }
         
@@ -278,7 +231,6 @@
             
             tbody.innerHTML = orders.map(order => {
                 const statusText = {
-                    'new': 'Новый',
                     'processing': 'В работе',
                     'completed': 'Выполнен',
                     'cancelled': 'Отменён'
@@ -289,14 +241,12 @@
                     `<div>${item.name} (${item.variantName || 'уп.'}) x${item.quantity}</div>`
                 ).join('') || '-';
                 
-                const isNew = order.status === 'new';
                 const isProcessing = order.status === 'processing';
-                const showChatButton = isProcessing;
-                const hasUnread = unreadStatus[order.id] || false;
+                const showChatButton = isProcessing; // чат только для заказов в работе
+                const showCompleteButton = isProcessing;
                 
                 let rowClass = '';
-                if (isNew) rowClass = 'row-new';
-                else if (isProcessing) rowClass = 'row-processing';
+                if (isProcessing) rowClass = 'row-processing';
                 
                 return `
                     <tr class="${rowClass}">
@@ -306,9 +256,8 @@
                         <td>${order.total} ₽</td>
                         <td><span class="status ${statusClass}">${statusText}</span></td>
                         <td class="action-buttons">
-                            ${isNew ? `<button class="take-btn" onclick="takeOrder(${order.id})">📋 Взять в работу</button>` : ''}
-                            ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${showChatButton ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат${hasUnread ? '<span class="unread-dot"></span>' : ''}</button>` : ''}
+                            ${showCompleteButton ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
+                            ${showChatButton ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
                         </td>
                     </tr>
                 `;
@@ -321,37 +270,6 @@
         
         function openChat(orderId) {
             window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
-            markAsRead(orderId);
-        }
-        
-        async function markAsRead(orderId) {
-            const token = checkAuth();
-            try {
-                await fetch(`/api/manager/chat/mark-read/${orderId}`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                unreadStatus[orderId] = false;
-                loadOrders();
-            } catch (err) {
-                console.error('Error marking as read:', err);
-            }
-        }
-        
-        async function takeOrder(orderId) {
-            const token = checkAuth();
-            const response = await fetch(`/api/manager/order/${orderId}/take`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (response.ok) {
-                alert('✅ Заказ взят в работу');
-                loadOrders();
-            } else {
-                const error = await response.json();
-                alert('Ошибка: ' + (error.error || 'Не удалось взять заказ'));
-            }
         }
         
         async function completeOrder(orderId) {
@@ -388,7 +306,7 @@
         loadUser();
         loadOrders();
         
-        setInterval(loadOrders, 10000);
+        setInterval(loadOrders, 30000);
     </script>
 </body>
 </html>
