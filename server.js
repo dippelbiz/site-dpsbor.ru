@@ -327,7 +327,7 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // ✅ Определяем user_telegram_id только из contact.telegram_id, игнорируем userId=1
+    // user_telegram_id: если contact.telegram_id валидный, используем его, иначе null
     let userTelegramId = null;
     if (contact.telegram_id && !isNaN(parseInt(contact.telegram_id)) && parseInt(contact.telegram_id) > 0) {
       userTelegramId = parseInt(contact.telegram_id);
@@ -335,11 +335,11 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`👤 Сохраняем user_telegram_id: ${userTelegramId}`);
 
-const insertResult = await pool.query(`
-    INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-    RETURNING id
-`, [order_number, userTelegramId, seller_id, itemsJson, total_sum, contactJson, 'processing', request_id]);
+    const insertResult = await pool.query(`
+      INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING id
+    `, [order_number, userTelegramId, seller_id, itemsJson, total_sum, contactJson, 'processing', request_id]);
 
     const orderId = insertResult.rows[0].id;
 
@@ -406,31 +406,26 @@ async function bindOrder(chatId, orderNumber, senderName) {
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
     // Формируем подробное сообщение
-  let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
 
-    // Способ получения
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
     } else if (contact.deliveryType === 'courier') {
         messageText += `Доставка: ${contact.address}\n`;
     }
 
-    // Способ оплаты
     if (contact.paymentMethod === 'cash') {
         messageText += `Оплата: наличными\n`;
     } else if (contact.paymentMethod === 'transfer') {
         messageText += `Оплата: перевод по номеру\n`;
     }
 
-    // Состав заказа
     messageText += `\nСостав заказа:\n`;
     items.forEach(item => {
         const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
         const itemTotal = item.price * item.quantity;
         messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
     });
-
-    // Итоговая сумма
     messageText += `\nСумма заказа: ${orderRow.total} руб.`;
 
     // Если обновление прошло успешно, сохраняем telegram_id в contact и переносим сообщения
@@ -468,7 +463,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
             const username = from.username;
             const senderName = `${firstName}${username ? ` (@${username})` : ''}`.trim();
 
-            // 1. Обработка команды /start order_XXX (автоматическая привязка)
+            // 1. Обработка команды /start order_XXX
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
                 const result = await bindOrder(chatId, orderNumber, senderName);
@@ -539,6 +534,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
+
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
     const { order_id, channel, recipient_id, message_text } = req.body;
@@ -1057,8 +1053,7 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     
     // Отправляем уведомление
     if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
-      const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\n` +
-                     `Менеджер скоро свяжется с вами для уточнения деталей.\n\n`;
+      const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\nМенеджер скоро свяжется с вами для уточнения деталей.\n\n`;
       
       try {
         const sent = await telegramBot.sendTelegramMessage(recipientId, message);
@@ -1127,11 +1122,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     
     // Отправляем уведомление о завершении
     if (recipientId && telegramBot.isInitialized() && recipientId !== '1') {
-      const message = `✅ Ваш заказ №${order.order_number} завершен!\n\n` +
-                     `Спасибо, что выбрали DP SBOR!\n\n` +
-                     `Оформить новый заказ:\n` +
-                     `Перейдите на сайт dpsbor.ru\n\n` +
-                     `Будем рады видеть вас снова!`;
+      const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
       
       try {
         const sent = await telegramBot.sendTelegramMessage(recipientId, message);
