@@ -75,6 +75,12 @@
         .message.outgoing .message-meta {
             color: rgba(255,255,255,0.7);
         }
+        .system-message {
+            background: #f8f9fa;
+            color: #2c3e50;
+            border-left: 3px solid #f39c12;
+            font-style: italic;
+        }
         .chat-input {
             background: white;
             padding: 12px;
@@ -119,12 +125,6 @@
             font-size: 10px;
             display: inline-block;
             margin-left: 8px;
-        }
-        .system-message {
-            background: #f8f9fa;
-            color: #2c3e50;
-            border-left: 3px solid #f39c12;
-            font-style: italic;
         }
     </style>
 </head>
@@ -227,8 +227,10 @@
                     }
                 }
                 
-                // Передаём модифицированный массив сообщений в рендер
-                renderChatWindow({ ...data, messages });
+                // Отображаем сообщения
+                const messagesContainer = document.getElementById('messages-container');
+                messagesContainer.innerHTML = renderMessages(messages);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 
                 const sendBtn = document.getElementById('send-btn');
                 const messageInput = document.getElementById('message-input');
@@ -275,20 +277,6 @@
         function getChannelName(channel) {
             const names = { 'telegram': 'Telegram', 'vk': 'ВКонтакте', 'whatsapp': 'WhatsApp' };
             return names[channel] || channel || 'Неизвестный канал';
-        }
-        
-        function renderChatWindow(data) {
-            const container = document.getElementById('main-chat');
-            if (!container) {
-                // If we are not in the unified-chat, we need a different approach.
-                // But this file is chat.html, not unified-chat.html. We'll just render messages into the existing container.
-                const messagesContainer = document.getElementById('messages-container');
-                messagesContainer.innerHTML = renderMessages(data.messages);
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                return;
-            }
-            // This part is for unified-chat.html, but we are in chat.html. We'll keep the existing structure.
-            // Actually, we'll just render messages into messages-container.
         }
         
         function renderMessages(messages) {
