@@ -363,6 +363,7 @@ async function bindOrder(chatId, orderNumber, senderName) {
     const telegramId = chatId;
     const telegramName = senderName;
 
+    // 1. Проверяем существование заказа
     const orderCheck = await pool.query(
         'SELECT id, status FROM orders WHERE order_number = $1',
         [orderNumber]
@@ -383,11 +384,56 @@ async function bindOrder(chatId, orderNumber, senderName) {
         return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
     }
 
+    // 2. Обновляем user_telegram_id и статус (если ещё не processing)
     const updateUserResult = await pool.query(
         'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
         [telegramId, 'processing', orderNumber, 'completed']
     );
 
+    // 3. Получаем полные данные заказа (для формирования сообщения)
+    const orderData = await pool.query(`
+        SELECT order_number, total, contact, items 
+        FROM orders WHERE order_number = $1
+    `, [orderNumber]);
+
+    if (orderData.rows.length === 0) {
+        console.log(`⚠️ Не удалось получить данные заказа ${orderNumber}`);
+        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
+    }
+
+    const orderRow = orderData.rows[0];
+    const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
+    const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
+
+    // Формируем подробное сообщение
+    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+
+    // Способ получения
+    if (contact.deliveryType === 'pickup') {
+        messageText += `Самовывоз: ${contact.address}\n`;
+    } else if (contact.deliveryType === 'courier') {
+        messageText += `Доставка: ${contact.address}\n`;
+    }
+
+    // Способ оплаты
+    if (contact.paymentMethod === 'cash') {
+        messageText += `Оплата: наличными\n`;
+    } else if (contact.paymentMethod === 'transfer') {
+        messageText += `Оплата: перевод по номеру\n`;
+    }
+
+    // Состав заказа
+    messageText += `\nСостав заказа:\n`;
+    items.forEach(item => {
+        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+        const itemTotal = item.price * item.quantity;
+        messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+    });
+
+    // Итоговая сумма
+    messageText += `\nСумма заказа: ${orderRow.total} руб.`;
+
+    // Если обновление прошло успешно, сохраняем telegram_id в contact и переносим сообщения
     if (updateUserResult.rowCount > 0) {
         const contactJson = JSON.stringify({
             telegram_id: String(telegramId),
@@ -397,88 +443,16 @@ async function bindOrder(chatId, orderNumber, senderName) {
             `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
             [contactJson, orderNumber]
         );
-
         await pool.query(
             `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
              WHERE sender_id = $1::text AND order_id IS NULL`,
             [String(telegramId), orderNumber]
         );
-
-        const orderData = await pool.query(`
-            SELECT order_number, total, contact, items 
-            FROM orders WHERE order_number = $1
-        `, [orderNumber]);
-
-        let messageText = `✅ Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
-        if (orderData.rows.length > 0) {
-            const orderRow = orderData.rows[0];
-            const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
-            const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
-
-            if (contact.deliveryType === 'pickup') {
-                messageText += `Самовывоз: ${contact.address}\n`;
-            } else if (contact.deliveryType === 'courier') {
-                messageText += `Доставка: ${contact.address}\n`;
-            }
-
-            if (contact.paymentMethod === 'cash') {
-                messageText += `Оплата: наличными\n`;
-            } else if (contact.paymentMethod === 'transfer') {
-                messageText += `Оплата: перевод по номеру\n`;
-            }
-
-            messageText += `\nСостав заказа:\n`;
-            items.forEach(item => {
-                const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                const itemTotal = item.price * item.quantity;
-                messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
-            });
-
-            messageText += `\nСумма заказа: ${orderRow.total} руб.`;
-        } else {
-            messageText += `Заказ №${orderNumber} успешно привязан.`;
-        }
-
         console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
         return { success: true, message: messageText };
     } else {
-        // Заказ уже в работе
-        const orderData = await pool.query(`
-            SELECT order_number, total, contact, items 
-            FROM orders WHERE order_number = $1
-        `, [orderNumber]);
-
-        let messageText = `ℹ️ Заказ №${orderNumber} уже находится в работе.\n\n`;
-        if (orderData.rows.length > 0) {
-            const orderRow = orderData.rows[0];
-            const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
-            const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
-
-            if (contact.deliveryType === 'pickup') {
-                messageText += `Самовывоз: ${contact.address}\n`;
-            } else {
-                messageText += `Доставка: ${contact.address}\n`;
-            }
-
-            if (contact.paymentMethod === 'cash') {
-                messageText += `Оплата: наличными\n`;
-            } else {
-                messageText += `Оплата: перевод по номеру\n`;
-            }
-
-            messageText += `\nСостав заказа:\n`;
-            items.forEach(item => {
-                const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
-                const itemTotal = item.price * item.quantity;
-                messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
-            });
-
-            messageText += `\nСумма заказа: ${orderRow.total} руб.\n`;
-            messageText += `\nМенеджер свяжется с вами в ближайшее время.`;
-        } else {
-            messageText = `Ваш заказ №${orderNumber} уже в работе. Мы свяжемся с вами.`;
-        }
-
+        // Заказ уже был в работе – отправляем информацию без изменения статуса
+        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
         return { success: true, message: messageText };
     }
 }
@@ -494,28 +468,31 @@ app.post('/api/telegram/webhook', async (req, res) => {
             const username = from.username;
             const senderName = `${firstName}${username ? ` (@${username})` : ''}`.trim();
 
+            // 1. Обработка команды /start order_XXX (автоматическая привязка)
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
                 const result = await bindOrder(chatId, orderNumber, senderName);
                 if (result.success) {
-                    await telegramBot.sendTelegramMessage(chatId, result.message);
+                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
                 } else {
                     await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
                 }
                 return res.sendStatus(200);
             }
 
+            // 2. Обработка команды /start без параметра – начинаем диалог
             if (text === '/start') {
                 await telegramBot.sendTelegramMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
                 global.orderBindingStates.set(chatId, { step: 'awaiting_order_number' });
                 return res.sendStatus(200);
             }
 
+            // 3. Если пользователь ожидает ввода номера заказа
             if (global.orderBindingStates.get(chatId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrder(chatId, orderNumber, senderName);
                 if (result.success) {
-                    await telegramBot.sendTelegramMessage(chatId, result.message);
+                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
                 } else {
                     await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
                 }
@@ -523,6 +500,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 return res.sendStatus(200);
             }
 
+            // 4. Обычное сообщение – ищем активный заказ
             const messageData = await telegramBot.handleIncomingMessage(update.message);
             if (!messageData) return res.sendStatus(200);
 
