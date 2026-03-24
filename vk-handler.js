@@ -2,15 +2,13 @@
 let VK_ACCESS_TOKEN = null;
 let VK_GROUP_ID = null;
 let VK_CONFIRMATION_CODE = null;
-let VK_SECRET_KEY = null;
 let pool = null;
 let vkBindingStates = new Map();
 
-function initVK(vkToken, vkGroupId, dbPool, confirmationCode, secretKey) {
+function initVK(vkToken, vkGroupId, dbPool, confirmationCode) {
     VK_ACCESS_TOKEN = vkToken;
     VK_GROUP_ID = vkGroupId;
     VK_CONFIRMATION_CODE = confirmationCode;
-    VK_SECRET_KEY = secretKey;
     pool = dbPool;
     console.log('✅ VK модуль инициализирован');
 }
@@ -40,10 +38,20 @@ async function sendVKMessage(userId, message) {
 }
 
 async function bindOrderVK(vkId, orderNumber, senderName) {
-    const orderCheck = await pool.query('SELECT id, status FROM orders WHERE order_number = $1', [orderNumber]);
-    if (orderCheck.rows.length === 0) return { success: false, message: 'Заказ не найден' };
+    const orderCheck = await pool.query(
+        'SELECT id, status FROM orders WHERE order_number = $1',
+        [orderNumber]
+    );
+    if (orderCheck.rows.length === 0) {
+        console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
+        return { success: false, message: 'Заказ не найден' };
+    }
+
     const order = orderCheck.rows[0];
-    if (order.status === 'completed') return { success: false, message: 'Заказ уже завершён' };
+    if (order.status === 'completed') {
+        console.log(`⚠️ Заказ ${orderNumber} уже завершён, привязка не требуется`);
+        return { success: false, message: 'Заказ уже завершён' };
+    }
 
     const updateResult = await pool.query(
         'UPDATE orders SET status = $1 WHERE order_number = $2 AND status != $3',
@@ -51,8 +59,10 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     );
 
     const orderData = await pool.query(`
-        SELECT order_number, total, contact, items FROM orders WHERE order_number = $1
+        SELECT order_number, total, contact, items 
+        FROM orders WHERE order_number = $1
     `, [orderNumber]);
+
     if (orderData.rows.length === 0) {
         return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
     }
@@ -62,10 +72,16 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
     let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
-    if (contact.deliveryType === 'pickup') messageText += `Самовывоз: ${contact.address}\n`;
-    else if (contact.deliveryType === 'courier') messageText += `Доставка: ${contact.address}\n`;
-    if (contact.paymentMethod === 'cash') messageText += `Оплата: наличными\n`;
-    else if (contact.paymentMethod === 'transfer') messageText += `Оплата: перевод по номеру\n`;
+    if (contact.deliveryType === 'pickup') {
+        messageText += `Самовывоз: ${contact.address}\n`;
+    } else if (contact.deliveryType === 'courier') {
+        messageText += `Доставка: ${contact.address}\n`;
+    }
+    if (contact.paymentMethod === 'cash') {
+        messageText += `Оплата: наличными\n`;
+    } else if (contact.paymentMethod === 'transfer') {
+        messageText += `Оплата: перевод по номеру\n`;
+    }
     messageText += `\nСостав заказа:\n`;
     items.forEach(item => {
         const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
@@ -75,7 +91,10 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     messageText += `\nСумма заказа: ${orderRow.total} руб.`;
 
     if (updateResult.rowCount > 0) {
-        const contactJson = JSON.stringify({ vk_id: String(vkId), vk_name: senderName });
+        const contactJson = JSON.stringify({
+            vk_id: String(vkId),
+            vk_name: senderName
+        });
         await pool.query(
             `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
             [contactJson, orderNumber]
@@ -95,18 +114,13 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
 async function handleVKWebhook(req, res) {
     console.log('📨 VK webhook вызван');
     try {
-        if (VK_SECRET_KEY && req.headers['x-vk-secret'] !== VK_SECRET_KEY) {
-            console.error('❌ Неверный секретный ключ VK');
-            return res.status(403).send('invalid secret');
-        }
-
         const update = req.body;
         console.log('📨 VK webhook body:', JSON.stringify(update));
 
         if (update.type === 'confirmation') {
-            const code = VK_CONFIRMATION_CODE || 'bed3ca1c';
-            console.log(`✅ VK confirmation: returning ${code}`);
-            return res.send(code);
+            const confirmationCode = VK_CONFIRMATION_CODE || 'bed3ca1c';
+            console.log(`✅ VK confirmation: returning ${confirmationCode}`);
+            return res.send(confirmationCode);
         }
 
         if (update.type === 'message_new') {
@@ -114,13 +128,17 @@ async function handleVKWebhook(req, res) {
             const userId = message.from_id;
             const text = message.text;
             const senderName = `${message.from.first_name} ${message.from.last_name || ''}`.trim() || 'Пользователь ВК';
+
             console.log(`📨 VK сообщение от ${userId}: "${text}"`);
 
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
                 const result = await bindOrderVK(userId, orderNumber, senderName);
-                if (result.success) await sendVKMessage(userId, `✅ ${result.message}`);
-                else await sendVKMessage(userId, `❌ ${result.message}`);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
                 return res.send('ok');
             }
 
@@ -133,13 +151,16 @@ async function handleVKWebhook(req, res) {
             if (vkBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderVK(userId, orderNumber, senderName);
-                if (result.success) await sendVKMessage(userId, `✅ ${result.message}`);
-                else await sendVKMessage(userId, `❌ ${result.message}`);
+                if (result.success) {
+                    await sendVKMessage(userId, `✅ ${result.message}`);
+                } else {
+                    await sendVKMessage(userId, `❌ ${result.message}`);
+                }
                 vkBindingStates.delete(userId);
                 return res.send('ok');
             }
 
-            // обычное сообщение
+            // Обычное сообщение – ищем активный заказ по vk_id в contact
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'vk_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -148,6 +169,7 @@ async function handleVKWebhook(req, res) {
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
             } else {
+                // Автоматическая привязка к недавнему заказу без vk_id
                 const recentOrder = await pool.query(
                     `SELECT id FROM orders 
                      WHERE (contact->>'vk_id' IS NULL OR contact->>'vk_id' = '') 
@@ -158,8 +180,14 @@ async function handleVKWebhook(req, res) {
                 );
                 if (recentOrder.rows.length > 0) {
                     orderId = recentOrder.rows[0].id;
-                    const contactJson = JSON.stringify({ vk_id: String(userId), vk_name: senderName });
-                    await pool.query(`UPDATE orders SET contact = contact || $1::jsonb WHERE id = $2`, [contactJson, orderId]);
+                    const contactJson = JSON.stringify({
+                        vk_id: String(userId),
+                        vk_name: senderName
+                    });
+                    await pool.query(
+                        `UPDATE orders SET contact = contact || $1::jsonb WHERE id = $2`,
+                        [contactJson, orderId]
+                    );
                     await sendVKMessage(userId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
                     const orderDetails = await pool.query(`SELECT order_number, total, contact, items FROM orders WHERE id = $1`, [orderId]);
                     if (orderDetails.rows.length > 0) {
