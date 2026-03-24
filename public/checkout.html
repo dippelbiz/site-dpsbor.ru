@@ -6,7 +6,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
-        /* все стили без изменений – как в последней версии */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -443,7 +442,7 @@
             currentOrderNumber = orderNumber;
             
             document.getElementById('modal-order-number').innerHTML = `№${orderNumber}`;
-            document.getElementById('instruction-order-number').textContent = orderNumber; // вставляем номер в инструкцию
+            document.getElementById('instruction-order-number').textContent = orderNumber;
             document.getElementById('success-modal').style.display = 'block';
             
             const copyBtn = document.getElementById('copy-number-btn');
@@ -555,7 +554,11 @@
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
+                    // Определяем тип устройства для правильной ссылки
+                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                    const telegramLink = isMobile 
+                        ? `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`
+                        : `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
                     const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
