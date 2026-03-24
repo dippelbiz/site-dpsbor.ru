@@ -157,6 +157,7 @@ async function bindOrder(chatId, orderNumber, senderName) {
         console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
         return { success: true, message: messageText };
     } else {
+        // Заказ уже был в работе – отправляем информацию без изменения статуса
         console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
         return { success: true, message: messageText };
     }
