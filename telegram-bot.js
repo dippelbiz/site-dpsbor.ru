@@ -71,7 +71,7 @@ async function handleIncomingMessage(msg) {
     };
 }
 
-// Вспомогательная функция привязки заказа (используется в вебхуке)
+// Вспомогательная функция привязки заказа
 async function bindOrder(chatId, orderNumber, senderName) {
     const telegramId = chatId;
     const telegramName = senderName;
@@ -92,6 +92,7 @@ async function bindOrder(chatId, orderNumber, senderName) {
         return { success: false, message: 'Заказ уже завершён' };
     }
 
+    // Если заказ уже привязан к другому пользователю, не меняем
     if (order.user_telegram_id && order.user_telegram_id !== telegramId) {
         console.log(`⚠️ Заказ ${orderNumber} уже привязан к другому пользователю`);
         return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
@@ -119,7 +120,7 @@ async function bindOrder(chatId, orderNumber, senderName) {
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
     // Формируем подробное сообщение
-    let messageText = `Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
     } else if (contact.deliveryType === 'courier') {
@@ -207,7 +208,21 @@ async function handleTelegramWebhook(req, res) {
                 return res.sendStatus(200);
             }
 
-            // 4. Обычное сообщение – ищем активный заказ
+            // 4. Проверка, не является ли текст номером заказа (буква+цифры)
+            //    (для удобства, если команда не сработала)
+            if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
+                const orderNumber = text;
+                console.log(`🔍 Распознан номер заказа в Telegram: ${orderNumber}`);
+                const result = await bindOrder(chatId, orderNumber, senderName);
+                if (result.success) {
+                    await sendTelegramMessage(chatId, `✅ ${result.message}`);
+                } else {
+                    await sendTelegramMessage(chatId, `❌ ${result.message}`);
+                }
+                return res.sendStatus(200);
+            }
+
+            // 5. Обычное сообщение – ищем активный заказ по user_telegram_id
             const messageData = await handleIncomingMessage(update.message);
             if (!messageData) return res.sendStatus(200);
 
