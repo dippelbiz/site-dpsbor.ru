@@ -975,7 +975,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
   const { id } = req.params;
   try {
     const orderResult = await pool.query(`
-      SELECT id, order_number, user_telegram_id, contact, status 
+      SELECT id, order_number, user_telegram_id, contact, items, seller_id 
       FROM orders 
       WHERE id = $1 AND status = $2
     `, [id, 'processing']);
@@ -985,8 +985,11 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
     }
     
     const order = orderResult.rows[0];
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    const sellerId = order.seller_id;
     const contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
-    
+
+    // Определяем получателя уведомления
     let recipientId = null;
     let recipientChannel = null;
     if (contact.telegram_id) {
@@ -999,13 +1002,72 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       recipientId = contact.vk_id;
       recipientChannel = 'vk';
     }
-    
+
+    // --- Списание остатков ---
+    let negativeStockItems = [];
+    for (const item of items) {
+      const variantId = item.variantId;
+      const quantity = item.quantity;
+      // Уменьшаем остаток у продавца
+      const updateResult = await pool.query(`
+        UPDATE seller_stock 
+        SET quantity = quantity - $1 
+        WHERE seller_id = $2 AND variant_id = $3
+        RETURNING quantity
+      `, [quantity, sellerId, variantId]);
+      
+      let newQuantity = 0;
+      if (updateResult.rows.length > 0) {
+        newQuantity = updateResult.rows[0].quantity;
+      } else {
+        // Если записи не было, считаем, что остаток 0, после списания будет -quantity
+        newQuantity = -quantity;
+        // Создаём запись, если её нет
+        await pool.query(`
+          INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
+          VALUES ($1, $2, $3, 0)
+        `, [sellerId, variantId, -quantity]);
+      }
+      
+      if (newQuantity < 0) {
+        negativeStockItems.push({
+          variant_id: variantId,
+          product_name: item.name,
+          variant_name: item.variantName,
+          quantity: quantity,
+          current_stock: newQuantity + quantity, // до списания
+          new_stock: newQuantity
+        });
+      }
+    }
+
+    // --- Если есть отрицательные остатки, создаём задачи ---
+    if (negativeStockItems.length > 0) {
+      for (const neg of negativeStockItems) {
+        await pool.query(`
+          INSERT INTO inventory_tasks (seller_id, variant_id, reason, status)
+          VALUES ($1, $2, $3, 'pending')
+        `, [sellerId, neg.variant_id, `Отрицательный остаток по товару "${neg.product_name} (${neg.variant_name})" после заказа №${order.order_number}. Было: ${neg.current_stock}, списано: ${neg.quantity}, стало: ${neg.new_stock}`]);
+      }
+      
+      // Уведомление администратора (можно в чат или телеграм)
+      const adminMsg = `⚠️ Внимание! При завершении заказа №${order.order_number} обнаружены отрицательные остатки:\n` +
+        negativeStockItems.map(neg => `- ${neg.product_name} (${neg.variant_name}): было ${neg.current_stock}, списано ${neg.quantity}, стало ${neg.new_stock}`).join('\n') +
+        `\nНеобходимо провести инвентаризацию с продавцом.`;
+      
+      // Отправить админам (например, в специальный чат или через бота)
+      // Здесь можно отправить сообщение админам, если у них есть telegram_id.
+      // Для простоты запишем в лог.
+      console.error(adminMsg);
+    }
+
+    // Обновляем статус заказа
     await pool.query(
       'UPDATE orders SET status = $1, completed_at = NOW() WHERE id = $2',
       ['completed', id]
     );
-    
-    // Отправляем уведомление о завершении
+
+    // --- Отправляем уведомление покупателю ---
     if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
       try {
@@ -1013,11 +1075,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
         if (sent) {
           console.log(`✅ Уведомление о завершении заказа №${order.order_number} отправлено в Telegram (${recipientId})`);
           await pool.query(`
-            INSERT INTO chat_messages (
-              order_id, channel, external_id, 
-              sender_id, sender_name, message_text, 
-              direction, status, created_at
-            )
+            INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, message_text, direction, status, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
           `, [
             id,
@@ -1038,11 +1096,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
         if (sent) {
           console.log(`✅ Уведомление о завершении заказа №${order.order_number} отправлено в VK (${recipientId})`);
           await pool.query(`
-            INSERT INTO chat_messages (
-              order_id, channel, external_id, 
-              sender_id, sender_name, message_text, 
-              direction, status, created_at
-            )
+            INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, message_text, direction, status, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
           `, [
             id,
@@ -1056,38 +1110,40 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       } catch (err) {
         console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
       }
-    } else {
-      console.log(`⚠️ Не удалось отправить уведомление: recipientId=${recipientId}, channel=${recipientChannel}`);
     }
-    
-    res.json({ success: true });
+
+    // Если были отрицательные остатки, отправляем дополнительный ответ с предупреждением
+    if (negativeStockItems.length > 0) {
+      res.json({ 
+        success: true, 
+        warning: `Заказ завершён, но обнаружены отрицательные остатки. Проверьте задачи инвентаризации.`
+      });
+    } else {
+      res.json({ success: true });
+    }
   } catch (err) {
     console.error('Complete order error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
-
-app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
-  const { id } = req.params;
+// ==================== Остатки ушли в минус ====================
+app.get('/api/manager/inventory-tasks', checkManagerAuth, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
-    
-    const order = result.rows[0];
-    try {
-      order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
-      order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact || {};
-    } catch (e) {
-      console.error('Ошибка парсинга JSON:', e.message);
-    }
-    
-    res.json({ order });
+    const tasks = await pool.query(`
+      SELECT it.*, u.name as seller_name, v.name as variant_name, p.name as product_name
+      FROM inventory_tasks it
+      JOIN users u ON it.seller_id = u.id
+      JOIN variants v ON it.variant_id = v.id
+      JOIN products p ON v.product_id = p.id
+      WHERE it.status = 'pending'
+      ORDER BY it.created_at ASC
+    `);
+    res.json({ tasks: tasks.rows });
   } catch (err) {
-    console.error('Get order error:', err);
+    console.error('Inventory tasks error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
-
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
