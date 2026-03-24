@@ -335,11 +335,11 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`👤 Сохраняем user_telegram_id: ${userTelegramId}`);
 
-    const insertResult = await pool.query(`
-      INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      RETURNING id
-    `, [order_number, userTelegramId, seller_id, itemsJson, total_sum, contactJson, 'new', request_id]);
+const insertResult = await pool.query(`
+    INSERT INTO orders (order_number, user_telegram_id, seller_id, items, total, contact, status, request_id, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    RETURNING id
+`, [order_number, userTelegramId, seller_id, itemsJson, total_sum, contactJson, 'processing', request_id]);
 
     const orderId = insertResult.rows[0].id;
 
@@ -407,7 +407,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
             if (!isNaN(telegramIdNum)) {
                 const orderResult = await pool.query(
                     'SELECT id FROM orders WHERE user_telegram_id = $1::bigint AND status IN ($2::text, $3::text) ORDER BY created_at DESC LIMIT 1',
-                    [telegramIdNum, 'new', 'processing']
+                    [telegramIdNum, 'processing']
                 );
                 if (orderResult.rows.length > 0) {
                     orderId = orderResult.rows[0].id;
