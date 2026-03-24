@@ -555,8 +555,8 @@
                     document.getElementById('telegram-link').href = telegramLink;
                     
                     // Ссылка для ВК с автоматическим заполнением номера заказа
-                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}&text=Заказ%20№${result.orderNumber}`;
-                    document.getElementById('vk-link').href = vkLink;
+                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}&text=/start%20order_${result.orderNumber}`;
+document.getElementById('vk-link').href = vkLink;
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
                     
