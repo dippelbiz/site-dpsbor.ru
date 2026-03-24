@@ -356,21 +356,46 @@ const insertResult = await pool.query(`
 });
 
 // ==================== TELEGRAM WEBHOOK ====================
-// Хранилище для диалогов привязки (в продакшене лучше использовать БД)
+
+// Глобальное хранилище для диалогов привязки (в продакшене лучше использовать БД)
 if (!global.orderBindingStates) global.orderBindingStates = new Map();
 
 async function bindOrder(chatId, orderNumber, senderName) {
     const telegramId = chatId;
     const telegramName = senderName;
 
+    // Проверяем существование заказа и его статус
+    const orderCheck = await pool.query(
+        'SELECT id, status FROM orders WHERE order_number = $1',
+        [orderNumber]
+    );
+    if (orderCheck.rows.length === 0) {
+        console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
+        return { success: false, message: 'Заказ не найден' };
+    }
+
+    const order = orderCheck.rows[0];
+    if (order.status === 'completed') {
+        console.log(`⚠️ Заказ ${orderNumber} уже завершён, привязка не требуется`);
+        return { success: false, message: 'Заказ уже завершён' };
+    }
+
+    // Если заказ уже привязан к другому пользователю, не меняем
+    if (order.user_telegram_id && order.user_telegram_id !== telegramId) {
+        console.log(`⚠️ Заказ ${orderNumber} уже привязан к другому пользователю`);
+        return { success: false, message: 'Заказ уже привязан к другому аккаунту' };
+    }
+
+    // Обновляем user_telegram_id и статус (если он ещё не processing)
     const updateUserResult = await pool.query(
-        'UPDATE orders SET user_telegram_id = $1, status = $2 WHERE order_number = $3',
-        [telegramId, 'processing', orderNumber]
+        'UPDATE orders SET user_telegram_id = $1::bigint, status = $2 WHERE order_number = $3 AND status != $4',
+        [telegramId, 'processing', orderNumber, 'completed']
     );
 
     if (updateUserResult.rowCount > 0) {
+        // Обновляем JSON contact
         await pool.query(
-            `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1, 'telegram_name', $2)
+            `UPDATE orders SET contact = contact || jsonb_build_object('telegram_id', $1::text, 'telegram_name', $2)
              WHERE order_number = $3`,
             [String(telegramId), telegramName, orderNumber]
         );
@@ -380,11 +405,12 @@ async function bindOrder(chatId, orderNumber, senderName) {
              WHERE sender_id = $1::text AND order_id IS NULL`,
             [String(telegramId), orderNumber]
         );
-        console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId}`);
-        return { success: true };
+        console.log(`✅ Заказ ${orderNumber} привязан к пользователю ${telegramId} и переведён в работу`);
+        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
     } else {
-        console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
-        return { success: false };
+        // Если обновление не затронуло строки (например, уже processing)
+        console.log(`⚠️ Заказ ${orderNumber} уже в работе или не требует обновления`);
+        return { success: true, message: `Ваш заказ №${orderNumber} уже в работе. Мы свяжемся с вами.` };
     }
 }
 
@@ -402,7 +428,12 @@ app.post('/api/telegram/webhook', async (req, res) => {
             // 1. Обработка команды /start order_XXX
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
-                await bindOrder(chatId, orderNumber, senderName);
+                const result = await bindOrder(chatId, orderNumber, senderName);
+                if (result.success) {
+                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
+                } else {
+                    await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
+                }
                 return res.sendStatus(200);
             }
 
@@ -418,9 +449,9 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const orderNumber = text.trim();
                 const result = await bindOrder(chatId, orderNumber, senderName);
                 if (result.success) {
-                    await telegramBot.sendTelegramMessage(chatId, `✅ Заказ №${orderNumber} привязан! Теперь вы будете получать уведомления и можете общаться с менеджером.`);
+                    await telegramBot.sendTelegramMessage(chatId, `✅ ${result.message}`);
                 } else {
-                    await telegramBot.sendTelegramMessage(chatId, `❌ Заказ №${orderNumber} не найден. Проверьте номер и попробуйте снова.`);
+                    await telegramBot.sendTelegramMessage(chatId, `❌ ${result.message}`);
                 }
                 global.orderBindingStates.delete(chatId);
                 return res.sendStatus(200);
