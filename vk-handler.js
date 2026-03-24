@@ -1,11 +1,11 @@
 // vk-handler.js
-const fetch = require('node-fetch');
+// Используем встроенный fetch (доступен в Node.js 18+)
 
 let VK_ACCESS_TOKEN = null;
 let VK_GROUP_ID = null;
 let VK_CONFIRMATION_CODE = null;
 let pool = null;
-let vkBindingStates = new Map(); // для диалогов привязки
+let vkBindingStates = new Map();
 
 // Инициализация модуля
 function initVK(vkToken, vkGroupId, dbPool, confirmationCode) {
@@ -62,12 +62,7 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
         return { success: false, message: 'Заказ уже завершён' };
     }
 
-    // Если заказ уже привязан к другому VK ID, не меняем (но VK ID может быть разным – оставим пока)
-    // Здесь мы не проверяем, так как в таблице orders нет отдельного поля vk_id; будем хранить в contact.
-    // Однако для простоты пока будем обновлять contact, а поле user_telegram_id оставим для Telegram.
-    // Можно добавить отдельное поле vk_id в таблицу, но пока обойдёмся contact.
-
-    // Обновляем contact (vk_id) и статус (если ещё не processing)
+    // Обновляем статус (если ещё не processing)
     const updateResult = await pool.query(
         'UPDATE orders SET status = $1 WHERE order_number = $2 AND status != $3',
         ['processing', orderNumber, 'completed']
@@ -216,8 +211,7 @@ async function handleVKWebhook(req, res) {
                     );
                     // Отправляем подтверждение
                     await sendVKMessage(userId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
-                    // Отправляем детали заказа (можно сразу отправить подробное сообщение)
-                    // Для этого нужно получить данные заказа, как в bindOrderVK.
+                    // Отправляем детали заказа
                     const orderDetails = await pool.query(`
                         SELECT order_number, total, contact, items 
                         FROM orders WHERE id = $1
@@ -277,7 +271,7 @@ async function handleVKWebhook(req, res) {
     }
 }
 
-// Дополнительная функция для проверки инициализации (может понадобиться)
+// Дополнительная функция для проверки инициализации
 function isInitialized() {
     return !!(VK_ACCESS_TOKEN && VK_GROUP_ID && pool);
 }
