@@ -93,7 +93,7 @@ async function bindOrderVK(vkId, orderNumber, senderName) {
     const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
-    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    let messageText = `Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
     } else if (contact.deliveryType === 'courier') {
@@ -232,7 +232,7 @@ async function handleVKWebhook(req, res) {
                         const row = orderDetails.rows[0];
                         const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact;
                         const items = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
-                        let detailsMsg = `✅ Заказ №${row.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+                        let detailsMsg = `Заказ №${row.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
                         if (contact.deliveryType === 'pickup') detailsMsg += `Самовывоз: ${contact.address}\n`;
                         else if (contact.deliveryType === 'courier') detailsMsg += `Доставка: ${contact.address}\n`;
                         if (contact.paymentMethod === 'cash') detailsMsg += `Оплата: наличными\n`;
