@@ -1,4 +1,3 @@
-<!-- public/manager/chat.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -128,58 +127,58 @@
             margin-left: 8px;
         }
         .order-info-panel {
-    background: white;
-    border-radius: 12px;
-    margin: 10px 12px;
-    padding: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    font-size: 12px;
-    border-left: 4px solid #3498db;
-}
-.order-details {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.order-detail-title {
-    font-weight: bold;
-    font-size: 14px;
-    color: #2c3e50;
-    margin-bottom: 4px;
-}
-.order-detail-row {
-    display: flex;
-    gap: 12px;
-    align-items: baseline;
-}
-.order-detail-label {
-    font-weight: 500;
-    color: #7f8c8d;
-    min-width: 110px;
-}
-.order-detail-value {
-    color: #2c3e50;
-}
-.status-processing {
-    color: #f39c12;
-    font-weight: bold;
-}
-.status-completed {
-    color: #27ae60;
-    font-weight: bold;
-}
-.order-items {
-    flex-direction: column;
-    align-items: flex-start;
-}
-.order-items-list {
-    margin-top: 4px;
-    padding-left: 8px;
-    border-left: 2px solid #ecf0f1;
-}
-.order-items-list div {
-    margin-bottom: 2px;
-}
+            background: white;
+            border-radius: 12px;
+            margin: 10px 12px;
+            padding: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 12px;
+            border-left: 4px solid #3498db;
+        }
+        .order-details {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .order-detail-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        .order-detail-row {
+            display: flex;
+            gap: 12px;
+            align-items: baseline;
+        }
+        .order-detail-label {
+            font-weight: 500;
+            color: #7f8c8d;
+            min-width: 110px;
+        }
+        .order-detail-value {
+            color: #2c3e50;
+        }
+        .status-processing {
+            color: #f39c12;
+            font-weight: bold;
+        }
+        .status-completed {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .order-items {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .order-items-list {
+            margin-top: 4px;
+            padding-left: 8px;
+            border-left: 2px solid #ecf0f1;
+        }
+        .order-items-list div {
+            margin-bottom: 2px;
+        }
     </style>
 </head>
 <body>
@@ -214,103 +213,70 @@
             }
             return token;
         }
-      async function loadChat() {
-    const token = checkAuth();
-    try {
-        const response = await fetch(`/api/manager/order/${orderId}/chat`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
         
-        if (response.status === 401) {
-            localStorage.removeItem('manager_token');
-            window.location.href = '/manager/';
-            return;
-        }
-        
-        const data = await response.json();
-        currentRecipient = data.recipient;
-        currentOrderStatus = data.status;
-        
-        // Получаем детали заказа
-        const orderResponse = await fetch(`/api/manager/order/${orderId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const orderData = await orderResponse.json();
-        const order = orderData.order;
-        const contact = order.contact;
-        const items = order.items;
-        
-        // Строим панель
-        const orderInfoHtml = `
-            <div class="order-details">
-                <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
-                <div class="order-detail-row">
-                    <span class="order-detail-label">Статус:</span>
-                    <span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span>
-                </div>
-                <div class="order-detail-row">
-                    <span class="order-detail-label">Сумма:</span>
-                    <span class="order-detail-value">${order.total} руб.</span>
-                </div>
-                <div class="order-detail-row">
-                    <span class="order-detail-label">Способ получения:</span>
-                    <span class="order-detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span>
-                </div>
-                <div class="order-detail-row">
-                    <span class="order-detail-label">Адрес:</span>
-                    <span class="order-detail-value">${contact.address}</span>
-                </div>
-                <div class="order-detail-row">
-                    <span class="order-detail-label">Оплата:</span>
-                    <span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span>
-                </div>
-                <div class="order-detail-row order-items">
-                    <span class="order-detail-label">Состав:</span>
-                    <div class="order-items-list">
-                        ${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.</div>`).join('')}
+        async function loadChat() {
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/order/${orderId}/chat`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('manager_token');
+                    window.location.href = '/manager/';
+                    return;
+                }
+                
+                const data = await response.json();
+                currentRecipient = data.recipient;
+                currentOrderStatus = data.status;
+                
+                // Получаем детали заказа
+                const orderResponse = await fetch(`/api/manager/order/${orderId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const orderData = await orderResponse.json();
+                const order = orderData.order;
+                const contact = order.contact;
+                const items = order.items;
+                
+                // Строим панель с информацией
+                const orderInfoHtml = `
+                    <div class="order-details">
+                        <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
+                        <div class="order-detail-row">
+                            <span class="order-detail-label">Статус:</span>
+                            <span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span>
+                        </div>
+                        <div class="order-detail-row">
+                            <span class="order-detail-label">Сумма:</span>
+                            <span class="order-detail-value">${order.total} руб.</span>
+                        </div>
+                        <div class="order-detail-row">
+                            <span class="order-detail-label">Способ получения:</span>
+                            <span class="order-detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span>
+                        </div>
+                        <div class="order-detail-row">
+                            <span class="order-detail-label">Адрес:</span>
+                            <span class="order-detail-value">${contact.address}</span>
+                        </div>
+                        <div class="order-detail-row">
+                            <span class="order-detail-label">Оплата:</span>
+                            <span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span>
+                        </div>
+                        <div class="order-detail-row order-items">
+                            <span class="order-detail-label">Состав:</span>
+                            <div class="order-items-list">
+                                ${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.</div>`).join('')}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-        `;
-        document.getElementById('order-info-panel').innerHTML = orderInfoHtml;
-        
-       // Отображаем сообщения
-const messagesContainer = document.getElementById('messages-container');
-messagesContainer.innerHTML = renderMessages(data.messages);
-messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        
-        const sendBtn = document.getElementById('send-btn');
-        const messageInput = document.getElementById('message-input');
-        const isProcessing = data.status === 'processing';
-        const canChat = isProcessing;
-        
-        document.getElementById('order-info').innerHTML = `Заказ №${data.order_number}`;
-        document.getElementById('info-bar').innerHTML = `
-            👤 ${data.recipient?.name || 'Клиент'} • 📱 ${getChannelName(currentRecipient?.channel)}
-            ${!canChat ? '<span class="order-completed-badge">Чат недоступен</span>' : ''}
-        `;
-        
-        if (!canChat || !currentRecipient?.id) {
-            sendBtn.disabled = true;
-            messageInput.disabled = true;
-            messageInput.placeholder = !currentRecipient?.id ? 'Нет данных для отправки сообщений' : 'Чат доступен только для заказов в работе';
-        } else {
-            sendBtn.disabled = false;
-            messageInput.disabled = false;
-            messageInput.placeholder = 'Введите сообщение...';
-        }
-        
-        await markMessagesAsRead(orderId);
-        
-    } catch (err) {
-        console.error('Error loading chat:', err);
-        document.getElementById('messages-container').innerHTML = '<div class="loading">Ошибка загрузки сообщений</div>';
-    }
-}
-       
-                // Отображаем сообщения
+                `;
+                document.getElementById('order-info-panel').innerHTML = orderInfoHtml;
+                
+                // Отображаем сообщения (исправлено: data.messages)
                 const messagesContainer = document.getElementById('messages-container');
-                messagesContainer.innerHTML = renderMessages(messages);
+                messagesContainer.innerHTML = renderMessages(data.messages);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 
                 const sendBtn = document.getElementById('send-btn');
