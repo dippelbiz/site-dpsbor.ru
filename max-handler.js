@@ -57,8 +57,12 @@ async function sendMAXMessage(userId, text) {
             return null;
         }
         console.log(`✅ Сообщение отправлено в MAX (userId: ${userId})`);
-        // Возвращаем message_id для сохранения в БД
-        return data.message?.id || data.message_id;
+        // Извлекаем ID сообщения из ответа
+        const messageId = data.message?.mid || data.message_id || data.mid;
+        if (!messageId) {
+            console.warn('⚠️ Не удалось получить message_id из ответа MAX, но сообщение отправлено');
+        }
+        return messageId || 'unknown';
     } catch (err) {
         console.error('❌ Ошибка отправки в MAX:', err);
         return null;
