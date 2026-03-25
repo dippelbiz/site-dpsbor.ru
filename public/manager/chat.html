@@ -274,10 +274,10 @@
         `;
         document.getElementById('order-info-panel').innerHTML = orderInfoHtml;
         
-        // Отображаем сообщения (исправлено: data.messages)
-        const messagesContainer = document.getElementById('messages-container');
-        messagesContainer.innerHTML = renderMessages(data.messages);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+       // Отображаем сообщения
+const messagesContainer = document.getElementById('messages-container');
+messagesContainer.innerHTML = renderMessages(data.messages);
+messagesContainer.scrollTop = messagesContainer.scrollHeight;
         
         const sendBtn = document.getElementById('send-btn');
         const messageInput = document.getElementById('message-input');
