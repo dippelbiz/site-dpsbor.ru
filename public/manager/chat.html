@@ -1,3 +1,4 @@
+<!-- public/manager/chat.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -253,7 +254,6 @@
                     messageInput.placeholder = 'Введите сообщение...';
                 }
                 
-                // Отметить как прочитанное
                 await markMessagesAsRead(orderId);
                 
             } catch (err) {
@@ -348,11 +348,10 @@
                 
                 if (response.ok) {
                     input.value = '';
-                    await loadChat(); // перезагружаем чат, чтобы увидеть отправленное сообщение
+                    await loadChat();
                 } else {
                     const error = await response.json();
-                    console.error('Send error response:', error);
-                    alert('Ошибка: ' + (error.error || 'Неизвестная ошибка'));
+                    alert('Ошибка: ' + error.error);
                 }
             } catch (err) {
                 console.error('Send error:', err);
@@ -385,7 +384,6 @@
             document.getElementById('order-info').innerHTML = 'Ошибка: заказ не указан';
         }
         
-        // Обработчик Enter на клавиатуре
         document.getElementById('message-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
