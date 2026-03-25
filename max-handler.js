@@ -286,4 +286,4 @@ function isInitialized() {
     return !!(MAX_BOT_TOKEN && MAX_BOT_NAME && pool);
 }
 
-module.exports = { initMAX, sendMAXMessage, handleMAXWebhook, isInitialized };
+module.exports = { initMAX, sendMAXMessage, handleMAXWebhook, isInitialized, bindOrderMAX };
