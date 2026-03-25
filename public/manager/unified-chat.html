@@ -323,6 +323,25 @@
         .order-items-list div {
             margin-bottom: 2px;
         }
+        .order-header-with-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .complete-order-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .complete-order-btn:hover {
+            background: #2ecc71;
+        }
     </style>
 </head>
 <body>
@@ -358,6 +377,40 @@
             const token = localStorage.getItem('manager_token');
             if (!token) { window.location.href = '/manager/'; return false; }
             return token;
+        }
+
+        async function completeOrder() {
+            if (!confirm('Вы уверены, что хотите завершить этот заказ?\nПосле завершения чат станет недоступен для отправки сообщений.')) {
+                return;
+            }
+            
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/order/${currentOrderId}/complete`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.warning) {
+                        alert('⚠️ ' + result.warning);
+                    } else {
+                        alert('✅ Заказ успешно завершён');
+                    }
+                    await loadChat(currentOrderId);
+                    await loadChats();
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + (error.error || 'Не удалось завершить заказ'));
+                }
+            } catch (err) {
+                console.error('Error completing order:', err);
+                alert('Ошибка при завершении заказа');
+            }
         }
         
         function switchTab(tab) {
@@ -442,7 +495,6 @@
                 currentOrderStatus = data.status;
                 currentOldOrders = data.old_orders || [];
                 
-                // Получаем детали заказа
                 const orderResponse = await fetch(`/api/manager/order/${orderId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -480,11 +532,13 @@
             const contact = order?.contact || {};
             const items = order?.items || [];
             
-            // Панель с информацией о заказе
             const orderInfoHtml = order ? `
                 <div class="order-info-panel">
                     <div class="order-details">
-                        <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
+                        <div class="order-header-with-btn">
+                            <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
+                            ${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить заказ</button>' : ''}
+                        </div>
                         <div class="order-detail-row">
                             <span class="order-detail-label">Статус:</span>
                             <span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span>
