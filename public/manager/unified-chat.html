@@ -1,3 +1,4 @@
+<!-- public/manager/unified-chat.html (только изменённые части – поддержка MAX) -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -14,7 +15,7 @@
             overflow: hidden;
         }
         .sidebar-chats {
-            width: 320px;
+            width: 280px;
             background: white;
             border-right: 1px solid #ecf0f1;
             display: flex;
@@ -59,7 +60,7 @@
             overflow-y: auto;
         }
         .chat-item {
-            padding: 12px 15px;
+            padding: 10px 12px;
             border-bottom: 1px solid #ecf0f1;
             cursor: pointer;
             transition: background 0.2s;
@@ -69,6 +70,10 @@
             background: #f8f9fa;
         }
         .chat-item.active {
+            background: rgba(52, 152, 219, 0.15);
+            border-left: 3px solid #3498db;
+        }
+        .chat-item.has-unread {
             background: rgba(52, 152, 219, 0.15);
             border-left: 3px solid #3498db;
         }
@@ -93,7 +98,7 @@
             color: white;
         }
         .chat-status.new {
-            background: #f39c12;
+            background: #2ecc71;
             color: white;
         }
         .chat-client {
@@ -104,7 +109,7 @@
         .chat-last-message {
             font-size: 11px;
             color: #666;
-            margin-top: 5px;
+            margin-top: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -137,7 +142,7 @@
         }
         .chat-header {
             background: white;
-            padding: 12px 15px;
+            padding: 10px 15px;
             border-bottom: 1px solid #ecf0f1;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
@@ -148,7 +153,7 @@
         .chat-header p {
             font-size: 11px;
             color: #7f8c8d;
-            margin-top: 3px;
+            margin-top: 2px;
         }
         .old-orders-list {
             background: #f8f9fa;
@@ -171,10 +176,6 @@
             font-size: 10px;
             color: #2c3e50;
             cursor: pointer;
-            transition: background 0.2s;
-        }
-        .old-order-badge:hover {
-            background: #d5dbdb;
         }
         .messages-container {
             flex: 1;
@@ -200,6 +201,12 @@
             background: #3498db;
             color: white;
             align-self: flex-end;
+        }
+        .system-message {
+            background: #f8f9fa;
+            color: #2c3e50;
+            border-left: 3px solid #f39c12;
+            font-style: italic;
         }
         .message-meta {
             font-size: 9px;
@@ -263,24 +270,6 @@
             font-size: 10px;
             display: inline-block;
             margin-left: 8px;
-        }
-        .order-new-badge {
-            background: #f39c12;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 10px;
-            display: inline-block;
-            margin-left: 8px;
-        }
-        .chat-disabled-message {
-            text-align: center;
-            padding: 20px;
-            color: #7f8c8d;
-            font-size: 12px;
-            background: #f8f9fa;
-            margin: 10px;
-            border-radius: 8px;
         }
     </style>
 </head>
@@ -347,7 +336,7 @@
         function renderChats(chats) {
             const container = document.getElementById('chats-list');
             if (!chats || chats.length === 0) {
-                container.innerHTML = '<div class="loading">Нет диалогов</div>';
+                container.innerHTML = '<div class="loading">Нет активных диалогов</div>';
                 return;
             }
             
@@ -368,7 +357,7 @@
                 const hasUnread = chat.lastMessageDirection === 'incoming';
                 
                 return `
-                    <div class="chat-item ${currentOrderId === chat.orderId ? 'active' : ''}" 
+                    <div class="chat-item ${hasUnread ? 'has-unread' : ''}" 
                          onclick="loadChat(${chat.orderId})"
                          data-order-id="${chat.orderId}">
                         ${hasUnread ? '<span class="unread-dot"></span>' : ''}
@@ -388,7 +377,6 @@
             const token = checkAuth();
             currentOrderId = orderId;
             
-            // Обновляем активный класс в списке
             document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
             const activeItem = document.querySelector(`.chat-item[data-order-id="${orderId}"]`);
             if (activeItem) activeItem.classList.add('active');
@@ -401,9 +389,59 @@
                 currentRecipient = data.recipient;
                 currentOrderStatus = data.status;
                 currentOldOrders = data.old_orders || [];
-                renderChatWindow(data);
                 
-                // Отмечаем сообщения как прочитанные
+                // Загружаем полные детали заказа для системного сообщения
+                let fullOrder = null;
+                if (data.status === 'processing') {
+                    const orderDetailsRes = await fetch(`/api/manager/order/${orderId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (orderDetailsRes.ok) {
+                        fullOrder = await orderDetailsRes.json();
+                    }
+                }
+                
+                // Формируем системное сообщение, если нужно
+                let messages = data.messages;
+                if (fullOrder && fullOrder.order && data.status === 'processing') {
+                    const order = fullOrder.order;
+                    const contact = order.contact;
+                    const items = order.items;
+                    
+                    let sysMsg = `✅ Заказ №${order.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+                    if (contact.deliveryType === 'pickup') {
+                        sysMsg += `Самовывоз: ${contact.address}\n`;
+                    } else if (contact.deliveryType === 'courier') {
+                        sysMsg += `Доставка: ${contact.address}\n`;
+                    }
+                    if (contact.paymentMethod === 'cash') {
+                        sysMsg += `Оплата: наличными\n`;
+                    } else if (contact.paymentMethod === 'transfer') {
+                        sysMsg += `Оплата: перевод по номеру\n`;
+                    }
+                    sysMsg += `\nСостав заказа:\n`;
+                    items.forEach(item => {
+                        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                        const itemTotal = item.price * item.quantity;
+                        sysMsg += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+                    });
+                    sysMsg += `\nСумма заказа: ${order.total} руб.`;
+                    
+                    const alreadyHas = messages.some(m => m.message_text === sysMsg && m.sender_name === 'Система');
+                    if (!alreadyHas) {
+                        messages.unshift({
+                            id: null,
+                            direction: 'incoming',
+                            sender_name: 'Система',
+                            message_text: sysMsg,
+                            created_at: new Date().toISOString(),
+                            channel: 'system'
+                        });
+                    }
+                }
+                
+                renderChatWindow({ ...data, messages });
+                
                 await markMessagesAsRead(orderId);
             } catch (err) {
                 console.error('Error loading chat:', err);
@@ -417,7 +455,6 @@
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                // Обновляем список чатов, чтобы убрать красную точку
                 loadChats();
             } catch (err) {
                 console.error('Error marking messages as read:', err);
@@ -428,44 +465,19 @@
             const container = document.getElementById('main-chat');
             const channelName = getChannelName(currentRecipient?.channel);
             const isCompleted = data.status === 'completed';
-            const isNew = data.status === 'new';
-            const isProcessing = data.status === 'processing';
-            
-            // Чат доступен ТОЛЬКО для заказов в работе (processing)
-            // Для новых заказов (new) чат недоступен, но сообщения видны
-            const canChat = isProcessing;
-            
-            const statusBadge = isNew ? '<span class="order-new-badge">🆕 Новый заказ</span>' : 
-                                 (isCompleted ? '<span class="order-completed-badge">✅ Завершен</span>' : '');
+            const canChat = data.status === 'processing' || data.status === 'new';
             
             const oldOrdersHtml = currentOldOrders.length > 0 ? `
                 <div class="old-orders-list">
                     <span class="old-orders-label">📜 История заказов:</span>
-                    ${currentOldOrders.map(order => `
-                        <span class="old-order-badge" onclick="loadChatByOrderNumber('${order.order_number}')">
-                            №${order.order_number} ${order.status === 'completed' ? '✅' : '📋'}
-                        </span>
-                    `).join('')}
+                    ${currentOldOrders.map(order => `<span class="old-order-badge" onclick="loadChatByOrderNumber('${order.order_number}')">№${order.order_number}</span>`).join('')}
                 </div>
             ` : '';
-            
-            // Если заказ новый (new) и не взят в работу, показываем сообщения, но блокируем отправку
-            const chatInputHtml = canChat ? `
-                <div class="chat-input">
-                    <textarea id="message-input" placeholder="Введите сообщение..." rows="2"></textarea>
-                    <button onclick="sendMessage()">Отправить</button>
-                </div>
-            ` : (isNew ? `
-                <div class="chat-disabled-message">
-                    ⚠️ Чтобы отвечать клиенту, сначала возьмите заказ в работу<br>
-                    <small>Нажмите кнопку "Взять в работу" в разделе "Заказы"</small>
-                </div>
-            ` : '');
             
             container.innerHTML = `
                 <div class="chat-header">
                     <h3>Заказ №${data.order_number}
-                        ${statusBadge}
+                        ${isCompleted ? '<span class="order-completed-badge">✅ Завершен</span>' : ''}
                     </h3>
                     <p>👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p>
                 </div>
@@ -473,7 +485,10 @@
                 <div class="messages-container" id="messages-container">
                     ${renderMessages(data.messages)}
                 </div>
-                ${chatInputHtml}
+                <div class="chat-input">
+                    <textarea id="message-input" placeholder="${!canChat ? 'Чат доступен только для заказов в работе' : 'Введите сообщение...'}" rows="2" ${!canChat ? 'disabled' : ''}></textarea>
+                    <button onclick="sendMessage()" ${!canChat ? 'disabled' : ''}>Отправить</button>
+                </div>
             `;
             
             const messagesContainer = document.getElementById('messages-container');
@@ -481,18 +496,15 @@
             
             if (canChat) {
                 const input = document.getElementById('message-input');
-                if (input) {
-                    input.addEventListener('keydown', (e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            sendMessage();
-                        }
-                    });
-                }
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
             }
         }
         
-        // Функция для загрузки чата по номеру заказа (для истории)
         async function loadChatByOrderNumber(orderNumber) {
             const token = checkAuth();
             try {
@@ -524,9 +536,10 @@
                 
                 const isOutgoing = msg.direction === 'outgoing';
                 const senderName = isOutgoing ? 'Вы' : (msg.sender_name || 'Клиент');
+                const extraClass = msg.sender_name === 'Система' ? 'system-message' : '';
                 
                 return `
-                    <div class="message ${msg.direction}">
+                    <div class="message ${msg.direction} ${extraClass}">
                         <div>${escapeHtml(msg.message_text)}</div>
                         <div class="message-meta">
                             ${senderName} • ${formattedDate}
@@ -537,9 +550,8 @@
         }
         
         async function sendMessage() {
-            // Проверяем, что заказ в работе
-            if (currentOrderStatus !== 'processing') {
-                alert('Чат доступен только для заказов в работе. Сначала возьмите заказ в работу.');
+            if (currentOrderStatus !== 'processing' && currentOrderStatus !== 'new') {
+                alert('Чат доступен только для заказов в работе');
                 return;
             }
             
@@ -589,7 +601,7 @@
         }
         
         function getChannelName(channel) {
-            const names = { 'telegram': 'Telegram', 'vk': 'ВК', 'whatsapp': 'WhatsApp' };
+            const names = { 'telegram': 'Telegram', 'vk': 'ВК', 'max': 'MAX', 'whatsapp': 'WhatsApp' };
             return names[channel] || channel || '?';
         }
         
