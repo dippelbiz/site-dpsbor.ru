@@ -1101,8 +1101,7 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
     const managerName = managerRes.rows[0]?.name || 'Менеджер';
 
     // Генерируем номер заказа
-    const prefix = 'DS'; // Direct Sale
-    const orderNumber = await generateOrderNumber(prefix);
+const orderNumber = await generateDirectSaleNumber(managerName, sellerId);
 
     // Формируем items для БД
     const orderItems = items.map(item => ({
