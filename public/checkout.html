@@ -207,18 +207,23 @@
         .messenger-button.telegram {
             background: #0088cc;
         }
+        
         .messenger-button.telegram:hover {
             background: #006699;
         }
+        
         .messenger-button.vk {
             background: #4a76a8;
         }
+        
         .messenger-button.vk:hover {
             background: #3a5a80;
         }
+        
         .messenger-button.max {
             background: #9b59b6;
         }
+        
         .messenger-button.max:hover {
             background: #8e44ad;
         }
@@ -339,22 +344,18 @@
         let currentOrderId = null;
         let maxBotName = null;
 
-        // Получаем конфигурацию с сервера
         async function loadConfig() {
             try {
                 const res = await fetch('/api/config');
-                const config = await res.json();
-                maxBotName = config.maxBotName;
+                const data = await res.json();
+                maxBotName = data.maxBotName;
             } catch (err) {
                 console.error('Ошибка загрузки конфигурации:', err);
             }
         }
 
-        function createOrderMessage(orderNumber, orderData) {
-            return '';
-        }
-
         async function loadData() {
+            await loadConfig();
             await loadProducts();
             await loadCart();
             await loadPickupLocations();
@@ -570,25 +571,17 @@
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    // Определяем тип устройства для правильной ссылки
-                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                    const telegramLink = isMobile 
-                        ? `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`
-                        : `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
+                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
                     const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     document.getElementById('vk-link').href = vkLink;
                     
-                    // Ссылка для MAX (если botName известен)
+                    let maxLink = '#';
                     if (maxBotName) {
-                        const maxLink = `https://max.ru/${maxBotName}?start=order_${result.orderNumber}`;
-                        document.getElementById('max-link').href = maxLink;
-                    } else {
-                        document.getElementById('max-link').href = '#';
-                        document.getElementById('max-link').style.opacity = '0.5';
-                        document.getElementById('max-link').title = 'MAX бот не настроен';
+                        maxLink = `https://max.ru/${maxBotName}?start=order_${result.orderNumber}`;
                     }
+                    document.getElementById('max-link').href = maxLink;
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
                     
@@ -607,8 +600,6 @@
             }
         });
 
-        // Загружаем конфигурацию перед загрузкой данных
-        await loadConfig();
         loadData();
     </script>
 </body>
