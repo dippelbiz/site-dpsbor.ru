@@ -1152,7 +1152,8 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
                 VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
             `, [id, 'max', sent, 'system', 'Система', message]);
         }
-    } catch (err) {
+    }
+    }catch (err) {
         console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
     }
     if (negativeStockItems.length > 0) {
