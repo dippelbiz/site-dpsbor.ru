@@ -347,7 +347,6 @@ app.post('/api/order', async (req, res) => {
     const itemsJson = JSON.stringify(orderItems);
     const contactJson = JSON.stringify(contact);
 
-    // user_telegram_id: если contact.telegram_id валидный, используем его, иначе null
     let userTelegramId = null;
     if (contact.telegram_id && !isNaN(parseInt(contact.telegram_id)) && parseInt(contact.telegram_id) > 0) {
       userTelegramId = parseInt(contact.telegram_id);
@@ -367,6 +366,24 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, user_telegram_id: ${userTelegramId}`);
     
+    // === ДОБАВЛЕННЫЙ КОД ДЛЯ MAX ===
+    if (contact.max_id) {
+        const maxId = contact.max_id;
+        const senderName = contact.name || contact.max_name || 'Покупатель';
+        maxHandler.bindOrderMAX(maxId, order_number, senderName)
+            .then(result => {
+                if (result.success) {
+                    console.log(`✅ MAX уведомление отправлено для заказа ${order_number} (user ${maxId})`);
+                } else {
+                    console.warn(`⚠️ Не удалось отправить MAX уведомление для заказа ${order_number}: ${result.message}`);
+                }
+            })
+            .catch(err => {
+                console.error(`❌ Ошибка при вызове bindOrderMAX:`, err);
+            });
+    }
+    // === КОНЕЦ ДОБАВЛЕННОГО КОДА ===
+    
     res.status(200).json({ orderNumber: order_number, id: orderId });
 
   } catch (err) {
@@ -374,7 +391,6 @@ app.post('/api/order', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 // ==================== ВЕБХУКИ (перенаправляют в модули) ====================
 app.post('/api/telegram/webhook', telegramBot.handleTelegramWebhook);
 app.post('/api/vk/webhook', vkHandler.handleVKWebhook);
