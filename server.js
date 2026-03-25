@@ -1098,7 +1098,29 @@ app.get('/api/manager/direct-products', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-
+// Генерация номера для прямой продажи с именем продавца
+async function generateDirectSaleNumber(sellerName, sellerId) {
+  let safeName = sellerName.trim();
+  safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_');
+  safeName = safeName.substring(0, 20);
+  const prefix = `ПП_${safeName}_`;
+  try {
+    const result = await pool.query(
+      `SELECT order_number FROM orders WHERE order_number LIKE $1 ORDER BY id DESC LIMIT 1`,
+      [prefix + '%']
+    );
+    if (result.rows.length > 0) {
+      const lastNum = result.rows[0].order_number.substring(prefix.length);
+      const num = parseInt(lastNum) || 0;
+      return prefix + (num + 1);
+    } else {
+      return prefix + '1';
+    }
+  } catch (err) {
+    console.error('Ошибка при генерации номера прямой продажи:', err);
+    return prefix + '1';
+  }
+}
 // Создать прямую продажу
 app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
   const { items, total } = req.body;
