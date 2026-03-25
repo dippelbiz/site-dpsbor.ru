@@ -327,6 +327,23 @@
         }
         .status-approved { background: #27ae60; color: white; }
         .status-rejected { background: #e74c3c; color: white; }
+        /* Стили для фильтра продавца */
+        .seller-filter-container {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .seller-filter-container label {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .seller-filter-container select {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+        }
     </style>
 </head>
 <body>
@@ -414,13 +431,19 @@
                 <h3>💰 Завершённые прямые продажи</h3>
                 <button class="close-modal" onclick="closeCompletedSalesModal()">&times;</button>
             </div>
+            <div id="seller-filter-container" class="seller-filter-container" style="display: none;">
+                <label>Продавец:</label>
+                <select id="seller-filter" onchange="filterSalesBySeller(this.value)">
+                    <option value="">Все продавцы</option>
+                </select>
+            </div>
             <div id="completed-sales-list">
                 <div class="no-tasks">Загрузка...</div>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно завершённых задач (оставляем) -->
+    <!-- Модальное окно завершённых задач -->
     <div id="completed-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -464,6 +487,11 @@
                 await loadTasks();
                 await loadInventoryTasks();
                 await loadDirectProducts(); // для модального окна
+
+                // Если администратор, загружаем список продавцов для фильтра
+                if (currentUserRole === 'admin') {
+                    await loadSellers();
+                }
             } catch (err) {
                 console.error('Ошибка загрузки дашборда:', err);
             }
@@ -480,6 +508,23 @@
                 allProducts = data;
             } catch (err) {
                 console.error('Error loading direct products:', err);
+            }
+        }
+
+        // Загрузка списка продавцов для фильтра (только для админа)
+        async function loadSellers() {
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/sellers-list', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const select = document.getElementById('seller-filter');
+                select.innerHTML = '<option value="">Все продавцы</option>' + 
+                    data.sellers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                document.getElementById('seller-filter-container').style.display = 'flex';
+            } catch (err) {
+                console.error('Error loading sellers:', err);
             }
         }
 
@@ -635,39 +680,52 @@
         }
 
         // ========== Завершённые продажи ==========
-       async function openCompletedSales() {
-    const token = checkAuth();
-    try {
-        const response = await fetch('/api/manager/direct-sales', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
-        const container = document.getElementById('completed-sales-list');
-        if (!data.sales || data.sales.length === 0) {
-            container.innerHTML = '<div class="no-tasks">Нет завершённых прямых продаж</div>';
-        } else {
-            container.innerHTML = data.sales.map(sale => {
-                const itemsHtml = sale.items.map(item => `
-                    <div>${item.name} (${item.variantName || item.variant_name}) × ${item.quantity} = ${item.price * item.quantity} руб.</div>
-                `).join('');
-                const sellerInfo = currentUserRole === 'admin' ? `<div style="font-size: 11px; color: #7f8c8d;">Продавец: ${sale.seller_name || '—'}</div>` : '';
-                return `
-                    <div class="sale-item" style="border-left-color: #27ae60;">
-                        <div style="font-weight: bold;">📋 Заказ №${sale.order_number}</div>
-                        ${sellerInfo}
-                        <div style="font-size: 11px; color: #7f8c8d;">📅 ${new Date(sale.completed_at).toLocaleString()}</div>
-                        <div style="margin-top: 5px; padding-left: 10px;">${itemsHtml}</div>
-                        <div style="margin-top: 8px; font-weight: bold; text-align: right;">Итого: ${sale.total} руб.</div>
-                    </div>
-                `;
-            }).join('');
+        async function openCompletedSales(sellerId = null) {
+            const token = checkAuth();
+            let url = '/api/manager/direct-sales';
+            if (sellerId) {
+                url += `?seller_id=${sellerId}`;
+            }
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const container = document.getElementById('completed-sales-list');
+                if (!data.sales || data.sales.length === 0) {
+                    container.innerHTML = '<div class="no-tasks">Нет завершённых прямых продаж</div>';
+                } else {
+                    container.innerHTML = data.sales.map(sale => {
+                        const itemsHtml = sale.items.map(item => `
+                            <div>${item.name} (${item.variantName || item.variant_name}) × ${item.quantity} = ${item.price * item.quantity} руб.</div>
+                        `).join('');
+                        const sellerInfo = currentUserRole === 'admin' ? `<div style="font-size: 11px; color: #7f8c8d;">Продавец: ${sale.seller_name || '—'}</div>` : '';
+                        return `
+                            <div class="sale-item" style="border-left-color: #27ae60;">
+                                <div style="font-weight: bold;">📋 Заказ №${sale.order_number}</div>
+                                ${sellerInfo}
+                                <div style="font-size: 11px; color: #7f8c8d;">📅 ${new Date(sale.completed_at).toLocaleString()}</div>
+                                <div style="margin-top: 5px; padding-left: 10px;">${itemsHtml}</div>
+                                <div style="margin-top: 8px; font-weight: bold; text-align: right;">Итого: ${sale.total} руб.</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                document.getElementById('completed-sales-modal').style.display = 'block';
+            } catch (err) {
+                console.error('Error loading sales:', err);
+                alert('Ошибка загрузки продаж');
+            }
         }
-        document.getElementById('completed-sales-modal').style.display = 'block';
-    } catch (err) {
-        console.error('Error loading sales:', err);
-        alert('Ошибка загрузки продаж');
-    }
-}
+
+        function filterSalesBySeller(sellerId) {
+            openCompletedSales(sellerId || null);
+        }
+
+        function closeCompletedSalesModal() {
+            document.getElementById('completed-sales-modal').style.display = 'none';
+        }
+
         // ========== Задачи и инвентаризация (без изменений) ==========
         async function loadTasks() {
             if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
