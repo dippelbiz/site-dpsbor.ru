@@ -127,7 +127,7 @@
             padding: 20px;
             border-radius: 15px;
             width: 90%;
-            max-width: 380px;
+            max-width: 340px;
             text-align: center;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             position: relative;
@@ -188,13 +188,10 @@
             display: flex;
             gap: 10px;
             margin: 15px 0;
-            flex-wrap: wrap;
-            justify-content: center;
         }
         
         .messenger-button {
             flex: 1;
-            min-width: 80px;
             padding: 12px;
             border: none;
             border-radius: 8px;
@@ -238,6 +235,7 @@
             margin-top: 10px;
             display: inline-block;
         }
+        
         .cancel-button:hover {
             background: #c82333;
         }
@@ -339,9 +337,18 @@
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
         let currentOrderId = null;
+        let maxBotName = null;
 
-        // Имя бота MAX (замените при необходимости)
-        const MAX_BOT_NAME = 'id221002965660_bot'; // можно заменить на реальный ник бота
+        // Получаем конфигурацию с сервера
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                maxBotName = config.maxBotName;
+            } catch (err) {
+                console.error('Ошибка загрузки конфигурации:', err);
+            }
+        }
 
         function createOrderMessage(orderNumber, orderData) {
             return '';
@@ -563,20 +570,25 @@
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    // Ссылка для Telegram
+                    // Определяем тип устройства для правильной ссылки
                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                     const telegramLink = isMobile 
                         ? `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`
                         : `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
-                    // Ссылка для VK
                     const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     document.getElementById('vk-link').href = vkLink;
                     
-                    // Ссылка для MAX
-                    const maxLink = `https://max.ru/${MAX_BOT_NAME}?start=order_${result.orderNumber}`;
-                    document.getElementById('max-link').href = maxLink;
+                    // Ссылка для MAX (если botName известен)
+                    if (maxBotName) {
+                        const maxLink = `https://max.ru/${maxBotName}?start=order_${result.orderNumber}`;
+                        document.getElementById('max-link').href = maxLink;
+                    } else {
+                        document.getElementById('max-link').href = '#';
+                        document.getElementById('max-link').style.opacity = '0.5';
+                        document.getElementById('max-link').title = 'MAX бот не настроен';
+                    }
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
                     
@@ -595,6 +607,8 @@
             }
         });
 
+        // Загружаем конфигурацию перед загрузкой данных
+        await loadConfig();
         loadData();
     </script>
 </body>
