@@ -57,7 +57,8 @@ async function sendMAXMessage(userId, text) {
             return null;
         }
         console.log(`✅ Сообщение отправлено в MAX (userId: ${userId})`);
-        return data.message_id;
+        // Возвращаем message_id для сохранения в БД
+        return data.message?.id || data.message_id;
     } catch (err) {
         console.error('❌ Ошибка отправки в MAX:', err);
         return null;
@@ -174,7 +175,6 @@ async function handleMAXWebhook(req, res) {
             const userName = message.sender.name || `Пользователь MAX ${userId}`;
             const text = message.body.text;
 
-            // 1. Команда /start order_XXX
             if (text.startsWith('/start order_')) {
                 const orderNumber = text.split('_')[1];
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -187,7 +187,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // 2. Если пользователь ожидает ввода номера заказа
             if (maxBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -201,7 +200,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // 3. Если текст похож на номер заказа (буква+цифры)
             if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
                 const orderNumber = text;
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -214,7 +212,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // 4. Обычное сообщение – ищем активный заказ по max_id в contact
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'max_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
