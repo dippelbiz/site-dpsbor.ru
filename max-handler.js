@@ -40,7 +40,7 @@ async function sendMAXMessage(chatId, text) {
     }
     const url = `${API_BASE}/messages`;
     const body = {
-        chat_id: chatId,   // пробуем отправить по chat_id
+        chat_id: chatId,
         text: text
     };
     console.log(`📤 Отправка в MAX: url=${url}, body=${JSON.stringify(body)}`);
@@ -66,7 +66,6 @@ async function sendMAXMessage(chatId, text) {
         return null;
     }
 }
-
 async function bindOrderMAX(maxId, orderNumber, senderName) {
     console.log(`🔍 bindOrderMAX: maxId=${maxId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
