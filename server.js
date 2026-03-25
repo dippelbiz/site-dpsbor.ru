@@ -366,11 +366,10 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, user_telegram_id: ${userTelegramId}`);
 
-   // Генерация номера для прямой продажи с именем продавца (кириллицей)
+// Генерация номера для прямой продажи (с именем продавца)
 async function generateDirectSaleNumber(sellerName, sellerId) {
   // Очищаем имя: заменяем пробелы на _, убираем нежелательные символы
   let safeName = sellerName.trim();
-  // Оставляем только буквы (в т.ч. русские), цифры, подчёркивания
   safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_');
   safeName = safeName.substring(0, 20); // ограничиваем длину
   const prefix = `ПП_${safeName}_`;
@@ -391,6 +390,21 @@ async function generateDirectSaleNumber(sellerName, sellerId) {
     return prefix + '1';
   }
 }
+      // Получить список продавцов (для фильтра)
+app.get('/api/manager/sellers-list', checkManagerAuth, async (req, res) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  try {
+    const result = await pool.query(
+      "SELECT id, name FROM users WHERE role IN ('seller', 'admin') ORDER BY name"
+    );
+    res.json({ sellers: result.rows });
+  } catch (err) {
+    console.error('Sellers list error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
     // === ДОБАВЛЕННЫЙ КОД ДЛЯ MAX ===
     if (contact.max_id) {
         const maxId = contact.max_id;
@@ -1189,25 +1203,41 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получить список прямых продаж
+// Получить список прямых продаж (с фильтром по продавцу для админа)
 app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
   const userId = req.userId;
   const userRole = req.userRole;
+  const sellerId = req.query.seller_id; // может быть строка или undefined
 
   try {
     let query;
     let params = [];
 
     if (userRole === 'admin') {
-      query = `
-        SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
-               u.name as seller_name, o.created_at, o.completed_at
-        FROM orders o
-        LEFT JOIN users u ON o.seller_id = u.id
-        WHERE o.sale_type = 'direct' AND o.status = 'completed'
-        ORDER BY o.completed_at DESC
-      `;
+      if (sellerId) {
+        // Если передан seller_id, показываем продажи этого продавца
+        query = `
+          SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
+                 u.name as seller_name, o.created_at, o.completed_at
+          FROM orders o
+          LEFT JOIN users u ON o.seller_id = u.id
+          WHERE o.sale_type = 'direct' AND o.status = 'completed' AND o.seller_id = $1
+          ORDER BY o.completed_at DESC
+        `;
+        params = [sellerId];
+      } else {
+        // Без фильтра – все продажи
+        query = `
+          SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
+                 u.name as seller_name, o.created_at, o.completed_at
+          FROM orders o
+          LEFT JOIN users u ON o.seller_id = u.id
+          WHERE o.sale_type = 'direct' AND o.status = 'completed'
+          ORDER BY o.completed_at DESC
+        `;
+      }
     } else {
+      // Для менеджера – только его продажи
       query = `
         SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
                u.name as seller_name, o.created_at, o.completed_at
@@ -1247,7 +1277,7 @@ app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
+
 // ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
