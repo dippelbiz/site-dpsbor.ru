@@ -3,12 +3,17 @@ const express = require('express');
 const { Pool } = require('pg');
 const telegramBot = require('./telegram-bot');
 const vkHandler = require('./vk-handler');
-
+const maxHandler = require('./max-handler');
 
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+app.get('/api/config', (req, res) => {
+    res.json({
+        maxBotName: process.env.MAX_BOT_NAME || null
+    });
+});
 // ==================== CORS ====================
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
