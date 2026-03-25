@@ -1,0 +1,286 @@
+// max-handler.js
+let MAX_BOT_TOKEN = null;
+let MAX_BOT_NAME = null;
+let pool = null;
+let maxBindingStates = new Map();
+
+const API_BASE = 'https://platform-api.max.ru';
+
+// Инициализация и подписка на webhook
+async function initMAX(token, botName, dbPool) {
+    MAX_BOT_TOKEN = token;
+    MAX_BOT_NAME = botName;
+    pool = dbPool;
+    console.log('✅ MAX модуль инициализирован');
+    
+    // Подписка на webhook (если не подписаны)
+    const webhookUrl = `${process.env.SITE_URL || 'https://dpsbor.ru'}/api/max/webhook`;
+    try {
+        const response = await fetch(`${API_BASE}/subscriptions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': MAX_BOT_TOKEN,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: webhookUrl })
+        });
+        const data = await response.json();
+        if (data.error) {
+            console.error('❌ Ошибка подписки MAX webhook:', data.error);
+        } else {
+            console.log(`✅ MAX webhook подписан: ${webhookUrl}`);
+        }
+    } catch (err) {
+        console.error('❌ Ошибка подписки MAX webhook:', err.message);
+    }
+}
+
+// Отправка сообщения
+async function sendMAXMessage(chatId, text) {
+    if (!MAX_BOT_TOKEN) return null;
+    try {
+        const response = await fetch(`${API_BASE}/sendMessage`, {
+            method: 'POST',
+            headers: {
+                'Authorization': MAX_BOT_TOKEN,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: text
+            })
+        });
+        const data = await response.json();
+        if (data.error) {
+            console.error('❌ Ошибка отправки в MAX:', data.error);
+            return null;
+        }
+        console.log(`✅ Сообщение отправлено в MAX (chatId: ${chatId})`);
+        return data.message_id;
+    } catch (err) {
+        console.error('❌ Ошибка отправки в MAX:', err);
+        return null;
+    }
+}
+
+// Привязка заказа по номеру
+async function bindOrderMAX(maxId, orderNumber, senderName) {
+    console.log(`🔍 bindOrderMAX: maxId=${maxId}, orderNumber=${orderNumber}, senderName=${senderName}`);
+    const orderCheck = await pool.query(
+        'SELECT id, status FROM orders WHERE order_number = $1',
+        [orderNumber]
+    );
+    if (orderCheck.rows.length === 0) {
+        console.log(`⚠️ Заказ ${orderNumber} не найден для привязки`);
+        return { success: false, message: 'Заказ не найден' };
+    }
+
+    const order = orderCheck.rows[0];
+    if (order.status === 'completed') {
+        console.log(`⚠️ Заказ ${orderNumber} уже завершён, привязка не требуется`);
+        return { success: false, message: 'Заказ уже завершён' };
+    }
+
+    const updateResult = await pool.query(
+        'UPDATE orders SET status = $1 WHERE order_number = $2 AND status != $3',
+        ['processing', orderNumber, 'completed']
+    );
+
+    const orderData = await pool.query(`
+        SELECT order_number, total, contact, items 
+        FROM orders WHERE order_number = $1
+    `, [orderNumber]);
+
+    if (orderData.rows.length === 0) {
+        return { success: true, message: `Заказ №${orderNumber} принят в работу! Менеджер скоро свяжется с вами.` };
+    }
+
+    const orderRow = orderData.rows[0];
+    const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
+    const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
+
+    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    if (contact.deliveryType === 'pickup') {
+        messageText += `Самовывоз: ${contact.address}\n`;
+    } else if (contact.deliveryType === 'courier') {
+        messageText += `Доставка: ${contact.address}\n`;
+    }
+    if (contact.paymentMethod === 'cash') {
+        messageText += `Оплата: наличными\n`;
+    } else if (contact.paymentMethod === 'transfer') {
+        messageText += `Оплата: перевод по номеру\n`;
+    }
+    messageText += `\nСостав заказа:\n`;
+    items.forEach(item => {
+        const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+        const itemTotal = item.price * item.quantity;
+        messageText += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+    });
+    messageText += `\nСумма заказа: ${orderRow.total} руб.`;
+
+    if (updateResult.rowCount > 0) {
+        const contactJson = JSON.stringify({
+            max_id: String(maxId),
+            max_name: senderName
+        });
+        await pool.query(
+            `UPDATE orders SET contact = contact || $1::jsonb WHERE order_number = $2`,
+            [contactJson, orderNumber]
+        );
+        await pool.query(
+            `UPDATE chat_messages SET order_id = (SELECT id FROM orders WHERE order_number = $2)
+             WHERE sender_id = $1::text AND order_id IS NULL AND channel = 'max'`,
+            [String(maxId), orderNumber]
+        );
+        console.log(`✅ Заказ ${orderNumber} привязан к MAX пользователю ${maxId}`);
+        return { success: true, message: messageText };
+    } else {
+        console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
+        return { success: true, message: messageText };
+    }
+}
+
+// Получение имени пользователя (если нужно)
+async function getUserName(maxId) {
+    // MAX API не предоставляет имя в событиях, будем использовать fallback
+    return `Пользователь MAX ${maxId}`;
+}
+
+// Обработчик вебхука
+async function handleMAXWebhook(req, res) {
+    console.log('📨 MAX webhook вызван');
+    try {
+        const update = req.body;
+        console.log('📨 MAX webhook body:', JSON.stringify(update));
+
+        // В MAX все события приходят в одном формате
+        if (update.update_type === 'bot_started') {
+            // Пользователь запустил бота по диплинку
+            const chatId = update.chat_id;
+            const userId = update.user.user_id;
+            const userName = update.user.name || `Пользователь MAX ${userId}`;
+            const payload = update.payload;
+
+            if (payload && payload.startsWith('order_')) {
+                const orderNumber = payload.split('_')[1];
+                const result = await bindOrderMAX(userId, orderNumber, userName);
+                if (result.success) {
+                    await sendMAXMessage(chatId, `✅ ${result.message}`);
+                } else {
+                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            } else {
+                // Если payload нет или не order, начинаем диалог
+                await sendMAXMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
+                maxBindingStates.set(chatId, { step: 'awaiting_order_number', userId });
+                return res.send('ok');
+            }
+        }
+
+        if (update.update_type === 'message_new') {
+            const message = update.message;
+            const chatId = update.chat_id;
+            const userId = update.user.user_id;
+            const userName = update.user.name || `Пользователь MAX ${userId}`;
+            const text = message.text;
+
+            // Если пользователь ожидает ввода номера заказа
+            if (maxBindingStates.get(chatId)?.step === 'awaiting_order_number') {
+                const orderNumber = text.trim();
+                const result = await bindOrderMAX(userId, orderNumber, userName);
+                if (result.success) {
+                    await sendMAXMessage(chatId, `✅ ${result.message}`);
+                } else {
+                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                }
+                maxBindingStates.delete(chatId);
+                return res.send('ok');
+            }
+
+            // Проверка, не является ли текст номером заказа (буква+цифры)
+            if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
+                const orderNumber = text;
+                const result = await bindOrderMAX(userId, orderNumber, userName);
+                if (result.success) {
+                    await sendMAXMessage(chatId, `✅ ${result.message}`);
+                } else {
+                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            }
+
+            // Обычное сообщение – ищем активный заказ по max_id в contact
+            let orderId = null;
+            const orderResult = await pool.query(
+                `SELECT id FROM orders WHERE contact->>'max_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
+                [String(userId), 'processing']
+            );
+            if (orderResult.rows.length > 0) {
+                orderId = orderResult.rows[0].id;
+            } else {
+                // Автоматическая привязка к недавнему заказу без max_id
+                const recentOrder = await pool.query(
+                    `SELECT id FROM orders 
+                     WHERE (contact->>'max_id' IS NULL OR contact->>'max_id' = '') 
+                       AND status = 'processing'
+                       AND created_at > NOW() - INTERVAL '10 minutes'
+                     ORDER BY created_at DESC LIMIT 1`,
+                    []
+                );
+                if (recentOrder.rows.length > 0) {
+                    orderId = recentOrder.rows[0].id;
+                    const contactJson = JSON.stringify({
+                        max_id: String(userId),
+                        max_name: userName
+                    });
+                    await pool.query(
+                        `UPDATE orders SET contact = contact || $1::jsonb WHERE id = $2`,
+                        [contactJson, orderId]
+                    );
+                    await sendMAXMessage(chatId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
+                    // Отправляем детали заказа
+                    const orderDetails = await pool.query(`SELECT order_number, total, contact, items FROM orders WHERE id = $1`, [orderId]);
+                    if (orderDetails.rows.length > 0) {
+                        const row = orderDetails.rows[0];
+                        const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact;
+                        const items = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+                        let detailsMsg = `✅ Заказ №${row.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+                        if (contact.deliveryType === 'pickup') detailsMsg += `Самовывоз: ${contact.address}\n`;
+                        else if (contact.deliveryType === 'courier') detailsMsg += `Доставка: ${contact.address}\n`;
+                        if (contact.paymentMethod === 'cash') detailsMsg += `Оплата: наличными\n`;
+                        else if (contact.paymentMethod === 'transfer') detailsMsg += `Оплата: перевод по номеру\n`;
+                        detailsMsg += `\nСостав заказа:\n`;
+                        items.forEach(item => {
+                            const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                            const itemTotal = item.price * item.quantity;
+                            detailsMsg += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
+                        });
+                        detailsMsg += `\nСумма заказа: ${row.total} руб.`;
+                        await sendMAXMessage(chatId, detailsMsg);
+                    }
+                }
+            }
+
+            if (orderId) {
+                await pool.query(
+                    `INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, message_text, direction, status, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                    [orderId, 'max', String(message.id), String(userId), userName, text, 'incoming', 'delivered']
+                );
+                console.log(`✅ Сообщение MAX сохранено от пользователя ${userId}`);
+            }
+        }
+
+        res.send('ok');
+    } catch (err) {
+        console.error('❌ Ошибка в MAX webhook:', err);
+        res.status(500).send('error');
+    }
+}
+
+function isInitialized() {
+    return !!(MAX_BOT_TOKEN && MAX_BOT_NAME && pool);
+}
+
+module.exports = { initMAX, sendMAXMessage, handleMAXWebhook, isInitialized };
