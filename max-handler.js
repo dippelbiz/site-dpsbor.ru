@@ -1,4 +1,4 @@
-// max-handler.js
+// max-handler.js (исправленный)
 let MAX_BOT_TOKEN = null;
 let MAX_BOT_NAME = null;
 let pool = null;
@@ -33,15 +33,15 @@ async function initMAX(token, botName, dbPool) {
     }
 }
 
-// Отправка сообщения с использованием chat_id
-async function sendMAXMessage(chatId, text) {
+// Отправка сообщения – используем user_id, а не chat_id
+async function sendMAXMessage(userId, text) {
     if (!MAX_BOT_TOKEN) {
         console.error('❌ MAX_BOT_TOKEN не задан');
         return null;
     }
     const url = `${API_BASE}/messages`;
     const body = {
-        chat_id: chatId,          // используем chat_id из вебхука
+        user_id: userId,          // ← используем user_id
         text: text
     };
     console.log(`📤 Отправка в MAX: url=${url}, body=${JSON.stringify(body)}`);
@@ -60,7 +60,7 @@ async function sendMAXMessage(chatId, text) {
             console.error('❌ Ошибка отправки в MAX:', data);
             return null;
         }
-        console.log(`✅ Сообщение отправлено в MAX (chatId: ${chatId})`);
+        console.log(`✅ Сообщение отправлено в MAX (userId: ${userId})`);
         return data.message_id;
     } catch (err) {
         console.error('❌ Ошибка отправки в MAX:', err);
@@ -103,6 +103,7 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
     const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
+    // Убираем двойной смайлик
     let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
@@ -151,8 +152,7 @@ async function handleMAXWebhook(req, res) {
         console.log('📨 MAX webhook body:', JSON.stringify(update));
 
         if (update.update_type === 'bot_started') {
-            const chatId = update.chat_id;
-            const userId = update.user.user_id;
+            const userId = update.user.user_id;           // ← правильный получатель
             const userName = update.user.name || `Пользователь MAX ${userId}`;
             const payload = update.payload;
 
@@ -160,36 +160,35 @@ async function handleMAXWebhook(req, res) {
                 const orderNumber = payload.split('_')[1];
                 const result = await bindOrderMAX(userId, orderNumber, userName);
                 if (result.success) {
-                    const sent = await sendMAXMessage(chatId, `✅ ${result.message}`);
+                    const sent = await sendMAXMessage(userId, `✅ ${result.message}`);
                     if (!sent) console.error('❌ Не удалось отправить сообщение при привязке');
                 } else {
-                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                    await sendMAXMessage(userId, `❌ ${result.message}`);
                 }
                 return res.send('ok');
             } else {
-                await sendMAXMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
-                maxBindingStates.set(chatId, { step: 'awaiting_order_number', userId });
+                await sendMAXMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
+                maxBindingStates.set(userId, { step: 'awaiting_order_number', userId });
                 return res.send('ok');
             }
         }
 
         if (update.update_type === 'message_created') {
             const message = update.message;
-            const chatId = message.recipient.chat_id;
-            const userId = message.sender.user_id;
+            const userId = message.sender.user_id;       // ← правильный получатель
             const userName = message.sender.name || `Пользователь MAX ${userId}`;
             const text = message.body.text;
 
-            if (maxBindingStates.get(chatId)?.step === 'awaiting_order_number') {
+            if (maxBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderMAX(userId, orderNumber, userName);
                 if (result.success) {
-                    const sent = await sendMAXMessage(chatId, `✅ ${result.message}`);
+                    const sent = await sendMAXMessage(userId, `✅ ${result.message}`);
                     if (!sent) console.error('❌ Не удалось отправить сообщение при привязке');
                 } else {
-                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                    await sendMAXMessage(userId, `❌ ${result.message}`);
                 }
-                maxBindingStates.delete(chatId);
+                maxBindingStates.delete(userId);
                 return res.send('ok');
             }
 
@@ -197,10 +196,10 @@ async function handleMAXWebhook(req, res) {
                 const orderNumber = text;
                 const result = await bindOrderMAX(userId, orderNumber, userName);
                 if (result.success) {
-                    const sent = await sendMAXMessage(chatId, `✅ ${result.message}`);
+                    const sent = await sendMAXMessage(userId, `✅ ${result.message}`);
                     if (!sent) console.error('❌ Не удалось отправить сообщение при привязке');
                 } else {
-                    await sendMAXMessage(chatId, `❌ ${result.message}`);
+                    await sendMAXMessage(userId, `❌ ${result.message}`);
                 }
                 return res.send('ok');
             }
@@ -231,7 +230,7 @@ async function handleMAXWebhook(req, res) {
                         `UPDATE orders SET contact = contact || $1::jsonb WHERE id = $2`,
                         [contactJson, orderId]
                     );
-                    await sendMAXMessage(chatId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
+                    await sendMAXMessage(userId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
                     const orderDetails = await pool.query(`SELECT order_number, total, contact, items FROM orders WHERE id = $1`, [orderId]);
                     if (orderDetails.rows.length > 0) {
                         const row = orderDetails.rows[0];
@@ -249,7 +248,7 @@ async function handleMAXWebhook(req, res) {
                             detailsMsg += `   ${item.name} (${variantDisplay}) - ${item.quantity} шт = ${itemTotal} руб.\n`;
                         });
                         detailsMsg += `\nСумма заказа: ${row.total} руб.`;
-                        await sendMAXMessage(chatId, detailsMsg);
+                        await sendMAXMessage(userId, detailsMsg);
                     }
                 }
             }
