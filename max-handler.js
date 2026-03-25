@@ -141,7 +141,7 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
         console.log(`ℹ️ Заказ ${orderNumber} уже в работе (или не требует обновления)`);
         return { success: true, message: messageText };
     }
-}
+      }
 
 async function handleMAXWebhook(req, res) {
     console.log('📨 MAX webhook вызван');
@@ -177,6 +177,19 @@ async function handleMAXWebhook(req, res) {
             const userName = message.sender.name || `Пользователь MAX ${userId}`;
             const text = message.body.text;
 
+            // ДОБАВЛЯЕМ ОБРАБОТКУ КОМАНДЫ /start order_...
+            if (text.startsWith('/start order_')) {
+                const orderNumber = text.split('_')[1];
+                const result = await bindOrderMAX(userId, orderNumber, userName);
+                if (result.success) {
+                    const sent = await sendMAXMessage(userId, `✅ ${result.message}`);
+                    if (!sent) console.error('❌ Не удалось отправить сообщение при привязке');
+                } else {
+                    await sendMAXMessage(userId, `❌ ${result.message}`);
+                }
+                return res.send('ok');
+            }
+
             if (maxBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -201,6 +214,7 @@ async function handleMAXWebhook(req, res) {
                 }
                 return res.send('ok');
             }
+
 
             let orderId = null;
             const orderResult = await pool.query(
