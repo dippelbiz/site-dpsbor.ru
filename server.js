@@ -365,7 +365,31 @@ app.post('/api/order', async (req, res) => {
     await pool.query('DELETE FROM carts WHERE user_id = $1', [userId]);
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, user_telegram_id: ${userTelegramId}`);
-    
+
+      // Генерация номера для прямой продажи с именем продавца
+async function generateDirectSaleNumber(sellerName, sellerId) {
+  // Очищаем имя: заменяем пробелы на _, убираем нежелательные символы
+  let safeName = sellerName.trim();
+  safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_'); // оставляем буквы (в т.ч. русские), цифры, _
+  safeName = safeName.substring(0, 20); // ограничиваем длину
+  const prefix = `ПП_${safeName}_`;
+  try {
+    const result = await pool.query(
+      `SELECT order_number FROM orders WHERE order_number LIKE $1 ORDER BY id DESC LIMIT 1`,
+      [prefix + '%']
+    );
+    if (result.rows.length > 0) {
+      const lastNum = result.rows[0].order_number.substring(prefix.length);
+      const num = parseInt(lastNum) || 0;
+      return prefix + (num + 1);
+    } else {
+      return prefix + '1';
+    }
+  } catch (err) {
+    console.error('Ошибка при генерации номера прямой продажи:', err);
+    return prefix + '1';
+  }
+}
     // === ДОБАВЛЕННЫЙ КОД ДЛЯ MAX ===
     if (contact.max_id) {
         const maxId = contact.max_id;
