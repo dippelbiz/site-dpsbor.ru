@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const telegramBot = require('./telegram-bot');
 const vkHandler = require('./vk-handler');
 
+
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
@@ -67,6 +68,12 @@ if (process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID) {
   );
 } else {
   console.log('⚠️ VK_ACCESS_TOKEN или VK_GROUP_ID не заданы');
+}
+// MAX
+if (process.env.MAX_BOT_TOKEN && process.env.MAX_BOT_NAME) {
+    maxHandler.initMAX(process.env.MAX_BOT_TOKEN, process.env.MAX_BOT_NAME, pool);
+} else {
+    console.log('⚠️ MAX_BOT_TOKEN или MAX_BOT_NAME не заданы');
 }
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
@@ -366,6 +373,7 @@ app.post('/api/order', async (req, res) => {
 // ==================== ВЕБХУКИ (перенаправляют в модули) ====================
 app.post('/api/telegram/webhook', telegramBot.handleTelegramWebhook);
 app.post('/api/vk/webhook', vkHandler.handleVKWebhook);
+app.post('/api/max/webhook', maxHandler.handleMAXWebhook);
 
 // ==================== API ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ====================
 app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
@@ -377,7 +385,7 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
     }
     
-    // Проверяем формат recipient_id только для Telegram (должен быть числом > 100000000)
+    // Проверяем формат recipient_id только для Telegram
     if (channel === 'telegram') {
         const recipientIdNum = parseInt(recipient_id);
         if (isNaN(recipientIdNum) || recipientIdNum < 100000000) {
@@ -399,7 +407,6 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
             if (!telegramBot.isInitialized()) {
                 return res.status(500).json({ error: 'Telegram бот не инициализирован' });
             }
-            
             const recipientIdNum = parseInt(recipient_id);
             console.log(`📨 Отправка в Telegram получателю: ${recipientIdNum}`);
             const sent = await telegramBot.sendTelegramMessage(recipientIdNum, message_text);
@@ -421,6 +428,18 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
                 console.log(`✅ Сообщение отправлено в VK, message_id: ${externalId}`);
             } else {
                 return res.status(500).json({ error: 'Ошибка отправки сообщения в VK' });
+            }
+        } else if (channel === 'max') {
+            if (!maxHandler.isInitialized()) {
+                return res.status(500).json({ error: 'MAX бот не инициализирован' });
+            }
+            const sent = await maxHandler.sendMAXMessage(recipient_id, message_text);
+            if (sent) {
+                externalId = String(sent);
+                sendSuccess = true;
+                console.log(`✅ Сообщение отправлено в MAX, message_id: ${externalId}`);
+            } else {
+                return res.status(500).json({ error: 'Ошибка отправки сообщения в MAX' });
             }
         } else {
             return res.status(400).json({ error: `Канал ${channel} пока не поддерживается` });
@@ -500,6 +519,10 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipientId = contact.vk_id;
             recipientChannel = 'vk';
             console.log(`📱 Найден vk_id в contact: ${recipientId}`);
+        } else if (contact.max_id) {
+            recipientId = contact.max_id;
+            recipientChannel = 'max';
+            console.log(`📱 Найден max_id в contact: ${recipientId}`);
         } else {
             console.log(`⚠️ Нет идентификатора для заказа ${order.order_number}`);
         }
@@ -512,7 +535,7 @@ app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) =
             recipient: {
                 id: recipientId,
                 channel: recipientChannel,
-                name: contact.name || contact.telegram_name || contact.vk_name || 'Клиент'
+                name: contact.name || contact.telegram_name || contact.vk_name || contact.max_name || 'Клиент'
             }
         });
     } catch (err) {
