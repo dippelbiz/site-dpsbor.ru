@@ -1040,7 +1040,167 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+// server.js – добавьте после всех существующих эндпоинтов
 
+// Получить список товаров с вариантами (для формы прямой продажи)
+app.get('/api/manager/direct-products', checkManagerAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.id as product_id, p.name as product_name,
+             v.id as variant_id, v.name as variant_name, v.price, v.weight_kg
+      FROM products p
+      JOIN variants v ON p.id = v.product_id
+      WHERE v.is_active = true
+      ORDER BY p.name, v.name
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Direct products error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Создать прямую продажу
+app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
+  const { items, total } = req.body;
+  const sellerId = req.userId;
+
+  if (!items || items.length === 0 || !total || total <= 0) {
+    return res.status(400).json({ error: 'Некорректные данные' });
+  }
+
+  try {
+    await pool.query('BEGIN');
+
+    // Получаем имя менеджера
+    const managerRes = await pool.query('SELECT name FROM users WHERE id = $1', [sellerId]);
+    const managerName = managerRes.rows[0]?.name || 'Менеджер';
+
+    // Генерируем номер заказа
+    const prefix = 'DS'; // Direct Sale
+    const orderNumber = await generateOrderNumber(prefix);
+
+    // Формируем items для БД
+    const orderItems = items.map(item => ({
+      productId: item.product_id,
+      variantId: item.variant_id,
+      name: item.product_name,
+      variantName: item.variant_name,
+      quantity: item.quantity,
+      price: item.price
+    }));
+    const itemsJson = JSON.stringify(orderItems);
+
+    // Формируем контакт
+    const contact = {
+      type: 'direct',
+      manager_id: sellerId,
+      manager_name: managerName,
+      date: new Date().toISOString()
+    };
+    const contactJson = JSON.stringify(contact);
+
+    // Вставляем заказ со статусом completed и sale_type = 'direct'
+    const insertResult = await pool.query(`
+      INSERT INTO orders (order_number, seller_id, items, total, contact, status, sale_type, completed_at, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING id
+    `, [orderNumber, sellerId, itemsJson, total, contactJson, 'completed', 'direct']);
+
+    const orderId = insertResult.rows[0].id;
+
+    // Списание остатков со склада продавца
+    let negativeStockItems = [];
+    for (const item of items) {
+      const variantId = item.variant_id;
+      const quantity = item.quantity;
+      const updateResult = await pool.query(`
+        UPDATE seller_stock 
+        SET quantity = quantity - $1 
+        WHERE seller_id = $2 AND variant_id = $3
+        RETURNING quantity
+      `, [quantity, sellerId, variantId]);
+
+      let newQuantity = 0;
+      if (updateResult.rows.length > 0) {
+        newQuantity = updateResult.rows[0].quantity;
+      } else {
+        newQuantity = -quantity;
+        await pool.query(`
+          INSERT INTO seller_stock (seller_id, variant_id, quantity, reserved)
+          VALUES ($1, $2, $3, 0)
+        `, [sellerId, variantId, -quantity]);
+      }
+
+      if (newQuantity < 0) {
+        negativeStockItems.push({
+          variant_id: variantId,
+          product_name: item.product_name,
+          variant_name: item.variant_name,
+          quantity: quantity,
+          current_stock: newQuantity + quantity,
+          new_stock: newQuantity
+        });
+      }
+    }
+
+    // Создание задач инвентаризации, если возникли отрицательные остатки
+    if (negativeStockItems.length > 0) {
+      for (const neg of negativeStockItems) {
+        await pool.query(`
+          INSERT INTO inventory_tasks (seller_id, variant_id, reason, status)
+          VALUES ($1, $2, $3, 'pending')
+        `, [sellerId, neg.variant_id, `Отрицательный остаток после прямой продажи (заказ №${orderNumber}). Было: ${neg.current_stock}, списано: ${neg.quantity}, стало: ${neg.new_stock}`]);
+      }
+      console.error(`⚠️ При прямой продаже №${orderNumber} обнаружены отрицательные остатки:`, negativeStockItems);
+    }
+
+    await pool.query('COMMIT');
+
+    res.json({ success: true, orderNumber, orderId });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Direct sale error:', err);
+    res.status(500).json({ error: 'Ошибка при создании прямой продажи' });
+  }
+});
+
+// Получить список прямых продаж для текущего менеджера
+app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
+  const sellerId = req.userId;
+  try {
+    const result = await pool.query(`
+      SELECT id, order_number, items, total, contact, created_at, completed_at
+      FROM orders
+      WHERE seller_id = $1 AND sale_type = 'direct' AND status = 'completed'
+      ORDER BY completed_at DESC
+    `, [sellerId]);
+
+    const sales = result.rows.map(sale => {
+      let items = [];
+      try {
+        items = typeof sale.items === 'string' ? JSON.parse(sale.items) : sale.items;
+      } catch (e) {}
+      let contact = {};
+      try {
+        contact = typeof sale.contact === 'string' ? JSON.parse(sale.contact) : sale.contact;
+      } catch (e) {}
+      return {
+        id: sale.id,
+        order_number: sale.order_number,
+        items: items,
+        total: sale.total,
+        contact: contact,
+        created_at: sale.created_at,
+        completed_at: sale.completed_at
+      };
+    });
+    res.json({ sales });
+  } catch (err) {
+    console.error('Direct sales list error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
 // ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
 // ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
@@ -1242,6 +1402,16 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+// Проверка и добавление колонки sale_type в таблицу orders
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='orders' AND column_name='sale_type') THEN
+      ALTER TABLE orders ADD COLUMN sale_type VARCHAR(20) DEFAULT 'online';
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (sale_type):', err));
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
