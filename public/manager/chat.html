@@ -275,7 +275,7 @@
         }
         
         function getChannelName(channel) {
-            const names = { 'telegram': 'Telegram', 'vk': 'ВКонтакте', 'whatsapp': 'WhatsApp' };
+            const names = { 'telegram': 'Telegram', 'vk': 'ВКонтакте', 'max': 'MAX', 'whatsapp': 'WhatsApp' };
             return names[channel] || channel || 'Неизвестный канал';
         }
         
@@ -348,7 +348,7 @@
                 
                 if (response.ok) {
                     input.value = '';
-                    await loadChat();
+                    await loadChat(); // перезагружаем чат, чтобы увидеть отправленное сообщение
                 } else {
                     const error = await response.json();
                     alert('Ошибка: ' + error.error);
