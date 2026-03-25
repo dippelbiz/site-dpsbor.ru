@@ -1223,7 +1223,25 @@ app.post('/api/manager/inventory-tasks/:id/resolve', checkManagerAuth, async (re
     res.status(500).json({ error: 'Database error' });
   }
 });
+// server.js – добавьте после других эндпоинтов менеджера
 
+app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT id, order_number, contact, items, total, status, seller_id, user_telegram_id, created_at, completed_at
+      FROM orders WHERE id = $1
+    `, [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = result.rows[0];
+    order.contact = typeof order.contact === 'string' ? JSON.parse(order.contact) : order.contact;
+    order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    res.json({ order });
+  } catch (err) {
+    console.error('Error fetching order:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
