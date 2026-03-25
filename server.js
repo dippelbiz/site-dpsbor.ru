@@ -434,18 +434,20 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
             } else {
                 return res.status(500).json({ error: 'Ошибка отправки сообщения в VK' });
             }
-    } else if (channel === 'max') {
-    if (!maxHandler.isInitialized()) {
-        return res.status(500).json({ error: 'MAX бот не инициализирован' });
-    }
-    const sent = await maxHandler.sendMAXMessage(Number(recipient_id), message_text);
-    if (sent) {
-        externalId = String(sent);
-        sendSuccess = true;
-        console.log(`✅ Сообщение отправлено в MAX, message_id: ${externalId}`);
-    } else {
-        return res.status(500).json({ error: 'Ошибка отправки сообщения в MAX' });
-    } else {
+        } else if (channel === 'max') {
+            if (!maxHandler.isInitialized()) {
+                return res.status(500).json({ error: 'MAX бот не инициализирован' });
+            }
+            // recipient_id должен быть числом (user_id)
+            const sent = await maxHandler.sendMAXMessage(Number(recipient_id), message_text);
+            if (sent) {
+                externalId = String(sent);
+                sendSuccess = true;
+                console.log(`✅ Сообщение отправлено в MAX, message_id: ${externalId}`);
+            } else {
+                return res.status(500).json({ error: 'Ошибка отправки сообщения в MAX' });
+            }
+        } else {
             return res.status(400).json({ error: `Канал ${channel} пока не поддерживается` });
         }
         
