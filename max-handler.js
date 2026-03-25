@@ -56,13 +56,8 @@ async function sendMAXMessage(userId, text) {
             console.error('❌ Ошибка отправки в MAX:', data);
             return null;
         }
-        // Возвращаем message_id из тела ответа
-        const messageId = data.message?.body?.mid;
-        if (!messageId) {
-            console.warn('⚠️ Не удалось получить message_id из ответа MAX');
-        }
         console.log(`✅ Сообщение отправлено в MAX (userId: ${userId})`);
-        return messageId;
+        return data.message_id;
     } catch (err) {
         console.error('❌ Ошибка отправки в MAX:', err);
         return null;
