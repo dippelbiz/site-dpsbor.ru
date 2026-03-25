@@ -635,42 +635,39 @@
         }
 
         // ========== Завершённые продажи ==========
-        async function openCompletedSales() {
-            const token = checkAuth();
-            try {
-                const response = await fetch('/api/manager/direct-sales', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
-                const container = document.getElementById('completed-sales-list');
-                if (!data.sales || data.sales.length === 0) {
-                    container.innerHTML = '<div class="no-tasks">Нет завершённых прямых продаж</div>';
-                } else {
-                    container.innerHTML = data.sales.map(sale => {
-                        const itemsHtml = sale.items.map(item => `
-                            <div>${item.name} (${item.variantName || item.variant_name}) × ${item.quantity} = ${item.price * item.quantity} руб.</div>
-                        `).join('');
-                        return `
-                            <div class="sale-item" style="border-left-color: #27ae60;">
-                                <div style="font-weight: bold;">📋 Заказ №${sale.order_number}</div>
-                                <div style="font-size: 11px; color: #7f8c8d;">📅 ${new Date(sale.completed_at).toLocaleString()}</div>
-                                <div style="margin-top: 5px; padding-left: 10px;">${itemsHtml}</div>
-                                <div style="margin-top: 8px; font-weight: bold; text-align: right;">Итого: ${sale.total} руб.</div>
-                            </div>
-                        `;
-                    }).join('');
-                }
-                document.getElementById('completed-sales-modal').style.display = 'block';
-            } catch (err) {
-                console.error('Error loading sales:', err);
-                alert('Ошибка загрузки продаж');
-            }
+       async function openCompletedSales() {
+    const token = checkAuth();
+    try {
+        const response = await fetch('/api/manager/direct-sales', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        const container = document.getElementById('completed-sales-list');
+        if (!data.sales || data.sales.length === 0) {
+            container.innerHTML = '<div class="no-tasks">Нет завершённых прямых продаж</div>';
+        } else {
+            container.innerHTML = data.sales.map(sale => {
+                const itemsHtml = sale.items.map(item => `
+                    <div>${item.name} (${item.variantName || item.variant_name}) × ${item.quantity} = ${item.price * item.quantity} руб.</div>
+                `).join('');
+                const sellerInfo = currentUserRole === 'admin' ? `<div style="font-size: 11px; color: #7f8c8d;">Продавец: ${sale.seller_name || '—'}</div>` : '';
+                return `
+                    <div class="sale-item" style="border-left-color: #27ae60;">
+                        <div style="font-weight: bold;">📋 Заказ №${sale.order_number}</div>
+                        ${sellerInfo}
+                        <div style="font-size: 11px; color: #7f8c8d;">📅 ${new Date(sale.completed_at).toLocaleString()}</div>
+                        <div style="margin-top: 5px; padding-left: 10px;">${itemsHtml}</div>
+                        <div style="margin-top: 8px; font-weight: bold; text-align: right;">Итого: ${sale.total} руб.</div>
+                    </div>
+                `;
+            }).join('');
         }
-
-        function closeCompletedSalesModal() {
-            document.getElementById('completed-sales-modal').style.display = 'none';
-        }
-
+        document.getElementById('completed-sales-modal').style.display = 'block';
+    } catch (err) {
+        console.error('Error loading sales:', err);
+        alert('Ошибка загрузки продаж');
+    }
+}
         // ========== Задачи и инвентаризация (без изменений) ==========
         async function loadTasks() {
             if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
