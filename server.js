@@ -366,11 +366,12 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, user_telegram_id: ${userTelegramId}`);
 
-      // Генерация номера для прямой продажи с именем продавца
+   // Генерация номера для прямой продажи с именем продавца (кириллицей)
 async function generateDirectSaleNumber(sellerName, sellerId) {
   // Очищаем имя: заменяем пробелы на _, убираем нежелательные символы
   let safeName = sellerName.trim();
-  safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_'); // оставляем буквы (в т.ч. русские), цифры, _
+  // Оставляем только буквы (в т.ч. русские), цифры, подчёркивания
+  safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_');
   safeName = safeName.substring(0, 20); // ограничиваем длину
   const prefix = `ПП_${safeName}_`;
   try {
@@ -1100,8 +1101,8 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
     const managerRes = await pool.query('SELECT name FROM users WHERE id = $1', [sellerId]);
     const managerName = managerRes.rows[0]?.name || 'Менеджер';
 
-    // Генерируем номер заказа
-const orderNumber = await generateDirectSaleNumber(managerName, sellerId);
+    // Генерируем номер заказа с именем
+    const orderNumber = await generateDirectSaleNumber(managerName, sellerId);
 
     // Формируем items для БД
     const orderItems = items.map(item => ({
@@ -1188,7 +1189,6 @@ const orderNumber = await generateDirectSaleNumber(managerName, sellerId);
   }
 });
 
-// Получить список прямых продаж для текущего менеджера
 // Получить список прямых продаж
 app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
   const userId = req.userId;
