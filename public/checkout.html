@@ -127,7 +127,7 @@
             padding: 20px;
             border-radius: 15px;
             width: 90%;
-            max-width: 340px;
+            max-width: 380px;
             text-align: center;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
             position: relative;
@@ -188,10 +188,13 @@
             display: flex;
             gap: 10px;
             margin: 15px 0;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         
         .messenger-button {
             flex: 1;
+            min-width: 80px;
             padding: 12px;
             border: none;
             border-radius: 8px;
@@ -207,17 +210,20 @@
         .messenger-button.telegram {
             background: #0088cc;
         }
-        
         .messenger-button.telegram:hover {
             background: #006699;
         }
-        
         .messenger-button.vk {
             background: #4a76a8;
         }
-        
         .messenger-button.vk:hover {
             background: #3a5a80;
+        }
+        .messenger-button.max {
+            background: #9b59b6;
+        }
+        .messenger-button.max:hover {
+            background: #8e44ad;
         }
         
         .cancel-button {
@@ -232,7 +238,6 @@
             margin-top: 10px;
             display: inline-block;
         }
-        
         .cancel-button:hover {
             background: #c82333;
         }
@@ -309,6 +314,7 @@
             <div class="messenger-buttons">
                 <a id="telegram-link" class="messenger-button telegram" target="_blank">Telegram</a>
                 <a id="vk-link" class="messenger-button vk" target="_blank">ВКонтакте</a>
+                <a id="max-link" class="messenger-button max" target="_blank">MAX</a>
             </div>
             
             <button id="cancel-order-btn" class="cancel-button">Отменить заказ</button>
@@ -333,6 +339,9 @@
         let currentOrderTotal = 0;
         let currentOrderNumber = null;
         let currentOrderId = null;
+
+        // Имя бота MAX (замените при необходимости)
+        const MAX_BOT_NAME = 'id221002965660_bot'; // можно заменить на реальный ник бота
 
         function createOrderMessage(orderNumber, orderData) {
             return '';
@@ -554,15 +563,20 @@
                     const result = await response.json();
                     console.log('✅ Ответ от сервера:', result);
                     
-                    // Определяем тип устройства для правильной ссылки
+                    // Ссылка для Telegram
                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                     const telegramLink = isMobile 
                         ? `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`
                         : `https://t.me/dpsbor_site_bot?start=order_${result.orderNumber}`;
                     document.getElementById('telegram-link').href = telegramLink;
                     
+                    // Ссылка для VK
                     const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
                     document.getElementById('vk-link').href = vkLink;
+                    
+                    // Ссылка для MAX
+                    const maxLink = `https://max.ru/${MAX_BOT_NAME}?start=order_${result.orderNumber}`;
+                    document.getElementById('max-link').href = maxLink;
                     
                     showModal(result.id || 'temp_id', result.orderNumber);
                     
