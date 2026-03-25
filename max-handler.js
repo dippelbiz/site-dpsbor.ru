@@ -1,4 +1,4 @@
-// max-handler.js (исправленный)
+// max-handler.js
 let MAX_BOT_TOKEN = null;
 let MAX_BOT_NAME = null;
 let pool = null;
@@ -33,7 +33,7 @@ async function initMAX(token, botName, dbPool) {
     }
 }
 
-// Отправка сообщения – используем user_id, а не chat_id
+// Отправка сообщения – используем user_id (получатель в диалоге)
 async function sendMAXMessage(userId, text) {
     if (!MAX_BOT_TOKEN) {
         console.error('❌ MAX_BOT_TOKEN не задан');
@@ -41,7 +41,7 @@ async function sendMAXMessage(userId, text) {
     }
     const url = `${API_BASE}/messages`;
     const body = {
-        user_id: userId,          // ← используем user_id
+        user_id: userId,      // ← основной кандидат по документации
         text: text
     };
     console.log(`📤 Отправка в MAX: url=${url}, body=${JSON.stringify(body)}`);
@@ -103,7 +103,6 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
     const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
-    // Убираем двойной смайлик
     let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
