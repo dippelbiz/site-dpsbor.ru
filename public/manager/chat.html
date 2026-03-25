@@ -351,7 +351,8 @@
                     await loadChat(); // перезагружаем чат, чтобы увидеть отправленное сообщение
                 } else {
                     const error = await response.json();
-                    alert('Ошибка: ' + error.error);
+                    console.error('Send error response:', error);
+                    alert('Ошибка: ' + (error.error || 'Неизвестная ошибка'));
                 }
             } catch (err) {
                 console.error('Send error:', err);
