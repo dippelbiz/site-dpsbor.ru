@@ -6,13 +6,12 @@ let maxBindingStates = new Map();
 
 const API_BASE = 'https://platform-api.max.ru';
 
-// Инициализация и подписка на webhook
 async function initMAX(token, botName, dbPool) {
     MAX_BOT_TOKEN = token;
     MAX_BOT_NAME = botName;
     pool = dbPool;
     console.log('✅ MAX модуль инициализирован');
-    
+
     const webhookUrl = `${process.env.SITE_URL || 'https://dpsbor.ru'}/api/max/webhook`;
     try {
         const response = await fetch(`${API_BASE}/subscriptions`, {
@@ -34,14 +33,12 @@ async function initMAX(token, botName, dbPool) {
     }
 }
 
-// Отправка сообщения (исправленный URL)
 async function sendMAXMessage(chatId, text) {
     if (!MAX_BOT_TOKEN) {
         console.error('❌ MAX_BOT_TOKEN не задан');
         return null;
     }
-    // Правильный эндпоинт согласно документации MAX (проверьте)
-    const url = `${API_BASE}/messages.send`;
+    const url = `${API_BASE}/messages`;
     const body = {
         chat_id: chatId,
         text: text
@@ -58,18 +55,19 @@ async function sendMAXMessage(chatId, text) {
         });
         const data = await response.json();
         console.log(`📨 Ответ MAX API: ${JSON.stringify(data)}`);
-        if (data.error) {
-            console.error('❌ Ошибка отправки в MAX:', data.error);
+        if (response.status !== 200) {
+            console.error('❌ Ошибка отправки в MAX:', data);
             return null;
         }
         console.log(`✅ Сообщение отправлено в MAX (chatId: ${chatId})`);
-        return data.message_id;
+        return data.message_id; // предположительно, возвращается message_id
     } catch (err) {
         console.error('❌ Ошибка отправки в MAX:', err);
         return null;
     }
 }
 
+// bindOrderMAX и handleMAXWebhook остаются без изменений, кроме вызова sendMAXMessage
 async function bindOrderMAX(maxId, orderNumber, senderName) {
     console.log(`🔍 bindOrderMAX: maxId=${maxId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
