@@ -1140,8 +1140,21 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       } catch (err) {
         console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
       }
+    
+} else if (recipientId && recipientChannel === 'max' && maxHandler.isInitialized()) {
+    const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
+    try {
+        const sent = await maxHandler.sendMAXMessage(recipientId, message);
+        if (sent) {
+            console.log(`✅ Уведомление о завершении заказа №${order.order_number} отправлено в MAX (${recipientId})`);
+            await pool.query(`
+                INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, message_text, direction, status, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', NOW())
+            `, [id, 'max', sent, 'system', 'Система', message]);
+        }
+    } catch (err) {
+        console.error(`❌ Ошибка отправки уведомления о завершении заказа:`, err.message);
     }
-
     if (negativeStockItems.length > 0) {
       res.json({ success: true, warning: 'Заказ завершён, но обнаружены отрицательные остатки. Проверьте задачи инвентаризации.' });
     } else {
