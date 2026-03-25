@@ -6,14 +6,12 @@ let maxBindingStates = new Map();
 
 const API_BASE = 'https://platform-api.max.ru';
 
-// Инициализация и подписка на webhook
 async function initMAX(token, botName, dbPool) {
     MAX_BOT_TOKEN = token;
     MAX_BOT_NAME = botName;
     pool = dbPool;
     console.log('✅ MAX модуль инициализирован');
     
-    // Подписка на webhook (если не подписаны)
     const webhookUrl = `${process.env.SITE_URL || 'https://dpsbor.ru'}/api/max/webhook`;
     try {
         const response = await fetch(`${API_BASE}/subscriptions`, {
@@ -35,7 +33,6 @@ async function initMAX(token, botName, dbPool) {
     }
 }
 
-// Отправка сообщения
 async function sendMAXMessage(chatId, text) {
     if (!MAX_BOT_TOKEN) return null;
     try {
@@ -63,7 +60,6 @@ async function sendMAXMessage(chatId, text) {
     }
 }
 
-// Привязка заказа по номеру
 async function bindOrderMAX(maxId, orderNumber, senderName) {
     console.log(`🔍 bindOrderMAX: maxId=${maxId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
@@ -140,22 +136,13 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
     }
 }
 
-// Получение имени пользователя (если нужно)
-async function getUserName(maxId) {
-    // MAX API не предоставляет имя в событиях, будем использовать fallback
-    return `Пользователь MAX ${maxId}`;
-}
-
-// Обработчик вебхука
 async function handleMAXWebhook(req, res) {
     console.log('📨 MAX webhook вызван');
     try {
         const update = req.body;
         console.log('📨 MAX webhook body:', JSON.stringify(update));
 
-        // В MAX все события приходят в одном формате
         if (update.update_type === 'bot_started') {
-            // Пользователь запустил бота по диплинку
             const chatId = update.chat_id;
             const userId = update.user.user_id;
             const userName = update.user.name || `Пользователь MAX ${userId}`;
@@ -165,25 +152,27 @@ async function handleMAXWebhook(req, res) {
                 const orderNumber = payload.split('_')[1];
                 const result = await bindOrderMAX(userId, orderNumber, userName);
                 if (result.success) {
-                    await sendMAXMessage(chatId, `✅ ${result.message}`);
+                    const sent = await sendMAXMessage(chatId, `✅ ${result.message}`);
+                    if (!sent) {
+                        console.error('❌ Не удалось отправить сообщение при привязке');
+                    }
                 } else {
                     await sendMAXMessage(chatId, `❌ ${result.message}`);
                 }
-                return res.send('ok');
             } else {
-                // Если payload нет или не order, начинаем диалог
+                // Нет payload или не order
                 await sendMAXMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
                 maxBindingStates.set(chatId, { step: 'awaiting_order_number', userId });
-                return res.send('ok');
             }
+            return res.send('ok');
         }
 
-        if (update.update_type === 'message_new') {
+        if (update.update_type === 'message_created') {
             const message = update.message;
-            const chatId = update.chat_id;
-            const userId = update.user.user_id;
-            const userName = update.user.name || `Пользователь MAX ${userId}`;
-            const text = message.text;
+            const chatId = message.recipient.chat_id;
+            const userId = message.sender.user_id;
+            const userName = message.sender.name || `Пользователь MAX ${userId}`;
+            const text = message.body.text;
 
             // Если пользователь ожидает ввода номера заказа
             if (maxBindingStates.get(chatId)?.step === 'awaiting_order_number') {
@@ -239,7 +228,6 @@ async function handleMAXWebhook(req, res) {
                         [contactJson, orderId]
                     );
                     await sendMAXMessage(chatId, `✅ Ваш заказ автоматически привязан! Мы свяжемся с вами.`);
-                    // Отправляем детали заказа
                     const orderDetails = await pool.query(`SELECT order_number, total, contact, items FROM orders WHERE id = $1`, [orderId]);
                     if (orderDetails.rows.length > 0) {
                         const row = orderDetails.rows[0];
@@ -266,12 +254,11 @@ async function handleMAXWebhook(req, res) {
                 await pool.query(
                     `INSERT INTO chat_messages (order_id, channel, external_id, sender_id, sender_name, message_text, direction, status, created_at)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-                    [orderId, 'max', String(message.id), String(userId), userName, text, 'incoming', 'delivered']
+                    [orderId, 'max', String(message.body.mid), String(userId), userName, text, 'incoming', 'delivered']
                 );
                 console.log(`✅ Сообщение MAX сохранено от пользователя ${userId}`);
             }
         }
-
         res.send('ok');
     } catch (err) {
         console.error('❌ Ошибка в MAX webhook:', err);
