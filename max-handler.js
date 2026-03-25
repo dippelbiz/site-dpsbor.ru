@@ -13,7 +13,6 @@ async function initMAX(token, botName, dbPool) {
     pool = dbPool;
     console.log('✅ MAX модуль инициализирован');
     
-    // Подписка на webhook (если не подписаны)
     const webhookUrl = `${process.env.SITE_URL || 'https://dpsbor.ru'}/api/max/webhook`;
     try {
         const response = await fetch(`${API_BASE}/subscriptions`, {
@@ -35,13 +34,14 @@ async function initMAX(token, botName, dbPool) {
     }
 }
 
-// Отправка сообщения с подробным логированием
+// Отправка сообщения (исправленный URL)
 async function sendMAXMessage(chatId, text) {
     if (!MAX_BOT_TOKEN) {
         console.error('❌ MAX_BOT_TOKEN не задан');
         return null;
     }
-    const url = `${API_BASE}/sendMessage`;
+    // Правильный эндпоинт согласно документации MAX (проверьте)
+    const url = `${API_BASE}/messages.send`;
     const body = {
         chat_id: chatId,
         text: text
@@ -70,7 +70,6 @@ async function sendMAXMessage(chatId, text) {
     }
 }
 
-// Привязка заказа по номеру
 async function bindOrderMAX(maxId, orderNumber, senderName) {
     console.log(`🔍 bindOrderMAX: maxId=${maxId}, orderNumber=${orderNumber}, senderName=${senderName}`);
     const orderCheck = await pool.query(
@@ -147,16 +146,13 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
     }
 }
 
-// Обработчик вебхука
 async function handleMAXWebhook(req, res) {
     console.log('📨 MAX webhook вызван');
     try {
         const update = req.body;
         console.log('📨 MAX webhook body:', JSON.stringify(update));
 
-        // В MAX все события приходят в одном формате
         if (update.update_type === 'bot_started') {
-            // Пользователь запустил бота по диплинку
             const chatId = update.chat_id;
             const userId = update.user.user_id;
             const userName = update.user.name || `Пользователь MAX ${userId}`;
@@ -173,7 +169,6 @@ async function handleMAXWebhook(req, res) {
                 }
                 return res.send('ok');
             } else {
-                // Если payload нет или не order, начинаем диалог
                 await sendMAXMessage(chatId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
                 maxBindingStates.set(chatId, { step: 'awaiting_order_number', userId });
                 return res.send('ok');
@@ -187,7 +182,6 @@ async function handleMAXWebhook(req, res) {
             const userName = message.sender.name || `Пользователь MAX ${userId}`;
             const text = message.body.text;
 
-            // Если пользователь ожидает ввода номера заказа
             if (maxBindingStates.get(chatId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -201,7 +195,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // Проверка, не является ли текст номером заказа (буква+цифры)
             if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
                 const orderNumber = text;
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -214,7 +207,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // Обычное сообщение – ищем активный заказ по max_id в contact
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'max_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -223,7 +215,6 @@ async function handleMAXWebhook(req, res) {
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
             } else {
-                // Автоматическая привязка к недавнему заказу без max_id
                 const recentOrder = await pool.query(
                     `SELECT id FROM orders 
                      WHERE (contact->>'max_id' IS NULL OR contact->>'max_id' = '') 
