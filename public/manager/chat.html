@@ -214,7 +214,7 @@
             }
             return token;
         }
-        async function loadChat() {
+      async function loadChat() {
     const token = checkAuth();
     try {
         const response = await fetch(`/api/manager/order/${orderId}/chat`, {
@@ -231,7 +231,7 @@
         currentRecipient = data.recipient;
         currentOrderStatus = data.status;
         
-        // === НОВЫЙ КОД: получаем детали заказа ===
+        // Получаем детали заказа
         const orderResponse = await fetch(`/api/manager/order/${orderId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -240,7 +240,7 @@
         const contact = order.contact;
         const items = order.items;
         
-        // Строим панель с информацией
+        // Строим панель
         const orderInfoHtml = `
             <div class="order-details">
                 <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
@@ -274,7 +274,39 @@
         `;
         document.getElementById('order-info-panel').innerHTML = orderInfoHtml;
         
+        // Отображаем сообщения (исправлено: data.messages)
+        const messagesContainer = document.getElementById('messages-container');
+        messagesContainer.innerHTML = renderMessages(data.messages);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
         
+        const sendBtn = document.getElementById('send-btn');
+        const messageInput = document.getElementById('message-input');
+        const isProcessing = data.status === 'processing';
+        const canChat = isProcessing;
+        
+        document.getElementById('order-info').innerHTML = `Заказ №${data.order_number}`;
+        document.getElementById('info-bar').innerHTML = `
+            👤 ${data.recipient?.name || 'Клиент'} • 📱 ${getChannelName(currentRecipient?.channel)}
+            ${!canChat ? '<span class="order-completed-badge">Чат недоступен</span>' : ''}
+        `;
+        
+        if (!canChat || !currentRecipient?.id) {
+            sendBtn.disabled = true;
+            messageInput.disabled = true;
+            messageInput.placeholder = !currentRecipient?.id ? 'Нет данных для отправки сообщений' : 'Чат доступен только для заказов в работе';
+        } else {
+            sendBtn.disabled = false;
+            messageInput.disabled = false;
+            messageInput.placeholder = 'Введите сообщение...';
+        }
+        
+        await markMessagesAsRead(orderId);
+        
+    } catch (err) {
+        console.error('Error loading chat:', err);
+        document.getElementById('messages-container').innerHTML = '<div class="loading">Ошибка загрузки сообщений</div>';
+    }
+}
        
                 // Отображаем сообщения
                 const messagesContainer = document.getElementById('messages-container');
