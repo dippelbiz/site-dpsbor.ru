@@ -39,8 +39,10 @@ async function sendMAXMessage(userId, text) {
         return null;
     }
     const url = `${API_BASE}/messages`;
+    // Пробуем разные варианты полей (по одному, чтобы видеть в логах)
+    // В финальной версии оставляем наиболее вероятный
     const body = {
-        user_id: userId,   // ← исправлено: user_id вместо chat_id
+        user_id: userId,        // ← основной кандидат
         text: text
     };
     console.log(`📤 Отправка в MAX: url=${url}, body=${JSON.stringify(body)}`);
@@ -166,7 +168,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             } else {
                 await sendMAXMessage(userId, `Здравствуйте! Введите номер вашего заказа, чтобы связать его с вашим аккаунтом.\n(Номер заказа вы найдёте в уведомлении на сайте)`);
-                // сохраняем состояние привязки (используем userId как ключ)
                 maxBindingStates.set(userId, { step: 'awaiting_order_number', userId });
                 return res.send('ok');
             }
@@ -178,7 +179,6 @@ async function handleMAXWebhook(req, res) {
             const userName = message.sender.name || `Пользователь MAX ${userId}`;
             const text = message.body.text;
 
-            // Если пользователь ожидает ввода номера заказа
             if (maxBindingStates.get(userId)?.step === 'awaiting_order_number') {
                 const orderNumber = text.trim();
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -192,7 +192,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // Проверка, не является ли текст номером заказа (буква+цифры)
             if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
                 const orderNumber = text;
                 const result = await bindOrderMAX(userId, orderNumber, userName);
@@ -205,7 +204,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-            // Обычное сообщение – ищем активный заказ по max_id в contact
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'max_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -214,7 +212,6 @@ async function handleMAXWebhook(req, res) {
             if (orderResult.rows.length > 0) {
                 orderId = orderResult.rows[0].id;
             } else {
-                // Автоматическая привязка к недавнему заказу без max_id
                 const recentOrder = await pool.query(
                     `SELECT id FROM orders 
                      WHERE (contact->>'max_id' IS NULL OR contact->>'max_id' = '') 
