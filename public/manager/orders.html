@@ -11,6 +11,7 @@
             background: #f5f5f5;
             overflow-x: hidden;
         }
+        /* Десктопная версия */
         .sidebar {
             position: fixed;
             left: 0;
@@ -228,6 +229,7 @@
             background: #3498db;
             color: white;
         }
+        /* Модальные окна */
         .chat-modal {
             display: none;
             position: fixed;
@@ -397,19 +399,21 @@
         </div>
     </div>
 
-   <!-- Модальное окно унифицированного чата (все чаты) -->
-<div id="unifiedChatModal" class="chat-modal">
-    <div class="chat-modal-content unified">
-        <div class="chat-modal-header">
-            <h3>Все чаты</h3>
-            <button class="close-chat-modal" onclick="closeUnifiedChatModal()">&times;</button>
+    <!-- Модальное окно унифицированного чата (все чаты) -->
+    <div id="unifiedChatModal" class="chat-modal">
+        <div class="chat-modal-content unified">
+            <div class="chat-modal-header">
+                <h3>Все чаты</h3>
+                <button class="close-chat-modal" onclick="closeUnifiedChatModal()">&times;</button>
+            </div>
+            <iframe id="unifiedChatIframe" class="chat-iframe" src="about:blank" style="width:100%; height:100%; border:none;"></iframe>
         </div>
-        <iframe id="unifiedChatIframe" class="chat-iframe" src="about:blank" style="width:100%; height:100%; border:none;"></iframe>
     </div>
-</div>
+
     <script>
         let currentUserRole = '';
 
+        // Гамбургер-меню
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
@@ -500,6 +504,7 @@
             return div.innerHTML;
         }
         
+        // Чат с конкретным заказом
         function openChatModal(orderId) {
             const modal = document.getElementById('chatModal');
             const iframe = document.getElementById('chatIframe');
@@ -516,10 +521,12 @@
             document.body.style.overflow = '';
         }
         
+        // Унифицированный чат (все чаты) в модальном окне с принудительной загрузкой
         function openUnifiedChatModal() {
             const modal = document.getElementById('unifiedChatModal');
             const iframe = document.getElementById('unifiedChatIframe');
-            iframe.src = '/manager/unified-chat.html';
+            // Добавляем случайный параметр, чтобы браузер не кэшировал старую версию unified-chat.html
+            iframe.src = `/manager/unified-chat.html?t=${Date.now()}`;
             modal.style.display = 'block';
             document.body.style.overflow = 'hidden';
         }
@@ -573,6 +580,7 @@
         loadOrders();
         setInterval(loadOrders, 30000);
         
+        // Закрытие модалок по клику на фон
         const chatModal = document.getElementById('chatModal');
         const unifiedModal = document.getElementById('unifiedChatModal');
         chatModal.addEventListener('click', (e) => { if (e.target === chatModal) closeChatModal(); });
