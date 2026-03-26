@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>DP SBOR — Заказы</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -32,7 +32,7 @@
             margin-bottom: 20px;
             color: #28a745;
         }
-        .logo span { color: #ff8f00; }
+        .logo span { color: #28a745; } /* полностью зелёный */
         .nav-item {
             padding: 12px 20px;
             display: flex;
@@ -46,19 +46,12 @@
             background: #28a745;
             color: white;
         }
-        .badge {
-            background: #e74c3c;
-            color: white;
-            border-radius: 50%;
-            padding: 2px 8px;
-            font-size: 12px;
-            margin-left: auto;
-        }
         .main-content {
             margin-left: 260px;
             padding: 20px;
             transition: margin-left 0.3s ease;
         }
+        /* Кнопка гамбургера */
         .menu-toggle {
             display: none;
             position: fixed;
@@ -83,51 +76,14 @@
             background: rgba(0,0,0,0.5);
             z-index: 999;
         }
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                width: 80%;
-                max-width: 280px;
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main-content {
-                margin-left: 0;
-                padding: 60px 15px 20px 15px;
-            }
-            .menu-toggle {
-                display: block;
-            }
-            .filters {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .filters select, .filters button {
-                width: 100%;
-                margin-bottom: 5px;
-            }
-            .orders-table {
-                overflow-x: auto;
-            }
-            table {
-                font-size: 12px;
-            }
-            th, td {
-                padding: 8px;
-            }
-            .action-buttons {
-                flex-direction: column;
-                gap: 5px;
-            }
-        }
-        .header {
+        /* Шапка с пользователем (справа) */
+        .top-bar {
             background: white;
-            padding: 15px 25px;
+            padding: 12px 25px;
             border-radius: 10px;
             margin-bottom: 20px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
@@ -136,6 +92,17 @@
             align-items: center;
             gap: 15px;
         }
+        .user-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .user-role {
+            background: #e67e22;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: white;
+        }
         .logout-btn {
             background: #e74c3c;
             color: white;
@@ -143,6 +110,10 @@
             padding: 8px 16px;
             border-radius: 5px;
             cursor: pointer;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #2c3e50;
         }
         .filters {
             display: flex;
@@ -213,6 +184,122 @@
             background: rgba(52, 152, 219, 0.1);
             border-left: 4px solid #3498db;
         }
+        /* Модальное окно чата */
+        .chat-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            overflow: auto;
+        }
+        .chat-modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 0;
+            width: 90%;
+            max-width: 800px;
+            height: 85%;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-modal-header {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chat-modal-header h3 {
+            font-size: 1rem;
+        }
+        .close-chat-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .chat-iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+        }
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 80%;
+                max-width: 280px;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .sidebar .logo {
+                margin-top: 60px;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 10px;
+            }
+            .top-bar {
+                padding: 10px 15px;
+                margin-bottom: 15px;
+            }
+            .user-info {
+                gap: 8px;
+            }
+            .user-name {
+                font-size: 12px;
+            }
+            .user-role {
+                font-size: 10px;
+                padding: 3px 6px;
+            }
+            .logout-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            h1 {
+                font-size: 1.4rem;
+                margin-bottom: 15px;
+            }
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filters select, .filters button {
+                width: 100%;
+                margin-bottom: 5px;
+            }
+            .orders-table {
+                overflow-x: auto;
+            }
+            table {
+                font-size: 12px;
+            }
+            th, td {
+                padding: 8px;
+            }
+            .action-buttons {
+                flex-direction: column;
+                gap: 5px;
+            }
+            .chat-modal-content {
+                margin: 10% auto;
+                width: 95%;
+                height: 80%;
+            }
+            .menu-toggle {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
@@ -228,13 +315,15 @@
     </div>
     
     <div class="main-content">
-        <div class="header">
-            <h1>Заказы</h1>
+        <div class="top-bar">
             <div class="user-info">
-                <span id="user-name">Загрузка...</span>
+                <span class="user-name" id="user-name">Загрузка...</span>
+                <span class="user-role" id="user-role"></span>
                 <button class="logout-btn" onclick="logout()">Выйти</button>
             </div>
         </div>
+        
+        <h1>Заказы</h1>
         
         <div class="filters">
             <select id="status-filter">
@@ -250,24 +339,27 @@
         <div class="orders-table">
             <table id="orders-table">
                 <thead>
-                    <tr>
-                        <th>№ заказа</th>
-                        <th>Клиент</th>
-                        <th>Состав</th>
-                        <th>Сумма</th>
-                        <th>Статус</th>
-                        <th>Действия</th>
-                    </tr>
+                    <tr><th>№ заказа</th><th>Клиент</th><th>Состав</th><th>Сумма</th><th>Статус</th><th>Действия</th></tr>
                 </thead>
-                <tbody id="orders-list">
-                    <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
-                </tbody>
+                <tbody id="orders-list"><tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr></tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Модальное окно чата -->
+    <div id="chatModal" class="chat-modal">
+        <div class="chat-modal-content">
+            <div class="chat-modal-header">
+                <h3>Чат с покупателем</h3>
+                <button class="close-chat-modal" onclick="closeChatModal()">&times;</button>
+            </div>
+            <iframe id="chatIframe" class="chat-iframe" src="about:blank"></iframe>
         </div>
     </div>
 
     <script>
         let currentUserRole = '';
+
         // Гамбургер-меню
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.getElementById('sidebar');
@@ -340,19 +432,35 @@
                         <td><span class="status ${statusClass}">${statusText}</span></td>
                         <td class="action-buttons">
                             ${showCompleteButton ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${showChatButton ? `<button class="chat-btn" onclick="openChat(${order.id})">💬 Чат</button>` : ''}
+                            ${showChatButton ? `<button class="chat-btn" onclick="openChatModal(${order.id})">💬 Чат</button>` : ''}
                         </td>
                     </tr>
                 `;
             }).join('');
         }
         
-        function openUnifiedChat() {
-            window.open('/manager/unified-chat.html', '_blank', 'width=800,height=600');
+        // Открыть чат в модальном окне
+        function openChatModal(orderId) {
+            const modal = document.getElementById('chatModal');
+            const iframe = document.getElementById('chatIframe');
+            // Загружаем страницу чата с параметром id
+            iframe.src = `/manager/chat.html?id=${orderId}`;
+            modal.style.display = 'block';
+            // Блокируем скролл фона
+            document.body.style.overflow = 'hidden';
         }
         
-        function openChat(orderId) {
-            window.open(`/manager/chat.html?id=${orderId}`, '_blank', 'width=500,height=600');
+        function closeChatModal() {
+            const modal = document.getElementById('chatModal');
+            const iframe = document.getElementById('chatIframe');
+            modal.style.display = 'none';
+            iframe.src = 'about:blank';
+            document.body.style.overflow = '';
+        }
+        
+        // Для кнопки "Все чаты" открываем унифицированный чат в новой вкладке (как раньше)
+        function openUnifiedChat() {
+            window.open('/manager/unified-chat.html', '_blank');
         }
         
         async function completeOrder(orderId) {
@@ -395,6 +503,14 @@
         loadUser();
         loadOrders();
         setInterval(loadOrders, 30000);
+        
+        // Закрытие модального окна по клику на оверлей (внутренний клик по фону)
+        const modal = document.getElementById('chatModal');
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeChatModal();
+            }
+        });
     </script>
 </body>
 </html>
