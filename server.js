@@ -14,6 +14,7 @@ app.get('/api/config', (req, res) => {
         maxBotName: process.env.MAX_BOT_NAME || null
     });
 });
+
 // ==================== CORS ====================
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -42,9 +43,8 @@ pool.connect((err, client, release) => {
     release();
   }
 });
-// === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ ===
 
-// 1. Добавляем колонку seller_price, если нет
+// === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ === (только здесь, все миграции в одном месте)
 pool.query(`
   DO $$
   BEGIN
@@ -57,7 +57,6 @@ pool.query(`
   END $$;
 `).catch(err => console.error('Migration error (seller_price):', err));
 
-// 2. Таблица запросов на выплату
 pool.query(`
   CREATE TABLE IF NOT EXISTS payout_requests (
     id SERIAL PRIMARY KEY,
@@ -70,7 +69,6 @@ pool.query(`
   );
 `).catch(err => console.error('Migration error (payout_requests):', err));
 
-// 3. Добавляем purchase_price_kg в products (если нет)
 pool.query(`
   DO $$
   BEGIN
@@ -81,7 +79,6 @@ pool.query(`
   END $$;
 `).catch(err => console.error('Migration error (purchase_price_kg):', err));
 
-// 4. Добавляем packaging_cost в variants (если нет)
 pool.query(`
   DO $$
   BEGIN
@@ -92,7 +89,6 @@ pool.query(`
   END $$;
 `).catch(err => console.error('Migration error (packaging_cost):', err));
 
-// 5. Обновляем seller_price по правильной формуле (округление до десятков вверх)
 pool.query(`
   UPDATE variants v
   SET seller_price = 
@@ -103,7 +99,6 @@ pool.query(`
   WHERE v.product_id = p.id;
 `).catch(err => console.error('Migration error (update seller_price):', err));
 
-// 6. Создаём функцию для триггера вариантов
 pool.query(`
   CREATE OR REPLACE FUNCTION update_seller_price()
   RETURNS TRIGGER AS $$
@@ -111,7 +106,6 @@ pool.query(`
       product_purchase_price NUMERIC;
   BEGIN
       SELECT purchase_price_kg INTO product_purchase_price FROM products WHERE id = NEW.product_id;
-      
       NEW.seller_price := 
           CEIL(
               (NEW.price + (product_purchase_price * NEW.weight_kg + COALESCE(NEW.packaging_cost, 0))) / 2 / 10
@@ -121,7 +115,6 @@ pool.query(`
   $$ LANGUAGE plpgsql;
 `).catch(err => console.error('Migration error (create function):', err));
 
-// 7. Триггер на variants
 pool.query(`
   DROP TRIGGER IF EXISTS trigger_update_seller_price ON variants;
   CREATE TRIGGER trigger_update_seller_price
@@ -131,7 +124,6 @@ pool.query(`
   EXECUTE FUNCTION update_seller_price();
 `).catch(err => console.error('Migration error (trigger on variants):', err));
 
-// 8. Функция для обновления вариантов при изменении purchase_price_kg
 pool.query(`
   CREATE OR REPLACE FUNCTION update_variants_seller_price_on_product_change()
   RETURNS TRIGGER AS $$
@@ -147,7 +139,6 @@ pool.query(`
   $$ LANGUAGE plpgsql;
 `).catch(err => console.error('Migration error (create product trigger function):', err));
 
-// 9. Триггер на products
 pool.query(`
   DROP TRIGGER IF EXISTS trigger_update_variants_on_product_change ON products;
   CREATE TRIGGER trigger_update_variants_on_product_change
@@ -156,6 +147,8 @@ pool.query(`
   FOR EACH ROW
   EXECUTE FUNCTION update_variants_seller_price_on_product_change();
 `).catch(err => console.error('Migration error (trigger on products):', err));
+// ==================== КОНЕЦ МИГРАЦИЙ ====================
+
 // ==================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ ====================
 let BASE_URL = process.env.SITE_URL;
 if (!BASE_URL) {
@@ -193,6 +186,7 @@ if (process.env.MAX_BOT_TOKEN && process.env.MAX_BOT_NAME) {
 } else {
     console.log('⚠️ MAX_BOT_TOKEN или MAX_BOT_NAME не заданы');
 }
+
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function normalizeNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -479,31 +473,6 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`✅ Заказ ${order_number} создан с ID: ${orderId}, user_telegram_id: ${userTelegramId}`);
 
-// Генерация номера для прямой продажи (с именем продавца)
-async function generateDirectSaleNumber(sellerName, sellerId) {
-  // Очищаем имя: заменяем пробелы на _, убираем нежелательные символы
-  let safeName = sellerName.trim();
-  safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_');
-  safeName = safeName.substring(0, 20); // ограничиваем длину
-  const prefix = `ПП_${safeName}_`;
-  try {
-    const result = await pool.query(
-      `SELECT order_number FROM orders WHERE order_number LIKE $1 ORDER BY id DESC LIMIT 1`,
-      [prefix + '%']
-    );
-    if (result.rows.length > 0) {
-      const lastNum = result.rows[0].order_number.substring(prefix.length);
-      const num = parseInt(lastNum) || 0;
-      return prefix + (num + 1);
-    } else {
-      return prefix + '1';
-    }
-  } catch (err) {
-    console.error('Ошибка при генерации номера прямой продажи:', err);
-    return prefix + '1';
-  }
-}
-
     // === ДОБАВЛЕННЫЙ КОД ДЛЯ MAX ===
     if (contact.max_id) {
         const maxId = contact.max_id;
@@ -529,7 +498,8 @@ async function generateDirectSaleNumber(sellerName, sellerId) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-// ==================== ВЕБХУКИ (перенаправляют в модули) ====================
+
+// ==================== ВЕБХУКИ ====================
 app.post('/api/telegram/webhook', telegramBot.handleTelegramWebhook);
 app.post('/api/vk/webhook', vkHandler.handleVKWebhook);
 app.post('/api/max/webhook', maxHandler.handleMAXWebhook);
@@ -544,7 +514,6 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         return res.status(400).json({ error: 'Не указан получатель или текст сообщения' });
     }
     
-    // Проверяем формат recipient_id только для Telegram
     if (channel === 'telegram') {
         const recipientIdNum = parseInt(recipient_id);
         if (isNaN(recipientIdNum) || recipientIdNum < 100000000) {
@@ -592,7 +561,6 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
             if (!maxHandler.isInitialized()) {
                 return res.status(500).json({ error: 'MAX бот не инициализирован' });
             }
-            // recipient_id должен быть числом (user_id)
             const sent = await maxHandler.sendMAXMessage(Number(recipient_id), message_text);
             if (sent) {
                 externalId = String(sent);
@@ -634,6 +602,7 @@ app.post('/api/chat/send', checkManagerAuth, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 // ==================== ПОЛУЧЕНИЕ ЧАТА ПО ЗАКАЗУ ====================
 app.get('/api/manager/order/:orderId/chat', checkManagerAuth, async (req, res) => {
     const { orderId } = req.params;
@@ -748,7 +717,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     const userRole = req.userRole;
     const userId = req.userId;
 
-    // Базовый запрос активных чатов (без фильтра по продавцу)
     let activeQuery = `
       SELECT DISTINCT 
         o.id as order_id,
@@ -827,7 +795,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
       FROM last_completed_orders lco
     `;
 
-    // Если пользователь не администратор, добавляем фильтр по seller_id
     if (userRole !== 'admin') {
       activeQuery += ` AND o.seller_id = $1`;
       completedQuery += ` WHERE lco.seller_id = $1`;
@@ -1077,7 +1044,7 @@ app.get('/api/manager/orders', checkManagerAuth, async (req, res) => {
   }
 });
 
-// ==================== ВЗЯТЬ ЗАКАЗ В РАБОТУ (С УВЕДОМЛЕНИЕМ) ====================
+// ==================== ВЗЯТЬ ЗАКАЗ В РАБОТУ ====================
 app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1116,7 +1083,6 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     
     await pool.query('COMMIT');
     
-    // Отправляем уведомление
     if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `🟢 Ваш заказ №${order.order_number} принят в работу!\n\nМенеджер скоро свяжется с вами для уточнения деталей.\n\n`;
       try {
@@ -1178,9 +1144,8 @@ app.put('/api/manager/order/:id/take', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// server.js – добавьте после всех существующих эндпоинтов
 
-// Получить список товаров с вариантами (для формы прямой продажи)
+// ==================== ПРЯМЫЕ ПРОДАЖИ ====================
 app.get('/api/manager/direct-products', checkManagerAuth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -1197,7 +1162,8 @@ app.get('/api/manager/direct-products', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// Генерация номера для прямой продажи с именем продавца
+
+// Генерация номера для прямой продажи (с именем продавца)
 async function generateDirectSaleNumber(sellerName, sellerId) {
   let safeName = sellerName.trim();
   safeName = safeName.replace(/[^\wа-яА-ЯёЁ]/g, '_');
@@ -1220,7 +1186,7 @@ async function generateDirectSaleNumber(sellerName, sellerId) {
     return prefix + '1';
   }
 }
-// Создать прямую продажу
+
 app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
   const { items, total } = req.body;
   const sellerId = req.userId;
@@ -1232,14 +1198,11 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
   try {
     await pool.query('BEGIN');
 
-    // Получаем имя менеджера
     const managerRes = await pool.query('SELECT name FROM users WHERE id = $1', [sellerId]);
     const managerName = managerRes.rows[0]?.name || 'Менеджер';
 
-    // Генерируем номер заказа с именем
     const orderNumber = await generateDirectSaleNumber(managerName, sellerId);
 
-    // Формируем items для БД
     const orderItems = items.map(item => ({
       productId: item.product_id,
       variantId: item.variant_id,
@@ -1250,7 +1213,6 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
     }));
     const itemsJson = JSON.stringify(orderItems);
 
-    // Формируем контакт
     const contact = {
       type: 'direct',
       manager_id: sellerId,
@@ -1259,7 +1221,6 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
     };
     const contactJson = JSON.stringify(contact);
 
-    // Вставляем заказ со статусом completed и sale_type = 'direct'
     const insertResult = await pool.query(`
       INSERT INTO orders (order_number, seller_id, items, total, contact, status, sale_type, completed_at, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
@@ -1268,7 +1229,6 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
 
     const orderId = insertResult.rows[0].id;
 
-    // Списание остатков со склада продавца
     let negativeStockItems = [];
     for (const item of items) {
       const variantId = item.variant_id;
@@ -1303,7 +1263,6 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
       }
     }
 
-    // Создание задач инвентаризации, если возникли отрицательные остатки
     if (negativeStockItems.length > 0) {
       for (const neg of negativeStockItems) {
         await pool.query(`
@@ -1324,11 +1283,10 @@ app.post('/api/manager/direct-sale', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получить список прямых продаж (с фильтром по продавцу для админа)
 app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
   const userId = req.userId;
   const userRole = req.userRole;
-  const sellerId = req.query.seller_id; // может быть строка или undefined
+  const sellerId = req.query.seller_id;
 
   try {
     let query;
@@ -1336,7 +1294,6 @@ app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
 
     if (userRole === 'admin') {
       if (sellerId) {
-        // Если передан seller_id, показываем продажи этого продавца
         query = `
           SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
                  u.name as seller_name, o.created_at, o.completed_at
@@ -1347,7 +1304,6 @@ app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
         `;
         params = [sellerId];
       } else {
-        // Без фильтра – все продажи
         query = `
           SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
                  u.name as seller_name, o.created_at, o.completed_at
@@ -1358,7 +1314,6 @@ app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
         `;
       }
     } else {
-      // Для менеджера – только его продажи
       query = `
         SELECT o.id, o.order_number, o.items, o.total, o.contact, o.seller_id, 
                u.name as seller_name, o.created_at, o.completed_at
@@ -1399,7 +1354,7 @@ app.get('/api/manager/direct-sales', checkManagerAuth, async (req, res) => {
   }
 });
 
-// ==================== ЗАВЕРШЕНИЕ ЗАКАЗА (С УВЕДОМЛЕНИЕМ И СПИСАНИЕМ) ====================
+// ==================== ЗАВЕРШЕНИЕ ЗАКАЗА ====================
 app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1434,7 +1389,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       recipientChannel = 'max';
     }
 
-    // Списание остатков (только если sellerId не null)
     let negativeStockItems = [];
     if (sellerId) {
       for (const item of items) {
@@ -1471,7 +1425,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       }
     }
 
-    // Создание задач инвентаризации
     if (negativeStockItems.length > 0) {
       for (const neg of negativeStockItems) {
         await pool.query(`
@@ -1482,13 +1435,11 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       console.error(`⚠️ При завершении заказа №${order.order_number} обнаружены отрицательные остатки:`, negativeStockItems);
     }
 
-    // Обновление статуса заказа
     await pool.query(
       'UPDATE orders SET status = $1, completed_at = NOW() WHERE id = $2',
       ['completed', id]
     );
 
-    // Уведомление покупателю
     if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
       try {
@@ -1533,7 +1484,6 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       }
     }
 
-    // Отправка ответа клиенту
     if (negativeStockItems.length > 0) {
       res.json({ success: true, warning: 'Заказ завершён, но обнаружены отрицательные остатки. Проверьте задачи инвентаризации.' });
     } else {
@@ -1580,8 +1530,8 @@ app.post('/api/manager/inventory-tasks/:id/resolve', checkManagerAuth, async (re
     res.status(500).json({ error: 'Database error' });
   }
 });
-// server.js – добавьте после других эндпоинтов менеджера
 
+// ==================== ПОЛУЧЕНИЕ ДЕТАЛЕЙ ЗАКАЗА ====================
 app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -1599,7 +1549,8 @@ app.get('/api/manager/order/:id', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// Проверка и добавление колонки sale_type в таблицу orders
+
+// Проверка и добавление колонки sale_type
 pool.query(`
   DO $$
   BEGIN
@@ -1609,6 +1560,7 @@ pool.query(`
     END IF;
   END $$;
 `).catch(err => console.error('Migration error (sale_type):', err));
+
 // ==================== СКЛАД (РАСШИРЕННЫЕ API) ====================
 app.get('/api/manager/warehouse', checkManagerAuth, async (req, res) => {
   try {
@@ -2110,7 +2062,8 @@ app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
   res.json({ sellers: result.rows });
 });
-      // Получить список продавцов (для фильтра)
+
+// Получить список продавцов (для фильтра)
 app.get('/api/manager/sellers-list', checkManagerAuth, async (req, res) => {
   if (req.userRole !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
@@ -2125,9 +2078,8 @@ app.get('/api/manager/sellers-list', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// ==================== ДОЛГ И ВЫПЛАТЫ ====================
 
-// Получить долг текущего пользователя
+// ==================== ДОЛГ И ВЫПЛАТЫ ====================
 app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
   const userId = req.userId;
   const userRole = req.userRole;
@@ -2136,9 +2088,7 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
     let totalCost = 0;
     let totalPaid = 0;
 
-    // 1. Суммируем стоимость проданных товаров (по себестоимости)
     if (userRole === 'seller') {
-      // Для продавца: сумма wholesale цен (seller_price)
       const costResult = await pool.query(`
         SELECT COALESCE(SUM(
           (oi.item->>'quantity')::numeric * 
@@ -2150,7 +2100,6 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
       `, [userId]);
       totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
     } else {
-      // Для кладовщика-продавца: сумма retail цен (order.total)
       const costResult = await pool.query(`
         SELECT COALESCE(SUM(total), 0) as total_cost
         FROM orders
@@ -2159,7 +2108,6 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
       totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
     }
 
-    // 2. Сумма подтверждённых выплат
     const paidResult = await pool.query(`
       SELECT COALESCE(SUM(amount), 0) as total_paid
       FROM payout_requests
@@ -2174,93 +2122,7 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
-// Добавляем purchase_price_kg в products (если нет)
-pool.query(`
-  DO $$
-  BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                   WHERE table_name='products' AND column_name='purchase_price_kg') THEN
-      ALTER TABLE products ADD COLUMN purchase_price_kg DECIMAL(10,2) DEFAULT 0;
-    END IF;
-  END $$;
-`).catch(err => console.error('Migration error (purchase_price_kg):', err));
 
-// Добавляем packaging_cost в variants (если нет)
-pool.query(`
-  DO $$
-  BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                   WHERE table_name='variants' AND column_name='packaging_cost') THEN
-      ALTER TABLE variants ADD COLUMN packaging_cost DECIMAL(10,2) DEFAULT 0;
-    END IF;
-  END $$;
-`).catch(err => console.error('Migration error (packaging_cost):', err));
-
-// Обновляем seller_price по формуле
-pool.query(`
-  UPDATE variants v
-  SET seller_price = 
-      CEIL(
-          (v.price - (p.purchase_price_kg * v.weight_kg + COALESCE(v.packaging_cost, 0))) / 2,
-          -1
-      )
-  FROM products p
-  WHERE v.product_id = p.id;
-`).catch(err => console.error('Migration error (update seller_price):', err));
-
-// Создаём функцию для триггера (если не существует)
-pool.query(`
-  CREATE OR REPLACE FUNCTION update_seller_price()
-  RETURNS TRIGGER AS $$
-  DECLARE
-      product_purchase_price NUMERIC;
-  BEGIN
-      SELECT purchase_price_kg INTO product_purchase_price FROM products WHERE id = NEW.product_id;
-      
-      NEW.seller_price := CEIL(
-          (NEW.price - (product_purchase_price * NEW.weight_kg + COALESCE(NEW.packaging_cost, 0))) / 2,
-          -1
-      );
-      RETURN NEW;
-  END;
-  $$ LANGUAGE plpgsql;
-`).catch(err => console.error('Migration error (create function):', err));
-
-// Создаём триггер на variants
-pool.query(`
-  DROP TRIGGER IF EXISTS trigger_update_seller_price ON variants;
-  CREATE TRIGGER trigger_update_seller_price
-  BEFORE INSERT OR UPDATE OF price, weight_kg, packaging_cost, product_id
-  ON variants
-  FOR EACH ROW
-  EXECUTE FUNCTION update_seller_price();
-`).catch(err => console.error('Migration error (trigger on variants):', err));
-
-// Создаём триггер на products для обновления seller_price при изменении purchase_price_kg
-pool.query(`
-  CREATE OR REPLACE FUNCTION update_variants_seller_price_on_product_change()
-  RETURNS TRIGGER AS $$
-  BEGIN
-      UPDATE variants
-      SET seller_price = CEIL(
-          (price - (NEW.purchase_price_kg * weight_kg + COALESCE(packaging_cost, 0))) / 2,
-          -1
-      )
-      WHERE product_id = NEW.id;
-      RETURN NEW;
-  END;
-  $$ LANGUAGE plpgsql;
-`).catch(err => console.error('Migration error (create product trigger function):', err));
-
-pool.query(`
-  DROP TRIGGER IF EXISTS trigger_update_variants_on_product_change ON products;
-  CREATE TRIGGER trigger_update_variants_on_product_change
-  AFTER UPDATE OF purchase_price_kg
-  ON products
-  FOR EACH ROW
-  EXECUTE FUNCTION update_variants_seller_price_on_product_change();
-`).catch(err => console.error('Migration error (trigger on products):', err));
-// Создать запрос на выплату
 app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
   const { amount } = req.body;
   const sellerId = req.userId;
@@ -2270,7 +2132,6 @@ app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
   }
 
   try {
-    // Получаем текущий долг
     let totalCost = 0;
     let totalPaid = 0;
 
@@ -2310,7 +2171,6 @@ app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
       return res.status(400).json({ error: `Сумма превышает текущий долг (${debt.toFixed(2)} руб.)` });
     }
 
-    // Создаём запрос
     const result = await pool.query(`
       INSERT INTO payout_requests (seller_id, amount, status, created_at)
       VALUES ($1, $2, 'pending', NOW())
@@ -2324,7 +2184,6 @@ app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Получить список ожидающих запросов на выплату (только для админа)
 app.get('/api/manager/payout-requests', checkManagerAuth, async (req, res) => {
   if (req.userRole !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
@@ -2344,7 +2203,6 @@ app.get('/api/manager/payout-requests', checkManagerAuth, async (req, res) => {
   }
 });
 
-// Подтвердить выплату (админ)
 app.post('/api/manager/payout-requests/:id/approve', checkManagerAuth, async (req, res) => {
   if (req.userRole !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
@@ -2376,7 +2234,6 @@ app.post('/api/manager/payout-requests/:id/approve', checkManagerAuth, async (re
   }
 });
 
-// Отклонить выплату (админ)
 app.post('/api/manager/payout-requests/:id/reject', checkManagerAuth, async (req, res) => {
   if (req.userRole !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
@@ -2399,6 +2256,7 @@ app.post('/api/manager/payout-requests/:id/reject', checkManagerAuth, async (req
   }
 });
 
+// ==================== ЗАПУСК СЕРВЕРА ====================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
