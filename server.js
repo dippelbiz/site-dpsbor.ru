@@ -1667,7 +1667,7 @@ app.get('/api/manager/variants/:productId', checkManagerAuth, async (req, res) =
 
 app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res) => {
   const { sellerId } = req.params;
-  
+
   const result = await pool.query(`
     WITH all_variants AS (
       SELECT 
@@ -1680,19 +1680,16 @@ app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res
       JOIN products p ON v.product_id = p.id
       WHERE v.is_active = true
     ),
-    seller_quantities AS (
-      SELECT 
-        ss.variant_id,
-        ss.quantity,
-        COALESCE(pt.pending_quantity, 0) as pending_quantity
-      FROM seller_stock ss
-      LEFT JOIN (
-        SELECT variant_id, SUM(quantity) as pending_quantity
-        FROM pending_transfers
-        WHERE seller_id = $1 AND status = 'pending'
-        GROUP BY variant_id
-      ) pt ON ss.variant_id = pt.variant_id
-      WHERE ss.seller_id = $1
+    pending_agg AS (
+      SELECT variant_id, SUM(quantity) as pending_quantity
+      FROM pending_transfers
+      WHERE seller_id = $1 AND status = 'pending'
+      GROUP BY variant_id
+    ),
+    stock_agg AS (
+      SELECT variant_id, quantity
+      FROM seller_stock
+      WHERE seller_id = $1
     )
     SELECT 
       av.variant_id,
@@ -1700,15 +1697,17 @@ app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res
       av.product_id,
       av.product_name,
       av.category,
-      COALESCE(sq.quantity, 0) as quantity,
-      COALESCE(sq.pending_quantity, 0) as pending_quantity
+      COALESCE(stock.quantity, 0) as quantity,
+      COALESCE(pending.pending_quantity, 0) as pending_quantity
     FROM all_variants av
-    LEFT JOIN seller_quantities sq ON av.variant_id = sq.variant_id
+    LEFT JOIN pending_agg pending ON av.variant_id = pending.variant_id
+    LEFT JOIN stock_agg stock ON av.variant_id = stock.variant_id
     ORDER BY av.category, av.product_name, av.variant_name
   `, [sellerId]);
-  
+
   res.json({ stock: result.rows });
 });
+
 
 app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
   try {
