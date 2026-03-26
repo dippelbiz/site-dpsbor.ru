@@ -43,7 +43,73 @@ pool.connect((err, client, release) => {
     release();
   }
 });
+// Создание недостающих таблиц, если их нет
+pool.query(`
+  CREATE TABLE IF NOT EXISTS hub_stock (
+    product_id INTEGER PRIMARY KEY REFERENCES products(id),
+    product_name VARCHAR(255),
+    quantity_kg DECIMAL(10,2) DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT NOW()
+  );
+`).catch(err => console.error('Migration error (hub_stock):', err));
 
+pool.query(`
+  CREATE TABLE IF NOT EXISTS main_warehouse (
+    variant_id INTEGER PRIMARY KEY REFERENCES variants(id),
+    quantity INTEGER DEFAULT 0,
+    reserved INTEGER DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT NOW()
+  );
+`).catch(err => console.error('Migration error (main_warehouse):', err));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS seller_stock (
+    seller_id INTEGER REFERENCES users(id),
+    variant_id INTEGER REFERENCES variants(id),
+    quantity INTEGER DEFAULT 0,
+    reserved INTEGER DEFAULT 0,
+    PRIMARY KEY (seller_id, variant_id)
+  );
+`).catch(err => console.error('Migration error (seller_stock):', err));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS pending_transfers (
+    id SERIAL PRIMARY KEY,
+    seller_id INTEGER REFERENCES users(id),
+    variant_id INTEGER REFERENCES variants(id),
+    quantity INTEGER NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+  );
+`).catch(err => console.error('Migration error (pending_transfers):', err));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS inventory_tasks (
+    id SERIAL PRIMARY KEY,
+    seller_id INTEGER REFERENCES users(id),
+    variant_id INTEGER REFERENCES variants(id),
+    reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    resolved_at TIMESTAMP
+  );
+`).catch(err => console.error('Migration error (inventory_tasks):', err));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS warehouse_operations (
+    id SERIAL PRIMARY KEY,
+    variant_id INTEGER REFERENCES variants(id),
+    source_type VARCHAR(20),
+    type VARCHAR(20),
+    quantity DECIMAL(10,2),
+    seller_id INTEGER REFERENCES users(id),
+    user_id INTEGER REFERENCES users(id),
+    transfer_id INTEGER,
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
+`).catch(err => console.error('Migration error (warehouse_operations):', err));
 // === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ === (только здесь, все миграции в одном месте)
 pool.query(`
   DO $$
