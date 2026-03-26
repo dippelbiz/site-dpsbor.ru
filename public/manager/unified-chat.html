@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>DP SBOR — Все чаты</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -20,6 +20,8 @@
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
+            transition: transform 0.3s ease;
+            z-index: 1000;
         }
         .sidebar-header {
             padding: 12px 15px;
@@ -294,6 +296,7 @@
             display: flex;
             gap: 12px;
             align-items: baseline;
+            flex-wrap: wrap;
         }
         .order-detail-label {
             font-weight: 500;
@@ -328,6 +331,8 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         .complete-order-btn {
             background: #27ae60;
@@ -342,10 +347,75 @@
         .complete-order-btn:hover {
             background: #2ecc71;
         }
+        .menu-toggle {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            font-size: 22px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 1100;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        @media (max-width: 768px) {
+            .sidebar-chats {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                z-index: 1000;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+            }
+            .sidebar-chats.open {
+                transform: translateX(0);
+            }
+            .menu-toggle {
+                display: block;
+            }
+            .main-chat {
+                margin-left: 0;
+            }
+            .order-detail-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+            .order-detail-label {
+                min-width: auto;
+            }
+            .message {
+                max-width: 90%;
+                font-size: 11px;
+            }
+            .chat-input textarea {
+                font-size: 11px;
+                height: 45px;
+            }
+            .chat-input button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="sidebar-chats">
+    <button class="menu-toggle" id="menuToggle">☰</button>
+    <div class="overlay" id="overlay"></div>
+    <div class="sidebar-chats" id="sidebarChats">
         <div class="sidebar-header">
             <h2>💬 Диалоги</h2>
         </div>
@@ -373,6 +443,17 @@
         let allChats = { active: [], completed: [] };
         let pollInterval = null;
         
+        // Мобильное меню
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebarChats = document.getElementById('sidebarChats');
+        const overlay = document.getElementById('overlay');
+        function toggleSidebar() {
+            sidebarChats.classList.toggle('open');
+            overlay.style.display = sidebarChats.classList.contains('open') ? 'block' : 'none';
+        }
+        menuToggle.addEventListener('click', toggleSidebar);
+        overlay.addEventListener('click', toggleSidebar);
+        
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) { window.location.href = '/manager/'; return false; }
@@ -383,7 +464,6 @@
             if (!confirm('Вы уверены, что хотите завершить этот заказ?\nПосле завершения чат станет недоступен для отправки сообщений.')) {
                 return;
             }
-            
             const token = checkAuth();
             try {
                 const response = await fetch(`/api/manager/order/${currentOrderId}/complete`, {
@@ -393,7 +473,6 @@
                         'Authorization': `Bearer ${token}`
                     }
                 });
-                
                 if (response.ok) {
                     const result = await response.json();
                     if (result.warning) {
@@ -504,6 +583,7 @@
                 renderChatWindow({ ...data, order });
                 
                 await markMessagesAsRead(orderId);
+                if (window.innerWidth <= 768) toggleSidebar(); // закрыть меню на мобильном
             } catch (err) {
                 console.error('Error loading chat:', err);
             }
