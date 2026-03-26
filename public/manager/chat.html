@@ -15,7 +15,7 @@
         }
         .chat-header {
             background: white;
-            padding: 10px 15px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ecf0f1;
             display: flex;
             justify-content: space-between;
@@ -25,7 +25,6 @@
         .order-info {
             font-weight: bold;
             color: #2c3e50;
-            font-size: 14px;
         }
         .close-btn {
             background: #e74c3c;
@@ -38,71 +37,78 @@
         }
         .info-bar {
             background: #f8f9fa;
-            padding: 5px 12px;
+            padding: 6px 12px;
             font-size: 11px;
             color: #666;
             border-bottom: 1px solid #ecf0f1;
         }
+        /* Компактная панель информации о заказе */
         .order-info-panel {
             background: white;
+            margin: 8px 12px;
+            padding: 8px 12px;
             border-radius: 8px;
-            margin: 6px 8px;
-            padding: 8px 10px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             font-size: 11px;
             border-left: 3px solid #3498db;
         }
-        .order-details {
+        .order-header-compact {
             display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .order-detail-row {
-            display: flex;
-            align-items: baseline;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
             flex-wrap: wrap;
             gap: 6px;
         }
-        .order-detail-label {
-            font-weight: 500;
-            color: #7f8c8d;
-            min-width: 100px;
-        }
-        .order-detail-value {
-            color: #2c3e50;
-        }
-        .status-processing {
-            color: #f39c12;
-            font-weight: 500;
-        }
-        .status-completed {
-            color: #27ae60;
-            font-weight: 500;
-        }
-        .order-header-with-btn {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
-        }
-        .order-header-with-btn .order-detail-title {
+        .order-title {
             font-weight: bold;
-            font-size: 13px;
+            font-size: 12px;
             color: #2c3e50;
         }
         .complete-order-btn {
             background: #27ae60;
             color: white;
             border: none;
-            padding: 4px 10px;
+            padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 11px;
+            font-size: 10px;
         }
+        .order-details-compact {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            row-gap: 4px;
+            align-items: baseline;
+        }
+        .order-detail-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+        .detail-label {
+            font-weight: 500;
+            color: #7f8c8d;
+        }
+        .detail-value {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        .order-items-compact {
+            margin-top: 4px;
+            padding-left: 8px;
+            border-left: 2px solid #ecf0f1;
+        }
+        .order-items-compact div {
+            font-size: 10px;
+            color: #555;
+        }
+        .status-processing { color: #f39c12; }
+        .status-completed { color: #27ae60; }
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 12px;
             display: flex;
             flex-direction: column;
             background: #e9ecef;
@@ -111,7 +117,7 @@
             max-width: 85%;
             margin-bottom: 8px;
             padding: 6px 10px;
-            border-radius: 10px;
+            border-radius: 8px;
             word-wrap: break-word;
             font-size: 12px;
         }
@@ -136,19 +142,19 @@
         .system-message {
             background: #f8f9fa;
             color: #2c3e50;
-            border-left: 2px solid #f39c12;
+            border-left: 3px solid #f39c12;
             font-style: italic;
         }
         .chat-input {
             background: white;
-            padding: 8px 10px;
+            padding: 10px;
             border-top: 1px solid #ecf0f1;
             display: flex;
             gap: 8px;
         }
         .chat-input textarea {
             flex: 1;
-            padding: 8px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
             border-radius: 6px;
             resize: none;
@@ -167,6 +173,10 @@
             font-size: 12px;
             align-self: flex-end;
         }
+        .chat-input button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
         .loading {
             text-align: center;
             padding: 20px;
@@ -181,19 +191,15 @@
             margin-left: 6px;
         }
         @media (max-width: 768px) {
-            .order-detail-label {
-                min-width: 80px;
+            .chat-header {
+                padding: 8px 12px;
             }
             .order-info-panel {
-                margin: 4px 6px;
-                padding: 6px 8px;
+                margin: 6px 10px;
+                padding: 6px 10px;
             }
-            .order-header-with-btn .order-detail-title {
-                font-size: 12px;
-            }
-            .complete-order-btn {
-                font-size: 10px;
-                padding: 3px 8px;
+            .order-details-compact {
+                gap: 8px;
             }
             .message {
                 max-width: 90%;
@@ -239,7 +245,6 @@
             if (!confirm('Вы уверены, что хотите завершить этот заказ?\nПосле завершения чат станет недоступен для отправки сообщений.')) {
                 return;
             }
-            
             const token = checkAuth();
             try {
                 const response = await fetch(`/api/manager/order/${orderId}/complete`, {
@@ -249,7 +254,6 @@
                         'Authorization': `Bearer ${token}`
                     }
                 });
-                
                 if (response.ok) {
                     const result = await response.json();
                     if (result.warning) {
@@ -274,13 +278,11 @@
                 const response = await fetch(`/api/manager/order/${orderId}/chat`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                
                 if (response.status === 401) {
                     localStorage.removeItem('manager_token');
                     window.location.href = '/manager/';
                     return;
                 }
-                
                 const data = await response.json();
                 currentRecipient = data.recipient;
                 currentOrderStatus = data.status;
@@ -293,31 +295,21 @@
                 const contact = order.contact;
                 const items = order.items;
                 
-                // Компактная панель
+                // Компактное отображение информации
                 const orderInfoHtml = `
-                    <div class="order-details">
-                        <div class="order-header-with-btn">
-                            <div class="order-detail-title">Заказ №${order.order_number}</div>
-                            ${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить</button>' : ''}
-                        </div>
-                        <div class="order-detail-row">
-                            <span class="order-detail-label">Статус:</span>
-                            <span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span>
-                            <span class="order-detail-label">Сумма:</span>
-                            <span class="order-detail-value">${order.total} руб.</span>
-                            <span class="order-detail-label">Оплата:</span>
-                            <span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span>
-                        </div>
-                        <div class="order-detail-row">
-                            <span class="order-detail-label">Способ получения:</span>
-                            <span class="order-detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span>
-                            <span class="order-detail-label">Адрес:</span>
-                            <span class="order-detail-value">${contact.address}</span>
-                        </div>
-                        <div class="order-detail-row order-items">
-                            <span class="order-detail-label">Состав:</span>
-                            <span class="order-detail-value">${items.map(item => `${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.`).join(', ')}</span>
-                        </div>
+                    <div class="order-header-compact">
+                        <span class="order-title">Заказ ${order.order_number}</span>
+                        ${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить</button>' : ''}
+                    </div>
+                    <div class="order-details-compact">
+                        <span class="order-detail-item"><span class="detail-label">Статус:</span> <span class="detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span></span>
+                        <span class="order-detail-item"><span class="detail-label">Сумма:</span> <span class="detail-value">${order.total} ₽</span></span>
+                        <span class="order-detail-item"><span class="detail-label">Оплата:</span> <span class="detail-value">${contact.paymentMethod === 'cash' ? 'Наличные' : 'Перевод'}</span></span>
+                        <span class="order-detail-item"><span class="detail-label">Получение:</span> <span class="detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span></span>
+                        <span class="order-detail-item"><span class="detail-label">Адрес:</span> <span class="detail-value">${contact.address || '—'}</span></span>
+                    </div>
+                    <div class="order-items-compact">
+                        ${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} ₽</div>`).join('')}
                     </div>
                 `;
                 document.getElementById('order-info-panel').innerHTML = orderInfoHtml;
@@ -376,7 +368,6 @@
             if (!messages || messages.length === 0) {
                 return '<div class="loading">Нет сообщений</div>';
             }
-            
             return messages.map(msg => {
                 const date = new Date(msg.created_at);
                 const formattedDate = date.toLocaleString('ru-RU', {
@@ -385,11 +376,9 @@
                     hour: '2-digit',
                     minute: '2-digit'
                 });
-                
                 const isOutgoing = msg.direction === 'outgoing';
                 const senderName = isOutgoing ? 'Вы' : (msg.sender_name || 'Клиент');
                 const extraClass = msg.sender_name === 'Система' ? 'system-message' : '';
-                
                 return `
                     <div class="message ${msg.direction} ${extraClass}">
                         <div>${escapeHtml(msg.message_text)}</div>
@@ -404,26 +393,20 @@
         async function sendMessage() {
             const input = document.getElementById('message-input');
             const text = input.value.trim();
-            
             if (!text) return;
-            
             if (!currentRecipient?.id) {
                 alert('Нет получателя для отправки сообщения');
                 return;
             }
-            
             if (currentOrderStatus !== 'processing') {
                 alert('Чат доступен только для заказов в работе');
                 return;
             }
-            
             const token = checkAuth();
             const sendBtn = document.getElementById('send-btn');
             const originalText = sendBtn.textContent;
-            
             sendBtn.disabled = true;
             sendBtn.textContent = 'Отправка...';
-            
             try {
                 const response = await fetch('/api/chat/send', {
                     method: 'POST',
@@ -438,7 +421,6 @@
                         message_text: text
                     })
                 });
-                
                 if (response.ok) {
                     input.value = '';
                     await loadChat();
