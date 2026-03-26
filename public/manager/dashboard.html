@@ -32,7 +32,7 @@
             margin-bottom: 20px;
             color: #28a745;
         }
-        .logo span { color: #ff8f00; }
+        .logo span { color: #28a745; } /* полностью зелёный */
         .nav-item {
             padding: 12px 20px;
             display: flex;
@@ -124,7 +124,7 @@
             margin-bottom: 20px;
             color: #2c3e50;
         }
-        /* Остальные стили */
+        /* Остальные стили (статистика, задачи, модальные окна) остаются без изменений */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -384,6 +384,9 @@
             .sidebar.open {
                 transform: translateX(0);
             }
+            .sidebar .logo {
+                margin-top: 60px; /* отступ, чтобы не перекрывалось кнопкой гамбургера */
+            }
             .main-content {
                 margin-left: 0;
                 padding: 10px;
@@ -449,10 +452,6 @@
             }
             .menu-toggle {
                 display: block;
-            }
-            /* Корректировка логотипа в меню – он и так под кнопкой, но добавим отступ сверху */
-            .sidebar .logo {
-                margin-top: 10px;
             }
         }
     </style>
