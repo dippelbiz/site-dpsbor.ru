@@ -32,7 +32,7 @@
             margin-bottom: 20px;
             color: #28a745;
         }
-        .logo span { color: #28a745; } /* полностью зелёный */
+        .logo span { color: #28a745; }
         .nav-item {
             padding: 12px 20px;
             display: flex;
@@ -51,7 +51,6 @@
             padding: 20px;
             transition: margin-left 0.3s ease;
         }
-        /* Кнопка гамбургера */
         .menu-toggle {
             display: none;
             position: fixed;
@@ -76,7 +75,6 @@
             background: rgba(0,0,0,0.5);
             z-index: 999;
         }
-        /* Шапка с пользователем (справа) */
         .top-bar {
             background: white;
             padding: 12px 25px;
@@ -133,58 +131,106 @@
             border: none;
             cursor: pointer;
         }
-        .orders-table {
+        /* Контейнер заказов – flex-сетка вместо таблицы для удобства на мобильных */
+        .orders-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .order-card {
             background: white;
-            border-radius: 10px;
-            padding: 20px;
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ecf0f1;
-        }
-        th {
-            color: #7f8c8d;
-            font-weight: normal;
-        }
-        .status {
-            padding: 4px 8px;
             border-radius: 12px;
-            font-size: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s;
         }
-        .status-processing { background: #f39c12; color: white; }
-        .status-completed { background: #27ae60; color: white; }
-        .status-cancelled { background: #e74c3c; color: white; }
+        .order-card.row-processing {
+            border-left: 4px solid #3498db;
+            background: rgba(52, 152, 219, 0.05);
+        }
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .order-number {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #2c3e50;
+        }
+        .order-client {
+            color: #7f8c8d;
+            font-size: 0.85rem;
+        }
+        .order-items {
+            margin: 10px 0;
+            font-size: 0.85rem;
+            color: #555;
+            border-top: 1px solid #ecf0f1;
+            border-bottom: 1px solid #ecf0f1;
+            padding: 8px 0;
+        }
+        .order-item-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+        .order-total {
+            font-weight: bold;
+            text-align: right;
+            margin: 8px 0;
+            font-size: 1rem;
+        }
+        .order-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .status-processing {
+            background: #3498db;
+            color: white;
+        }
+        .status-completed {
+            background: #27ae60;
+            color: white;
+        }
+        .status-cancelled {
+            background: #e74c3c;
+            color: white;
+        }
         .action-buttons {
             display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .complete-btn, .chat-btn {
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 500;
         }
         .complete-btn {
             background: #27ae60;
+            color: white;
         }
         .chat-btn {
             background: #3498db;
+            color: white;
         }
-        .items-list {
-            font-size: 12px;
-            max-width: 200px;
-        }
-        .items-list div {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .row-processing {
-            background: rgba(52, 152, 219, 0.1);
-            border-left: 4px solid #3498db;
-        }
-        /* Модальные окна чата */
+        /* Модальные окна */
         .chat-modal {
             display: none;
             position: fixed;
@@ -208,7 +254,6 @@
             display: flex;
             flex-direction: column;
         }
-        /* Унифицированный чат — шире */
         .chat-modal-content.unified {
             max-width: 1200px;
             width: 95%;
@@ -222,9 +267,6 @@
             justify-content: space-between;
             align-items: center;
         }
-        .chat-modal-header h3 {
-            font-size: 1rem;
-        }
         .close-chat-modal {
             background: none;
             border: none;
@@ -237,7 +279,6 @@
             border: none;
             width: 100%;
         }
-        /* Мобильная адаптация */
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -256,7 +297,6 @@
             }
             .top-bar {
                 padding: 10px 15px;
-                margin-bottom: 15px;
             }
             .user-info {
                 gap: 8px;
@@ -274,7 +314,6 @@
             }
             h1 {
                 font-size: 1.4rem;
-                margin-bottom: 15px;
             }
             .filters {
                 flex-direction: column;
@@ -282,20 +321,22 @@
             }
             .filters select, .filters button {
                 width: 100%;
-                margin-bottom: 5px;
             }
-            .orders-table {
-                overflow-x: auto;
+            .order-header {
+                flex-direction: column;
+                gap: 4px;
             }
-            table {
-                font-size: 12px;
-            }
-            th, td {
-                padding: 8px;
+            .order-footer {
+                flex-direction: column;
+                align-items: flex-start;
             }
             .action-buttons {
-                flex-direction: column;
-                gap: 5px;
+                width: 100%;
+                justify-content: stretch;
+            }
+            .complete-btn, .chat-btn {
+                flex: 1;
+                text-align: center;
             }
             .chat-modal-content {
                 margin: 10% auto;
@@ -317,7 +358,6 @@
         <a href="/manager/dashboard.html" class="nav-item">📊 Дашборд</a>
         <a href="/manager/orders.html" class="nav-item active">📦 Заказы</a>
         <a href="/manager/warehouse.html" class="nav-item">🏪 Склад</a>
-        <!-- Заявки и выплаты удалены -->
     </div>
     
     <div class="main-content">
@@ -342,16 +382,12 @@
             <button id="all-chats-btn" onclick="openUnifiedChatModal()" style="background: #9b59b6; display: none;">💬 Все чаты</button>
         </div>
         
-        <div class="orders-table">
-            <table id="orders-table">
-                <thead>
-                    <tr><th>№ заказа</th><th>Клиент</th><th>Состав</th><th>Сумма</th><th>Статус</th><th>Действия</th> </thead>
-                <tbody id="orders-list"> <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr> </tbody>
-            </table>
+        <div class="orders-container" id="orders-container">
+            <div style="text-align: center; padding: 20px;">Загрузка...</div>
         </div>
     </div>
 
-    <!-- Модальное окно чата с конкретным заказом -->
+    <!-- Модальное окно чата с заказом -->
     <div id="chatModal" class="chat-modal">
         <div class="chat-modal-content">
             <div class="chat-modal-header">
@@ -362,7 +398,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно унифицированного чата (все чаты) -->
+    <!-- Модальное окно унифицированного чата -->
     <div id="unifiedChatModal" class="chat-modal">
         <div class="chat-modal-content unified">
             <div class="chat-modal-header">
@@ -414,48 +450,61 @@
         }
         
         function renderOrders(orders) {
-            const tbody = document.getElementById('orders-list');
+            const container = document.getElementById('orders-container');
             if (!orders || orders.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет заказов</td></tr>';
+                container.innerHTML = '<div style="text-align: center; padding: 20px;">Нет заказов</div>';
                 return;
             }
             
-            tbody.innerHTML = orders.map(order => {
+            container.innerHTML = orders.map(order => {
                 const statusText = {
                     'processing': 'В работе',
                     'completed': 'Выполнен',
                     'cancelled': 'Отменён'
                 }[order.status] || order.status;
-                
                 const statusClass = `status-${order.status}`;
-                const itemsHtml = order.items?.map(item => 
-                    `<div>${item.name} (${item.variantName || 'уп.'}) x${item.quantity}</div>`
-                ).join('') || '-';
-                
                 const isProcessing = order.status === 'processing';
-                const showChatButton = isProcessing;
-                const showCompleteButton = isProcessing;
                 
-                let rowClass = '';
-                if (isProcessing) rowClass = 'row-processing';
+                // Формируем список товаров
+                const itemsHtml = order.items?.map(item => `
+                    <div class="order-item-line">
+                        <span>${item.name} (${item.variantName || 'уп.'}) × ${item.quantity}</span>
+                        <span>${(item.price * item.quantity).toFixed(0)} ₽</span>
+                    </div>
+                `).join('') || '<div class="order-item-line">Нет данных</div>';
+                
+                const contactName = order.contact?.name || order.contact?.phone || 'Клиент';
                 
                 return `
-                    <tr class="${rowClass}">
-                        <td><strong>${order.order_number}</strong></td>
-                        <td>${order.contact?.name || order.contact?.phone || '-'}</td>
-                        <td class="items-list">${itemsHtml}</td>
-                        <td>${order.total} ₽</td>
-                        <td><span class="status ${statusClass}">${statusText}</span></td>
-                        <td class="action-buttons">
-                            ${showCompleteButton ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
-                            ${showChatButton ? `<button class="chat-btn" onclick="openChatModal(${order.id})">💬 Чат</button>` : ''}
-                        </td>
-                    </tr>
+                    <div class="order-card ${isProcessing ? 'row-processing' : ''}">
+                        <div class="order-header">
+                            <span class="order-number">Заказ №${order.order_number}</span>
+                            <span class="order-client">${escapeHtml(contactName)}</span>
+                        </div>
+                        <div class="order-items">
+                            ${itemsHtml}
+                        </div>
+                        <div class="order-total">Итого: ${order.total} ₽</div>
+                        <div class="order-footer">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <div class="action-buttons">
+                                ${isProcessing ? `<button class="complete-btn" onclick="completeOrder(${order.id})">✅ Завершить</button>` : ''}
+                                ${isProcessing ? `<button class="chat-btn" onclick="openChatModal(${order.id})">💬 Чат</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
                 `;
             }).join('');
         }
         
-        // Открыть чат с конкретным заказом в модальном окне
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Чат с конкретным заказом
         function openChatModal(orderId) {
             const modal = document.getElementById('chatModal');
             const iframe = document.getElementById('chatIframe');
@@ -472,7 +521,7 @@
             document.body.style.overflow = '';
         }
         
-        // Открыть унифицированный чат (все чаты) в модальном окне
+        // Унифицированный чат
         function openUnifiedChatModal() {
             const modal = document.getElementById('unifiedChatModal');
             const iframe = document.getElementById('unifiedChatIframe');
@@ -530,7 +579,7 @@
         loadOrders();
         setInterval(loadOrders, 30000);
         
-        // Закрытие модальных окон по клику на оверлей (фон)
+        // Закрытие модалок по клику на фон
         const chatModal = document.getElementById('chatModal');
         const unifiedModal = document.getElementById('unifiedChatModal');
         chatModal.addEventListener('click', (e) => { if (e.target === chatModal) closeChatModal(); });
