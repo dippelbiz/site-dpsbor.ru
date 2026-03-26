@@ -343,10 +343,14 @@
             }
             .main-chat {
                 margin-left: 0;
-                padding-left: 50px; /* отступ, чтобы контент не перекрывался бургер-кнопкой */
+                padding-top: 55px; /* отступ, чтобы кнопка не перекрывала контент */
             }
             .burger-btn {
                 display: block;
+            }
+            /* Убираем старую кнопку внутри панели, если была */
+            .sidebar-header .mobile-menu-toggle {
+                display: none;
             }
         }
         .overlay {
