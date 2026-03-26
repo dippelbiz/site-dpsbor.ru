@@ -48,6 +48,7 @@
             padding: 0;
             line-height: 1;
         }
+        /* Вкладки – всегда видны, не прокручиваются */
         .tabs {
             display: flex;
             border-bottom: 1px solid #ecf0f1;
@@ -259,7 +260,6 @@
             justify-content: center;
             color: #7f8c8d;
         }
-        .order-info-panel, .complete-order-btn { /* стили остаются как есть */ }
         .order-info-panel {
             background: white;
             border-radius: 12px;
@@ -359,6 +359,7 @@
     <div class="main-chat" id="main-chat">
         <div class="no-chat-selected">Выберите диалог</div>
     </div>
+
     <script>
         let currentOrderId = null, currentRecipient = null, currentOrderStatus = null, currentOldOrders = [], currentTab = 'active', allChats = { active: [], completed: [] }, pollInterval = null;
         const sidebarChats = document.getElementById('sidebarChats');
