@@ -131,7 +131,6 @@
             border: none;
             cursor: pointer;
         }
-        /* Контейнер заказов – flex-сетка вместо таблицы для удобства на мобильных */
         .orders-container {
             display: flex;
             flex-direction: column;
@@ -266,6 +265,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
         .close-chat-modal {
             background: none;
@@ -387,7 +387,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно чата с заказом -->
+    <!-- Модальное окно чата с конкретным заказом -->
     <div id="chatModal" class="chat-modal">
         <div class="chat-modal-content">
             <div class="chat-modal-header">
@@ -398,7 +398,7 @@
         </div>
     </div>
 
-    <!-- Модальное окно унифицированного чата -->
+    <!-- Модальное окно унифицированного чата (все чаты) -->
     <div id="unifiedChatModal" class="chat-modal">
         <div class="chat-modal-content unified">
             <div class="chat-modal-header">
@@ -465,7 +465,6 @@
                 const statusClass = `status-${order.status}`;
                 const isProcessing = order.status === 'processing';
                 
-                // Формируем список товаров
                 const itemsHtml = order.items?.map(item => `
                     <div class="order-item-line">
                         <span>${item.name} (${item.variantName || 'уп.'}) × ${item.quantity}</span>
@@ -521,7 +520,7 @@
             document.body.style.overflow = '';
         }
         
-        // Унифицированный чат
+        // Унифицированный чат (все чаты) в модальном окне
         function openUnifiedChatModal() {
             const modal = document.getElementById('unifiedChatModal');
             const iframe = document.getElementById('unifiedChatIframe');
