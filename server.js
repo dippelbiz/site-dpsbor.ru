@@ -43,7 +43,8 @@ pool.connect((err, client, release) => {
   }
 });
 // === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ ===
-// Добавляем колонку seller_price в таблицу variants (цена для продавца)
+
+// 1. Добавляем колонку seller_price, если нет
 pool.query(`
   DO $$
   BEGIN
@@ -56,7 +57,7 @@ pool.query(`
   END $$;
 `).catch(err => console.error('Migration error (seller_price):', err));
 
-// Таблица запросов на выплату
+// 2. Таблица запросов на выплату
 pool.query(`
   CREATE TABLE IF NOT EXISTS payout_requests (
     id SERIAL PRIMARY KEY,
@@ -68,6 +69,93 @@ pool.query(`
     note TEXT
   );
 `).catch(err => console.error('Migration error (payout_requests):', err));
+
+// 3. Добавляем purchase_price_kg в products (если нет)
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='products' AND column_name='purchase_price_kg') THEN
+      ALTER TABLE products ADD COLUMN purchase_price_kg DECIMAL(10,2) DEFAULT 0;
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (purchase_price_kg):', err));
+
+// 4. Добавляем packaging_cost в variants (если нет)
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='variants' AND column_name='packaging_cost') THEN
+      ALTER TABLE variants ADD COLUMN packaging_cost DECIMAL(10,2) DEFAULT 0;
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (packaging_cost):', err));
+
+// 5. Обновляем seller_price по правильной формуле (округление до десятков вверх)
+pool.query(`
+  UPDATE variants v
+  SET seller_price = 
+      CEIL(
+          (v.price + (p.purchase_price_kg * v.weight_kg + COALESCE(v.packaging_cost, 0))) / 2 / 10
+      ) * 10
+  FROM products p
+  WHERE v.product_id = p.id;
+`).catch(err => console.error('Migration error (update seller_price):', err));
+
+// 6. Создаём функцию для триггера вариантов
+pool.query(`
+  CREATE OR REPLACE FUNCTION update_seller_price()
+  RETURNS TRIGGER AS $$
+  DECLARE
+      product_purchase_price NUMERIC;
+  BEGIN
+      SELECT purchase_price_kg INTO product_purchase_price FROM products WHERE id = NEW.product_id;
+      
+      NEW.seller_price := 
+          CEIL(
+              (NEW.price + (product_purchase_price * NEW.weight_kg + COALESCE(NEW.packaging_cost, 0))) / 2 / 10
+          ) * 10;
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+`).catch(err => console.error('Migration error (create function):', err));
+
+// 7. Триггер на variants
+pool.query(`
+  DROP TRIGGER IF EXISTS trigger_update_seller_price ON variants;
+  CREATE TRIGGER trigger_update_seller_price
+  BEFORE INSERT OR UPDATE OF price, weight_kg, packaging_cost, product_id
+  ON variants
+  FOR EACH ROW
+  EXECUTE FUNCTION update_seller_price();
+`).catch(err => console.error('Migration error (trigger on variants):', err));
+
+// 8. Функция для обновления вариантов при изменении purchase_price_kg
+pool.query(`
+  CREATE OR REPLACE FUNCTION update_variants_seller_price_on_product_change()
+  RETURNS TRIGGER AS $$
+  BEGIN
+      UPDATE variants
+      SET seller_price = 
+          CEIL(
+              (price + (NEW.purchase_price_kg * weight_kg + COALESCE(packaging_cost, 0))) / 2 / 10
+          ) * 10
+      WHERE product_id = NEW.id;
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+`).catch(err => console.error('Migration error (create product trigger function):', err));
+
+// 9. Триггер на products
+pool.query(`
+  DROP TRIGGER IF EXISTS trigger_update_variants_on_product_change ON products;
+  CREATE TRIGGER trigger_update_variants_on_product_change
+  AFTER UPDATE OF purchase_price_kg
+  ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION update_variants_seller_price_on_product_change();
+`).catch(err => console.error('Migration error (trigger on products):', err));
 // ==================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ ====================
 let BASE_URL = process.env.SITE_URL;
 if (!BASE_URL) {
@@ -415,21 +503,7 @@ async function generateDirectSaleNumber(sellerName, sellerId) {
     return prefix + '1';
   }
 }
-      // Получить список продавцов (для фильтра)
-app.get('/api/manager/sellers-list', checkManagerAuth, async (req, res) => {
-  if (req.userRole !== 'admin') {
-    return res.status(403).json({ error: 'Доступ запрещён' });
-  }
-  try {
-    const result = await pool.query(
-      "SELECT id, name FROM users WHERE role IN ('seller', 'admin') ORDER BY name"
-    );
-    res.json({ sellers: result.rows });
-  } catch (err) {
-    console.error('Sellers list error:', err);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
+
     // === ДОБАВЛЕННЫЙ КОД ДЛЯ MAX ===
     if (contact.max_id) {
         const maxId = contact.max_id;
@@ -2035,6 +2109,21 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
 app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
   res.json({ sellers: result.rows });
+});
+      // Получить список продавцов (для фильтра)
+app.get('/api/manager/sellers-list', checkManagerAuth, async (req, res) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  try {
+    const result = await pool.query(
+      "SELECT id, name FROM users WHERE role IN ('seller', 'admin') ORDER BY name"
+    );
+    res.json({ sellers: result.rows });
+  } catch (err) {
+    console.error('Sellers list error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 // ==================== ДОЛГ И ВЫПЛАТЫ ====================
 
