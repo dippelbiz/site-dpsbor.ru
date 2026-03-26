@@ -778,71 +778,148 @@ app.post('/api/manager/chat/mark-read/:orderId', checkManagerAuth, async (req, r
 });
 
 // ==================== API ДЛЯ СПИСКА ЧАТОВ ====================
-let completedQuery = `
-  WITH recipient_info AS (
-    SELECT 
-      id,
-      order_number,
-      contact,
-      seller_id,
-      status,
-      created_at,
-      COALESCE(
-        (contact->>'telegram_id')::text,
-        contact->>'vk_id',
-        contact->>'max_id'
-      ) as recipient_id
-    FROM orders
-    WHERE status = 'completed'
-      AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = orders.id)
-  ),
-  last_completed_orders AS (
-    SELECT DISTINCT ON (recipient_id) 
-      id,
-      order_number,
-      contact,
-      seller_id,
-      status,
-      created_at,
-      recipient_id
-    FROM recipient_info
-    WHERE recipient_id IS NOT NULL
-    ORDER BY recipient_id, created_at DESC
-  )
-  SELECT 
-    lco.id as order_id,
-    lco.order_number,
-    lco.contact,
-    lco.seller_id,
-    lco.status,
-    lco.created_at,
-    (
-      SELECT message_text 
-      FROM chat_messages 
-      WHERE order_id = lco.id
-      ORDER BY created_at DESC 
-      LIMIT 1
-    ) as last_message,
-    (
-      SELECT created_at 
-      FROM chat_messages 
-      WHERE order_id = lco.id
-      ORDER BY created_at DESC 
-      LIMIT 1
-    ) as last_message_date,
-    (
-      SELECT direction 
-      FROM chat_messages 
-      WHERE order_id = lco.id
-      ORDER BY created_at DESC 
-      LIMIT 1
-    ) as last_message_direction
-  FROM last_completed_orders lco
-`;
+app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
+  try {
+    const userRole = req.userRole;
+    const userId = req.userId;
 
-if (userRole !== 'admin') {
-  completedQuery += ` WHERE lco.seller_id = $1`;
-}
+    // Активные чаты (в работе)
+    let activeQuery = `
+      SELECT DISTINCT 
+        o.id as order_id,
+        o.order_number,
+        o.contact,
+        o.user_telegram_id,
+        o.status,
+        (
+          SELECT message_text 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_date,
+        (
+          SELECT direction 
+          FROM chat_messages 
+          WHERE order_id = o.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_direction
+      FROM orders o
+      WHERE o.status IN ('new', 'processing')
+        AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
+    `;
+
+    // Завершённые чаты – группируем по recipient_id (telegram_id, vk_id, max_id)
+    let completedQuery = `
+      WITH recipient_info AS (
+        SELECT 
+          id,
+          order_number,
+          contact,
+          seller_id,
+          status,
+          created_at,
+          COALESCE(
+            (contact->>'telegram_id')::text,
+            contact->>'vk_id',
+            contact->>'max_id'
+          ) as recipient_id
+        FROM orders
+        WHERE status = 'completed'
+          AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = orders.id)
+      ),
+      last_completed_orders AS (
+        SELECT DISTINCT ON (recipient_id) 
+          id,
+          order_number,
+          contact,
+          seller_id,
+          status,
+          created_at,
+          recipient_id
+        FROM recipient_info
+        WHERE recipient_id IS NOT NULL
+        ORDER BY recipient_id, created_at DESC
+      )
+      SELECT 
+        lco.id as order_id,
+        lco.order_number,
+        lco.contact,
+        lco.seller_id,
+        lco.status,
+        lco.created_at,
+        (
+          SELECT message_text 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_date,
+        (
+          SELECT direction 
+          FROM chat_messages 
+          WHERE order_id = lco.id
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_direction
+      FROM last_completed_orders lco
+    `;
+
+    // Если пользователь не администратор, добавляем фильтр по seller_id
+    if (userRole !== 'admin') {
+      activeQuery += ` AND o.seller_id = $1`;
+      completedQuery += ` WHERE lco.seller_id = $1`;
+    }
+
+    const activeParams = userRole !== 'admin' ? [userId] : [];
+    const completedParams = userRole !== 'admin' ? [userId] : [];
+
+    const activeResult = await pool.query(activeQuery, activeParams);
+    const completedResult = await pool.query(completedQuery, completedParams);
+
+    const formatChat = (row) => {
+      const contact = typeof row.contact === 'string' ? JSON.parse(row.contact) : row.contact || {};
+      return {
+        orderId: row.order_id,
+        orderNumber: row.order_number,
+        clientName: contact.name || contact.telegram_name || contact.vk_name || 'Клиент',
+        lastMessage: row.last_message ? row.last_message.substring(0, 100) : null,
+        lastMessageDate: row.last_message_date ? new Date(row.last_message_date).toLocaleString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+          day: '2-digit',
+          month: '2-digit'
+        }) : null,
+        lastMessageDirection: row.last_message_direction,
+        status: row.status
+      };
+    };
+
+    res.json({
+      active: activeResult.rows.map(formatChat),
+      completed: completedResult.rows.map(formatChat)
+    });
+  } catch (err) {
+    console.error('Ошибка получения списка чатов:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // ==================== ПОЛУЧЕНИЕ ЗАКАЗА ПО НОМЕРУ ====================
 app.get('/api/manager/order-by-number/:orderNumber', checkManagerAuth, async (req, res) => {
     const { orderNumber } = req.params;
