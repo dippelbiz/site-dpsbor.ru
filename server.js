@@ -2085,7 +2085,92 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+// Добавляем purchase_price_kg в products (если нет)
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='products' AND column_name='purchase_price_kg') THEN
+      ALTER TABLE products ADD COLUMN purchase_price_kg DECIMAL(10,2) DEFAULT 0;
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (purchase_price_kg):', err));
 
+// Добавляем packaging_cost в variants (если нет)
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='variants' AND column_name='packaging_cost') THEN
+      ALTER TABLE variants ADD COLUMN packaging_cost DECIMAL(10,2) DEFAULT 0;
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (packaging_cost):', err));
+
+// Обновляем seller_price по формуле
+pool.query(`
+  UPDATE variants v
+  SET seller_price = 
+      CEIL(
+          (v.price - (p.purchase_price_kg * v.weight_kg + COALESCE(v.packaging_cost, 0))) / 2,
+          -1
+      )
+  FROM products p
+  WHERE v.product_id = p.id;
+`).catch(err => console.error('Migration error (update seller_price):', err));
+
+// Создаём функцию для триггера (если не существует)
+pool.query(`
+  CREATE OR REPLACE FUNCTION update_seller_price()
+  RETURNS TRIGGER AS $$
+  DECLARE
+      product_purchase_price NUMERIC;
+  BEGIN
+      SELECT purchase_price_kg INTO product_purchase_price FROM products WHERE id = NEW.product_id;
+      
+      NEW.seller_price := CEIL(
+          (NEW.price - (product_purchase_price * NEW.weight_kg + COALESCE(NEW.packaging_cost, 0))) / 2,
+          -1
+      );
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+`).catch(err => console.error('Migration error (create function):', err));
+
+// Создаём триггер на variants
+pool.query(`
+  DROP TRIGGER IF EXISTS trigger_update_seller_price ON variants;
+  CREATE TRIGGER trigger_update_seller_price
+  BEFORE INSERT OR UPDATE OF price, weight_kg, packaging_cost, product_id
+  ON variants
+  FOR EACH ROW
+  EXECUTE FUNCTION update_seller_price();
+`).catch(err => console.error('Migration error (trigger on variants):', err));
+
+// Создаём триггер на products для обновления seller_price при изменении purchase_price_kg
+pool.query(`
+  CREATE OR REPLACE FUNCTION update_variants_seller_price_on_product_change()
+  RETURNS TRIGGER AS $$
+  BEGIN
+      UPDATE variants
+      SET seller_price = CEIL(
+          (price - (NEW.purchase_price_kg * weight_kg + COALESCE(packaging_cost, 0))) / 2,
+          -1
+      )
+      WHERE product_id = NEW.id;
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+`).catch(err => console.error('Migration error (create product trigger function):', err));
+
+pool.query(`
+  DROP TRIGGER IF EXISTS trigger_update_variants_on_product_change ON products;
+  CREATE TRIGGER trigger_update_variants_on_product_change
+  AFTER UPDATE OF purchase_price_kg
+  ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION update_variants_seller_price_on_product_change();
+`).catch(err => console.error('Migration error (trigger on products):', err));
 // Создать запрос на выплату
 app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
   const { amount } = req.body;
