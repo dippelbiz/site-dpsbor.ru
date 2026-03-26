@@ -42,7 +42,32 @@ pool.connect((err, client, release) => {
     release();
   }
 });
+// === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ ===
+// Добавляем колонку seller_price в таблицу variants (цена для продавца)
+pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='variants' AND column_name='seller_price') THEN
+      ALTER TABLE variants ADD COLUMN seller_price DECIMAL(10,2);
+      UPDATE variants SET seller_price = price;
+      ALTER TABLE variants ALTER COLUMN seller_price SET NOT NULL;
+    END IF;
+  END $$;
+`).catch(err => console.error('Migration error (seller_price):', err));
 
+// Таблица запросов на выплату
+pool.query(`
+  CREATE TABLE IF NOT EXISTS payout_requests (
+    id SERIAL PRIMARY KEY,
+    seller_id INTEGER NOT NULL REFERENCES users(id),
+    amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    confirmed_at TIMESTAMP,
+    note TEXT
+  );
+`).catch(err => console.error('Migration error (payout_requests):', err));
 // ==================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ ====================
 let BASE_URL = process.env.SITE_URL;
 if (!BASE_URL) {
@@ -2010,6 +2035,194 @@ app.get('/api/manager/tasks/completed', checkManagerAuth, async (req, res) => {
 app.get('/api/manager/sellers', checkManagerAuth, async (req, res) => {
   const result = await pool.query("SELECT id, name, role FROM users WHERE role IN ('seller', 'admin') ORDER BY name");
   res.json({ sellers: result.rows });
+});
+// ==================== ДОЛГ И ВЫПЛАТЫ ====================
+
+// Получить долг текущего пользователя
+app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
+  const userId = req.userId;
+  const userRole = req.userRole;
+
+  try {
+    let totalCost = 0;
+    let totalPaid = 0;
+
+    // 1. Суммируем стоимость проданных товаров (по себестоимости)
+    if (userRole === 'seller') {
+      // Для продавца: сумма wholesale цен (seller_price)
+      const costResult = await pool.query(`
+        SELECT COALESCE(SUM(
+          (oi.item->>'quantity')::numeric * 
+          (SELECT seller_price FROM variants WHERE id = (oi.item->>'variantId')::int)
+        ), 0) as total_cost
+        FROM orders o,
+        LATERAL jsonb_array_elements(o.items) as oi(item)
+        WHERE o.seller_id = $1 AND o.status = 'completed'
+      `, [userId]);
+      totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
+    } else {
+      // Для кладовщика-продавца: сумма retail цен (order.total)
+      const costResult = await pool.query(`
+        SELECT COALESCE(SUM(total), 0) as total_cost
+        FROM orders
+        WHERE seller_id = $1 AND status = 'completed'
+      `, [userId]);
+      totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
+    }
+
+    // 2. Сумма подтверждённых выплат
+    const paidResult = await pool.query(`
+      SELECT COALESCE(SUM(amount), 0) as total_paid
+      FROM payout_requests
+      WHERE seller_id = $1 AND status = 'approved'
+    `, [userId]);
+    totalPaid = parseFloat(paidResult.rows[0].total_paid) || 0;
+
+    const debt = totalCost - totalPaid;
+    res.json({ debt });
+  } catch (err) {
+    console.error('Debt calculation error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Создать запрос на выплату
+app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
+  const { amount } = req.body;
+  const sellerId = req.userId;
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: 'Укажите корректную сумму' });
+  }
+
+  try {
+    // Получаем текущий долг
+    let totalCost = 0;
+    let totalPaid = 0;
+
+    const roleResult = await pool.query('SELECT role FROM users WHERE id = $1', [sellerId]);
+    const userRole = roleResult.rows[0]?.role;
+
+    if (userRole === 'seller') {
+      const costResult = await pool.query(`
+        SELECT COALESCE(SUM(
+          (oi.item->>'quantity')::numeric * 
+          (SELECT seller_price FROM variants WHERE id = (oi.item->>'variantId')::int)
+        ), 0) as total_cost
+        FROM orders o,
+        LATERAL jsonb_array_elements(o.items) as oi(item)
+        WHERE o.seller_id = $1 AND o.status = 'completed'
+      `, [sellerId]);
+      totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
+    } else {
+      const costResult = await pool.query(`
+        SELECT COALESCE(SUM(total), 0) as total_cost
+        FROM orders
+        WHERE seller_id = $1 AND status = 'completed'
+      `, [sellerId]);
+      totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
+    }
+
+    const paidResult = await pool.query(`
+      SELECT COALESCE(SUM(amount), 0) as total_paid
+      FROM payout_requests
+      WHERE seller_id = $1 AND status = 'approved'
+    `, [sellerId]);
+    totalPaid = parseFloat(paidResult.rows[0].total_paid) || 0;
+
+    const debt = totalCost - totalPaid;
+
+    if (amount > debt) {
+      return res.status(400).json({ error: `Сумма превышает текущий долг (${debt.toFixed(2)} руб.)` });
+    }
+
+    // Создаём запрос
+    const result = await pool.query(`
+      INSERT INTO payout_requests (seller_id, amount, status, created_at)
+      VALUES ($1, $2, 'pending', NOW())
+      RETURNING id
+    `, [sellerId, amount]);
+
+    res.json({ success: true, requestId: result.rows[0].id });
+  } catch (err) {
+    console.error('Request payout error:', err);
+    res.status(500).json({ error: 'Ошибка при создании запроса' });
+  }
+});
+
+// Получить список ожидающих запросов на выплату (только для админа)
+app.get('/api/manager/payout-requests', checkManagerAuth, async (req, res) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  try {
+    const result = await pool.query(`
+      SELECT pr.*, u.name as seller_name
+      FROM payout_requests pr
+      JOIN users u ON pr.seller_id = u.id
+      WHERE pr.status = 'pending'
+      ORDER BY pr.created_at ASC
+    `);
+    res.json({ requests: result.rows });
+  } catch (err) {
+    console.error('Get payout requests error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Подтвердить выплату (админ)
+app.post('/api/manager/payout-requests/:id/approve', checkManagerAuth, async (req, res) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  const { id } = req.params;
+  try {
+    await pool.query('BEGIN');
+
+    const requestResult = await pool.query(`
+      SELECT * FROM payout_requests WHERE id = $1 AND status = 'pending'
+    `, [id]);
+    if (requestResult.rows.length === 0) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ error: 'Запрос не найден или уже обработан' });
+    }
+
+    await pool.query(`
+      UPDATE payout_requests 
+      SET status = 'approved', confirmed_at = NOW()
+      WHERE id = $1
+    `, [id]);
+
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Approve payout error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Отклонить выплату (админ)
+app.post('/api/manager/payout-requests/:id/reject', checkManagerAuth, async (req, res) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      UPDATE payout_requests 
+      SET status = 'rejected', confirmed_at = NOW()
+      WHERE id = $1 AND status = 'pending'
+      RETURNING id
+    `, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Запрос не найден или уже обработан' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Reject payout error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
