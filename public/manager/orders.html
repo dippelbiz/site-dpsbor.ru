@@ -397,17 +397,16 @@
         </div>
     </div>
 
-    <!-- Модальное окно унифицированного чата (все чаты) -->
-    <div id="unifiedChatModal" class="chat-modal">
-        <div class="chat-modal-content unified">
-            <div class="chat-modal-header">
-                <h3>Все чаты</h3>
-                <button class="close-chat-modal" onclick="closeUnifiedChatModal()">&times;</button>
-            </div>
-            <iframe id="unifiedChatIframe" class="chat-iframe" src="about:blank"></iframe>
+   <!-- Модальное окно унифицированного чата (все чаты) -->
+<div id="unifiedChatModal" class="chat-modal">
+    <div class="chat-modal-content unified">
+        <div class="chat-modal-header">
+            <h3>Все чаты</h3>
+            <button class="close-chat-modal" onclick="closeUnifiedChatModal()">&times;</button>
         </div>
+        <iframe id="unifiedChatIframe" class="chat-iframe" src="about:blank" style="width:100%; height:100%; border:none;"></iframe>
     </div>
-
+</div>
     <script>
         let currentUserRole = '';
 
