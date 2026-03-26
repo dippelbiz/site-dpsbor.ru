@@ -2153,8 +2153,8 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
     let totalCost = 0;
     let totalPaid = 0;
 
-    if (userRole === 'seller') {
-      // Для продавца: сумма seller_price * количество
+    // Для продавца или администратора (если он выступает как продавец) считаем по seller_price
+    if (userRole === 'seller' || userRole === 'admin') {
       const costResult = await pool.query(`
         SELECT COALESCE(SUM(
           (oi.item->>'quantity')::numeric * 
@@ -2165,7 +2165,7 @@ app.get('/api/manager/debt', checkManagerAuth, async (req, res) => {
         WHERE o.seller_id = $1 AND o.status = 'completed'
       `, [userId]);
       totalCost = parseFloat(costResult.rows[0].total_cost) || 0;
-    } else {
+    } else if (userRole === 'warehouse_seller') {
       // Для кладовщика-продавца: сумма retail цен (order.total)
       const costResult = await pool.query(`
         SELECT COALESCE(SUM(total), 0) as total_cost
