@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>Вход — Панель управления</title>
     <style>
         * {
@@ -17,77 +17,115 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 16px;
         }
         .login-card {
             background: white;
-            border-radius: 20px;
-            padding: 40px 30px;
+            border-radius: 24px;
+            padding: 32px 24px;
             text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             width: 100%;
+            max-width: 400px;
+            transition: all 0.2s;
         }
         .logo {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: bold;
             color: #28a745;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
         .logo span {
             color: #ff8f00;
         }
         h2 {
             color: #333;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            font-size: 1.6rem;
         }
         p {
             color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
+            margin-bottom: 28px;
+            font-size: 0.9rem;
+            line-height: 1.4;
         }
         .telegram-login {
-            margin: 20px 0;
+            margin: 20px 0 16px;
             min-height: 60px;
+            display: flex;
+            justify-content: center;
+        }
+        /* Стили для виджета Telegram (чтобы адаптировался) */
+        .telegram-login iframe {
+            max-width: 100% !important;
+            height: auto !important;
         }
         .error {
             color: #dc3545;
-            margin-top: 15px;
-            font-size: 14px;
+            margin-top: 16px;
+            font-size: 0.85rem;
             display: none;
+            background: #fff0f0;
+            padding: 10px;
+            border-radius: 12px;
         }
         .loading {
             display: none;
-            margin-top: 15px;
+            margin-top: 16px;
             color: #666;
+            font-size: 0.85rem;
         }
         button {
             background: #28a745;
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 14px 20px;
+            border-radius: 40px;
             cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            margin-top: 16px;
             width: 100%;
+            transition: background 0.2s;
         }
         button:hover {
             background: #218838;
         }
+        button:active {
+            transform: scale(0.98);
+        }
         @media (max-width: 480px) {
+            body {
+                padding: 12px;
+                align-items: flex-start;
+                padding-top: 20px;
+            }
             .login-card {
-                padding: 30px 20px;
+                padding: 28px 20px;
+                border-radius: 28px;
             }
             .logo {
-                font-size: 2rem;
+                font-size: 1.9rem;
             }
             h2 {
-                font-size: 1.5rem;
+                font-size: 1.4rem;
+            }
+            p {
+                font-size: 0.85rem;
+                margin-bottom: 24px;
             }
             button {
-                padding: 10px 20px;
-                font-size: 14px;
+                padding: 12px 16px;
+                font-size: 0.95rem;
+            }
+        }
+        /* Дополнительная адаптация для очень узких экранов */
+        @media (max-width: 360px) {
+            .login-card {
+                padding: 24px 16px;
+            }
+            .logo {
+                font-size: 1.7rem;
             }
         }
     </style>
@@ -111,8 +149,11 @@
         async function onTelegramAuth(user) {
             console.log('Telegram user:', user);
             
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('error').style.display = 'none';
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error');
+            
+            loadingEl.style.display = 'block';
+            errorEl.style.display = 'none';
             
             try {
                 const response = await fetch('/api/manager/auth', {
@@ -136,19 +177,19 @@
                     console.log('Redirecting to dashboard...');
                     window.location.href = '/manager/dashboard.html';
                 } else {
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('error').style.display = 'block';
-                    document.getElementById('error').innerHTML = '❌ ' + (data.message || 'Доступ запрещён');
+                    loadingEl.style.display = 'none';
+                    errorEl.style.display = 'block';
+                    errorEl.innerHTML = '❌ ' + (data.message || 'Доступ запрещён');
                 }
             } catch (err) {
                 console.error('Auth error:', err);
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('error').innerHTML = '❌ Ошибка сервера: ' + err.message;
+                loadingEl.style.display = 'none';
+                errorEl.style.display = 'block';
+                errorEl.innerHTML = '❌ Ошибка сервера: ' + err.message;
             }
         }
         
-        // Ручная проверка (для отладки)
+        // Ручная проверка
         async function manualCheck() {
             const token = localStorage.getItem('manager_token');
             if (token) {
@@ -174,7 +215,7 @@
         // Глобальная функция для Telegram
         window.onTelegramAuth = onTelegramAuth;
         
-        // Проверяем, есть ли уже токен
+        // Проверяем существующий токен
         const existingToken = localStorage.getItem('manager_token');
         if (existingToken) {
             console.log('Found existing token, checking...');
