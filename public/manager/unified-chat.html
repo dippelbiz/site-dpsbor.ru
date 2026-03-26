@@ -46,10 +46,14 @@
             padding: 0;
             line-height: 1;
         }
+        /* Закрепляем вкладки вверху */
         .tabs {
             display: flex;
             border-bottom: 1px solid #ecf0f1;
             background: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .tab {
             flex: 1;
