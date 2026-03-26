@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>DP SBOR — Панель управления</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -11,7 +11,7 @@
             background: #f5f5f5;
             overflow-x: hidden;
         }
-        /* Десктопная версия (шире 768px) */
+        /* Десктопная версия */
         .sidebar {
             position: fixed;
             left: 0;
@@ -85,61 +85,46 @@
             background: rgba(0,0,0,0.5);
             z-index: 999;
         }
-        /* Мобильная версия */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                width: 80%;
-                max-width: 280px;
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main-content {
-                margin-left: 0;
-                padding: 60px 15px 20px 15px;
-            }
-            .menu-toggle {
-                display: block;
-            }
-            .stats-grid {
-                grid-template-columns: 1fr;
-                gap: 15px;
-            }
-            .stat-card {
-                padding: 15px;
-            }
-            .stat-value {
-                font-size: 28px;
-            }
-            .tasks-header {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 10px;
-            }
-            .task-card {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .task-buttons {
-                margin-top: 10px;
-                justify-content: flex-start;
-            }
-            .direct-sale-actions {
-                flex-direction: column;
-            }
-            .action-btn {
-                width: 100%;
-                padding: 14px;
-                font-size: 16px;
-            }
-            .modal-content {
-                width: 95%;
-                margin: 10% auto;
-                padding: 20px;
-            }
+        /* Шапка с пользователем (справа) */
+        .top-bar {
+            background: white;
+            padding: 12px 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        /* Остальные стили (статистика, задачи, модальные окна) остаются без изменений */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .user-role {
+            background: #e67e22;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: white;
+        }
+        .logout-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        /* Остальные стили */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -253,7 +238,7 @@
             font-size: 14px;
             font-weight: bold;
         }
-        /* Модальные окна (стили остаются как есть) */
+        /* Модальные окна */
         .modal {
             display: none;
             position: fixed;
@@ -292,7 +277,10 @@
             cursor: pointer;
             color: #7f8c8d;
         }
-        /* Остальные стили для элементов модальных окон (sale-item, summary и т.д.) — копируем из текущего dashboard.html */
+        /* Стили для элементов формы (чтобы не было зума на мобильных) */
+        input, select, textarea, button {
+            font-size: 16px !important;
+        }
         .sale-item {
             background: #f8f9fa;
             border-radius: 8px;
@@ -386,6 +374,87 @@
             border-radius: 6px;
             background: white;
         }
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 80%;
+                max-width: 280px;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 10px;
+            }
+            .top-bar {
+                padding: 10px 15px;
+                margin-bottom: 15px;
+            }
+            .user-info {
+                gap: 8px;
+            }
+            .user-name {
+                font-size: 12px;
+            }
+            .user-role {
+                font-size: 10px;
+                padding: 3px 6px;
+            }
+            .logout-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            h1 {
+                font-size: 1.4rem;
+                margin-bottom: 15px;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                margin-bottom: 20px;
+            }
+            .stat-card {
+                padding: 12px;
+            }
+            .stat-value {
+                font-size: 28px;
+            }
+            .tasks-header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .task-card {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .task-buttons {
+                margin-top: 8px;
+                justify-content: flex-start;
+            }
+            .direct-sale-actions {
+                flex-direction: column;
+            }
+            .action-btn {
+                width: 100%;
+                padding: 12px;
+                font-size: 14px;
+            }
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+                padding: 20px;
+            }
+            .menu-toggle {
+                display: block;
+            }
+            /* Корректировка логотипа в меню – он и так под кнопкой, но добавим отступ сверху */
+            .sidebar .logo {
+                margin-top: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -404,14 +473,15 @@
     </div>
     
     <div class="main-content">
-        <div class="header" style="background: white; padding: 15px 25px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h1>Дашборд</h1>
+        <div class="top-bar">
             <div class="user-info">
                 <span class="user-name" id="user-name">Загрузка...</span>
                 <span class="user-role" id="user-role"></span>
-                <button class="logout-btn" onclick="logout()" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer;">Выйти</button>
+                <button class="logout-btn" onclick="logout()">Выйти</button>
             </div>
         </div>
+        
+        <h1>Дашборд</h1>
         
         <div class="stats-grid">
             <div class="stat-card">
@@ -537,7 +607,6 @@
         }
         menuToggle.addEventListener('click', toggleMenu);
         overlay.addEventListener('click', toggleMenu);
-        // Закрывать меню при клике на ссылку (для удобства)
         document.querySelectorAll('.nav-item').forEach(link => {
             link.addEventListener('click', () => {
                 if (window.innerWidth <= 768) toggleMenu();
