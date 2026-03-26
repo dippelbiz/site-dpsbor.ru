@@ -54,6 +54,7 @@
             min-height: 60px;
             display: flex;
             justify-content: center;
+            align-items: center;
         }
         /* Стили для виджета Telegram (чтобы адаптировался) */
         .telegram-login iframe {
@@ -95,11 +96,6 @@
             transform: scale(0.98);
         }
         @media (max-width: 480px) {
-            body {
-                padding: 12px;
-                align-items: flex-start;
-                padding-top: 20px;
-            }
             .login-card {
                 padding: 28px 20px;
                 border-radius: 28px;
@@ -119,7 +115,6 @@
                 font-size: 0.95rem;
             }
         }
-        /* Дополнительная адаптация для очень узких экранов */
         @media (max-width: 360px) {
             .login-card {
                 padding: 24px 16px;
@@ -145,7 +140,6 @@
     </div>
 
     <script>
-        // Функция авторизации
         async function onTelegramAuth(user) {
             console.log('Telegram user:', user);
             
@@ -166,15 +160,12 @@
                     })
                 });
                 
-                console.log('Response status:', response.status);
                 const data = await response.json();
-                console.log('Response data:', data);
                 
                 if (response.ok && data.success) {
                     localStorage.setItem('manager_token', data.token);
                     localStorage.setItem('manager_name', data.name);
                     localStorage.setItem('manager_role', data.role);
-                    console.log('Redirecting to dashboard...');
                     window.location.href = '/manager/dashboard.html';
                 } else {
                     loadingEl.style.display = 'none';
@@ -189,11 +180,9 @@
             }
         }
         
-        // Ручная проверка
         async function manualCheck() {
             const token = localStorage.getItem('manager_token');
             if (token) {
-                console.log('Token exists, checking...');
                 try {
                     const response = await fetch('/api/manager/dashboard', {
                         headers: { 'Authorization': `Bearer ${token}` }
@@ -212,13 +201,10 @@
             }
         }
         
-        // Глобальная функция для Telegram
         window.onTelegramAuth = onTelegramAuth;
         
-        // Проверяем существующий токен
         const existingToken = localStorage.getItem('manager_token');
         if (existingToken) {
-            console.log('Found existing token, checking...');
             manualCheck();
         }
     </script>
