@@ -11,58 +11,24 @@
             background: #f5f5f5;
             height: 100vh;
             display: flex;
-            overflow: hidden;
-        }
-        .sidebar-chats {
-            width: 280px;
-            background: white;
-            border-right: 1px solid #ecf0f1;
-            display: flex;
             flex-direction: column;
-            flex-shrink: 0;
-            transition: transform 0.3s ease;
-            z-index: 1000;
-            height: 100%;
             overflow: hidden;
         }
-        .sidebar-header {
-            padding: 12px 15px;
-            border-bottom: 1px solid #ecf0f1;
-            background: #2c3e50;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .sidebar-header h2 {
-            font-size: 16px;
-            margin: 0;
-        }
-        .mobile-menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            line-height: 1;
-        }
-        /* Вкладки – всегда видны */
+        /* Вкладки вверху */
         .tabs {
             display: flex;
-            border-bottom: 1px solid #ecf0f1;
             background: white;
+            border-bottom: 1px solid #ecf0f1;
             flex-shrink: 0;
         }
         .tab {
             flex: 1;
-            padding: 10px;
+            padding: 12px;
             text-align: center;
             cursor: pointer;
             background: #f8f9fa;
             border: none;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 500;
             transition: all 0.2s;
         }
@@ -74,13 +40,16 @@
         .chats-list {
             flex: 1;
             overflow-y: auto;
+            padding: 10px;
         }
         .chat-item {
-            padding: 10px 12px;
-            border-bottom: 1px solid #ecf0f1;
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
             cursor: pointer;
             transition: background 0.2s;
-            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .chat-item:hover {
             background: #f8f9fa;
@@ -95,23 +64,23 @@
         }
         .chat-order {
             font-weight: bold;
+            font-size: 14px;
             color: #2c3e50;
-            font-size: 13px;
         }
         .chat-status {
-            font-size: 9px;
-            padding: 2px 5px;
-            border-radius: 8px;
-            margin-left: 6px;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 12px;
+            margin-left: 8px;
             display: inline-block;
         }
         .chat-status.completed { background: #95a5a6; color: white; }
         .chat-status.processing { background: #3498db; color: white; }
         .chat-status.new { background: #2ecc71; color: white; }
         .chat-client {
-            font-size: 11px;
+            font-size: 12px;
             color: #7f8c8d;
-            margin-top: 3px;
+            margin-top: 4px;
         }
         .chat-last-message {
             font-size: 11px;
@@ -122,7 +91,7 @@
             text-overflow: ellipsis;
         }
         .chat-time {
-            font-size: 9px;
+            font-size: 10px;
             color: #95a5a6;
             float: right;
         }
@@ -132,125 +101,16 @@
             align-items: center;
         }
         .unread-dot {
-            position: absolute;
-            top: 12px;
-            left: 8px;
+            display: inline-block;
             width: 8px;
             height: 8px;
             background-color: #e74c3c;
             border-radius: 50%;
-        }
-        .main-chat {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #e9ecef;
-            min-width: 0;
-        }
-        .chat-header {
-            background: white;
-            padding: 10px 15px;
-            border-bottom: 1px solid #ecf0f1;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-        .chat-header h3 {
-            color: #2c3e50;
-            font-size: 14px;
-        }
-        .chat-header p {
-            font-size: 11px;
-            color: #7f8c8d;
-            margin-top: 2px;
-        }
-        .old-orders-list {
-            background: #f8f9fa;
-            padding: 8px 12px;
-            font-size: 11px;
-            border-bottom: 1px solid #ecf0f1;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-            align-items: center;
-        }
-        .old-orders-label {
-            color: #7f8c8d;
-            font-weight: normal;
-        }
-        .old-order-badge {
-            background: #ecf0f1;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 10px;
-            color: #2c3e50;
-            cursor: pointer;
-        }
-        .messages-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-        }
-        .message {
-            max-width: 80%;
-            margin-bottom: 8px;
-            padding: 6px 10px;
-            border-radius: 8px;
-            word-wrap: break-word;
-            font-size: 12px;
-        }
-        .message.incoming {
-            background: white;
-            align-self: flex-start;
-            border-left: 2px solid #3498db;
-        }
-        .message.outgoing {
-            background: #3498db;
-            color: white;
-            align-self: flex-end;
-        }
-        .system-message {
-            background: #f8f9fa;
-            color: #2c3e50;
-            border-left: 3px solid #f39c12;
-            font-style: italic;
-        }
-        .message-meta {
-            font-size: 9px;
-            margin-top: 3px;
-            color: #7f8c8d;
-        }
-        .chat-input {
-            background: white;
-            padding: 10px;
-            border-top: 1px solid #ecf0f1;
-            display: flex;
-            gap: 8px;
-        }
-        .chat-input textarea {
-            flex: 1;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            resize: none;
-            font-family: inherit;
-            font-size: 12px;
-            height: 50px;
-        }
-        .chat-input button {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 12px;
-            align-self: flex-end;
+            margin-right: 6px;
         }
         .loading {
             text-align: center;
-            padding: 20px;
+            padding: 40px;
             color: #7f8c8d;
         }
         .no-chat-selected {
@@ -260,125 +120,48 @@
             justify-content: center;
             color: #7f8c8d;
         }
-        .order-info-panel {
-            background: white;
-            border-radius: 12px;
-            margin: 10px 12px;
-            padding: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            font-size: 12px;
-            border-left: 4px solid #3498db;
-        }
-        .order-details {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .order-detail-title {
-            font-weight: bold;
-            font-size: 14px;
-            color: #2c3e50;
-            margin-bottom: 4px;
-        }
-        .order-detail-row {
-            display: flex;
-            gap: 12px;
-            align-items: baseline;
-            flex-wrap: wrap;
-        }
-        .order-detail-label {
-            font-weight: 500;
-            color: #7f8c8d;
-            min-width: 110px;
-        }
-        .order-detail-value {
-            color: #2c3e50;
-        }
-        .order-items {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        .order-items-list {
-            margin-top: 4px;
-            padding-left: 8px;
-            border-left: 2px solid #ecf0f1;
-        }
-        .order-header-with-btn {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .complete-order-btn {
-            background: #27ae60;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        @media (max-width: 768px) {
-            .sidebar-chats {
-                position: fixed;
-                left: 0;
-                top: 0;
-                height: 100%;
-                transform: translateX(-100%);
-                z-index: 1000;
-                box-shadow: 2px 0 5px rgba(0,0,0,0.2);
-            }
-            .sidebar-chats.open {
-                transform: translateX(0);
-            }
-            .mobile-menu-toggle {
-                display: block;
-            }
-            .main-chat {
-                margin-left: 0;
-            }
-        }
+        /* Для сообщений (часть окна справа) – пока не используется, но оставим */
+        .chat-header, .messages-container, .chat-input, .order-info-panel {
+            /* стили не нужны, так как в этой версии мы не отображаем чат справа, а оставляем только список диалогов? 
+               На самом деле нам нужно, чтобы при клике на чат он отображался справа, как и было. Но мы убрали боковую панель,
+               а основная область осталась. Нужно вернуть двухколоночную структуру? Нет, заказчик хочет, чтобы в модальном окне
+               были вкладки вверху и список диалогов, а при выборе диалога он отображался справа? В предыдущей версии unified-chat.html
+               была двухколоночная структура (слева список диалогов, справа окно чата). Теперь мы убираем левую панель и вкладки,
+               но оставляем двухколоночность? Нет, если мы убираем .sidebar-chats, то нужно адаптировать структуру. Лучше сохранить
+               двухколоночную структуру, но без боковой панели – то есть вкладки вверху, список диалогов слева, а справа чат.
+               Но тогда список диалогов будет слева, и вкладки над ним. Это ближе к оригиналу. Я переделаю структуру:
+               .container (flex) с .chats-panel (слева) и .main-chat (справа). В .chats-panel будут вкладки и список чатов.
+               Так и сделаем, но без бургер-меню. */
     </style>
 </head>
 <body>
-    <div class="sidebar-chats" id="sidebarChats">
-        <div class="sidebar-header">
-            <h2>💬 Диалоги</h2>
-            <button class="mobile-menu-toggle" id="mobileMenuToggle">☰</button>
+    <div style="display: flex; height: 100%; width: 100%;">
+        <!-- Панель чатов (слева) -->
+        <div class="chats-panel" style="width: 300px; background: white; border-right: 1px solid #ecf0f1; display: flex; flex-direction: column; flex-shrink: 0;">
+            <div class="tabs">
+                <button class="tab active" id="tabActive" onclick="switchTab('active')">Активные</button>
+                <button class="tab" id="tabCompleted" onclick="switchTab('completed')">Завершенные</button>
+            </div>
+            <div class="chats-list" id="chats-list">
+                <div class="loading">Загрузка...</div>
+            </div>
         </div>
-        <div class="tabs">
-            <button class="tab active" id="tabActive" onclick="switchTab('active')">Активные</button>
-            <button class="tab" id="tabCompleted" onclick="switchTab('completed')">Завершенные</button>
+        <!-- Основная область чата (справа) -->
+        <div class="main-chat" id="main-chat" style="flex: 1; display: flex; flex-direction: column; background: #e9ecef;">
+            <div class="no-chat-selected">Выберите диалог</div>
         </div>
-        <div class="chats-list" id="chats-list">
-            <div class="loading">Загрузка...</div>
-        </div>
-    </div>
-    <div class="main-chat" id="main-chat">
-        <div class="no-chat-selected">Выберите диалог</div>
     </div>
 
     <script>
         let currentOrderId = null, currentRecipient = null, currentOrderStatus = null, currentOldOrders = [], currentTab = 'active', allChats = { active: [], completed: [] }, pollInterval = null;
-        const sidebarChats = document.getElementById('sidebarChats');
-        const mobileToggle = document.getElementById('mobileMenuToggle');
-        const overlay = document.createElement('div');
-        overlay.className = 'overlay';
-        overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999;';
-        document.body.appendChild(overlay);
-        function toggleSidebar() { sidebarChats.classList.toggle('open'); overlay.style.display = sidebarChats.classList.contains('open') ? 'block' : 'none'; }
-        mobileToggle.addEventListener('click', toggleSidebar);
-        overlay.addEventListener('click', toggleSidebar);
         function checkAuth() { const token = localStorage.getItem('manager_token'); if (!token) { window.location.href = '/manager/'; return false; } return token; }
         async function completeOrder() { if (!confirm('Завершить заказ?')) return; const token = checkAuth(); try { const res = await fetch(`/api/manager/order/${currentOrderId}/complete`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}` } }); if (res.ok) { alert('✅ Заказ завершён'); await loadChat(currentOrderId); await loadChats(); } else alert('Ошибка'); } catch(e) { alert(e); } }
         function switchTab(tab) { currentTab = tab; document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active')); document.getElementById(tab === 'active' ? 'tabActive' : 'tabCompleted').classList.add('active'); renderChats(allChats[currentTab]); }
         async function loadChats() { const token = checkAuth(); try { const res = await fetch('/api/manager/chats-list', { headers: { 'Authorization': `Bearer ${token}` } }); const data = await res.json(); allChats = data; renderChats(allChats[currentTab]); } catch(e) { console.error(e); } }
-        function renderChats(chats) { const container = document.getElementById('chats-list'); if (!chats?.length) { container.innerHTML = '<div class="loading">Нет диалогов</div>'; return; } container.innerHTML = chats.map(chat => `<div class="chat-item ${chat.lastMessageDirection === 'incoming' ? 'has-unread' : ''}" onclick="loadChat(${chat.orderId})" data-order-id="${chat.orderId}">${chat.lastMessageDirection === 'incoming' ? '<span class="unread-dot"></span>' : ''}<div class="chat-preview"><span class="chat-order">№${chat.orderNumber}</span><span class="chat-status ${chat.status === 'completed' ? 'completed' : (chat.status === 'processing' ? 'processing' : 'new')}">${chat.status === 'completed' ? 'Завершен' : (chat.status === 'processing' ? 'В работе' : 'Новый')}</span><span class="chat-time">${chat.lastMessageDate || ''}</span></div><div class="chat-client">${escapeHtml(chat.clientName)}</div><div class="chat-last-message">${escapeHtml(chat.lastMessage || '')}</div></div>`).join(''); }
-        async function loadChat(orderId) { currentOrderId = orderId; document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active')); const activeItem = document.querySelector(`.chat-item[data-order-id="${orderId}"]`); if (activeItem) activeItem.classList.add('active'); const token = checkAuth(); try { const res = await fetch(`/api/manager/order/${orderId}/chat`, { headers: { 'Authorization': `Bearer ${token}` } }); const data = await res.json(); currentRecipient = data.recipient; currentOrderStatus = data.status; currentOldOrders = data.old_orders || []; const orderRes = await fetch(`/api/manager/order/${orderId}`, { headers: { 'Authorization': `Bearer ${token}` } }); const orderData = await orderRes.json(); renderChatWindow({ ...data, order: orderData.order }); await fetch(`/api/manager/chat/mark-read/${orderId}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); loadChats(); if (window.innerWidth <= 768) toggleSidebar(); } catch(e) { console.error(e); } }
-        function renderChatWindow(data) { const container = document.getElementById('main-chat'); const channelName = { telegram: 'Telegram', vk: 'ВК', max: 'MAX', whatsapp: 'WhatsApp' }[currentRecipient?.channel] || '?'; const isCompleted = data.status === 'completed'; const canChat = data.status === 'processing' || data.status === 'new'; const order = data.order; const contact = order?.contact || {}; const items = order?.items || []; const orderInfoHtml = order ? `<div class="order-info-panel"><div class="order-details"><div class="order-header-with-btn"><div class="order-detail-title">📋 Заказ №${order.order_number}</div>${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить заказ</button>' : ''}</div><div class="order-detail-row"><span class="order-detail-label">Статус:</span><span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span></div><div class="order-detail-row"><span class="order-detail-label">Сумма:</span><span class="order-detail-value">${order.total} руб.</span></div><div class="order-detail-row"><span class="order-detail-label">Способ получения:</span><span class="order-detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span></div><div class="order-detail-row"><span class="order-detail-label">Адрес:</span><span class="order-detail-value">${contact.address || '—'}</span></div><div class="order-detail-row"><span class="order-detail-label">Оплата:</span><span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span></div><div class="order-detail-row order-items"><span class="order-detail-label">Состав:</span><div class="order-items-list">${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.</div>`).join('')}</div></div></div></div>` : ''; const oldOrdersHtml = currentOldOrders.length ? `<div class="old-orders-list"><span class="old-orders-label">📜 История заказов:</span>${currentOldOrders.map(order => `<span class="old-order-badge" onclick="loadChatByOrderNumber('${order.order_number}')">№${order.order_number}</span>`).join('')}</div>` : ''; container.innerHTML = `<div class="chat-header"><h3>Заказ №${data.order_number}${isCompleted ? '<span class="order-completed-badge">✅ Завершен</span>' : ''}</h3><p>👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p></div>${orderInfoHtml}${oldOrdersHtml}<div class="messages-container" id="messages-container">${renderMessages(data.messages)}</div><div class="chat-input"><textarea id="message-input" placeholder="${!canChat ? 'Чат доступен только для заказов в работе' : 'Введите сообщение...'}" rows="2" ${!canChat ? 'disabled' : ''}></textarea><button onclick="sendMessage()" ${!canChat ? 'disabled' : ''}>Отправить</button></div>`; const msgContainer = document.getElementById('messages-container'); if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight; if (canChat) document.getElementById('message-input')?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }); }
-        function renderMessages(messages) { if (!messages?.length) return '<div class="loading">Нет сообщений</div>'; return messages.map(msg => `<div class="message ${msg.direction} ${msg.sender_name === 'Система' ? 'system-message' : ''}"><div>${escapeHtml(msg.message_text)}</div><div class="message-meta">${msg.direction === 'outgoing' ? 'Вы' : (msg.sender_name || 'Клиент')} • ${new Date(msg.created_at).toLocaleString('ru-RU', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' })}</div></div>`).join(''); }
+        function renderChats(chats) { const container = document.getElementById('chats-list'); if (!chats?.length) { container.innerHTML = '<div class="loading">Нет диалогов</div>'; return; } container.innerHTML = chats.map(chat => `<div class="chat-item ${chat.lastMessageDirection === 'incoming' ? 'has-unread' : ''}" onclick="loadChat(${chat.orderId})" data-order-id="${chat.orderId}"><div class="chat-preview"><span class="chat-order">№${chat.orderNumber}</span><span class="chat-status ${chat.status === 'completed' ? 'completed' : (chat.status === 'processing' ? 'processing' : 'new')}">${chat.status === 'completed' ? 'Завершен' : (chat.status === 'processing' ? 'В работе' : 'Новый')}</span><span class="chat-time">${chat.lastMessageDate || ''}</span></div><div class="chat-client">${escapeHtml(chat.clientName)}</div><div class="chat-last-message">${escapeHtml(chat.lastMessage || '')}</div></div>`).join(''); }
+        async function loadChat(orderId) { currentOrderId = orderId; document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active')); const activeItem = document.querySelector(`.chat-item[data-order-id="${orderId}"]`); if (activeItem) activeItem.classList.add('active'); const token = checkAuth(); try { const res = await fetch(`/api/manager/order/${orderId}/chat`, { headers: { 'Authorization': `Bearer ${token}` } }); const data = await res.json(); currentRecipient = data.recipient; currentOrderStatus = data.status; currentOldOrders = data.old_orders || []; const orderRes = await fetch(`/api/manager/order/${orderId}`, { headers: { 'Authorization': `Bearer ${token}` } }); const orderData = await orderRes.json(); renderChatWindow({ ...data, order: orderData.order }); await fetch(`/api/manager/chat/mark-read/${orderId}`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); loadChats(); } catch(e) { console.error(e); } }
+        function renderChatWindow(data) { const container = document.getElementById('main-chat'); const channelName = { telegram: 'Telegram', vk: 'ВК', max: 'MAX', whatsapp: 'WhatsApp' }[currentRecipient?.channel] || '?'; const isCompleted = data.status === 'completed'; const canChat = data.status === 'processing' || data.status === 'new'; const order = data.order; const contact = order?.contact || {}; const items = order?.items || []; const orderInfoHtml = order ? `<div class="order-info-panel" style="background: white; border-radius: 12px; margin: 10px 12px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 12px; border-left: 4px solid #3498db;"><div style="display: flex; flex-direction: column; gap: 6px;"><div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;"><div style="font-weight: bold; font-size: 14px;">📋 Заказ №${order.order_number}</div>${order.status === 'processing' ? '<button class="complete-order-btn" style="background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;" onclick="completeOrder()">✅ Завершить заказ</button>' : ''}</div><div style="display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Статус:</span><span class="status-${order.status}" style="color: #2c3e50;">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span></div><div style="display: flex; gap: 12px; align-items: baseline;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Сумма:</span><span>${order.total} руб.</span></div><div style="display: flex; gap: 12px; align-items: baseline;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Способ получения:</span><span>${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span></div><div style="display: flex; gap: 12px; align-items: baseline;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Адрес:</span><span>${contact.address || '—'}</span></div><div style="display: flex; gap: 12px; align-items: baseline;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Оплата:</span><span>${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span></div><div style="display: flex; gap: 12px; align-items: baseline; flex-direction: column; align-items: flex-start;"><span style="font-weight: 500; color: #7f8c8d; min-width: 110px;">Состав:</span><div style="margin-top: 4px; padding-left: 8px; border-left: 2px solid #ecf0f1;">${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.</div>`).join('')}</div></div></div></div>` : ''; const oldOrdersHtml = currentOldOrders.length ? `<div style="background: #f8f9fa; padding: 8px 12px; font-size: 11px; border-bottom: 1px solid #ecf0f1; display: flex; flex-wrap: wrap; gap: 5px; align-items: center;"><span style="color: #7f8c8d;">📜 История заказов:</span>${currentOldOrders.map(order => `<span class="old-order-badge" style="background: #ecf0f1; padding: 2px 6px; border-radius: 10px; font-size: 10px; cursor: pointer;" onclick="loadChatByOrderNumber('${order.order_number}')">№${order.order_number}</span>`).join('')}</div>` : ''; container.innerHTML = `<div class="chat-header" style="background: white; padding: 10px 15px; border-bottom: 1px solid #ecf0f1;"><h3 style="color: #2c3e50; font-size: 14px;">Заказ №${data.order_number}${isCompleted ? '<span class="order-completed-badge" style="background: #27ae60; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 8px;">✅ Завершен</span>' : ''}</h3><p style="font-size: 11px; color: #7f8c8d;">👤 ${data.recipient?.name || 'Клиент'} • 📱 ${channelName}</p></div>${orderInfoHtml}${oldOrdersHtml}<div class="messages-container" id="messages-container" style="flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">${renderMessages(data.messages)}</div><div class="chat-input" style="background: white; padding: 10px; border-top: 1px solid #ecf0f1; display: flex; gap: 8px;"><textarea id="message-input" placeholder="${!canChat ? 'Чат доступен только для заказов в работе' : 'Введите сообщение...'}" rows="2" style="flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; resize: none; font-family: inherit; font-size: 12px; height: 50px;" ${!canChat ? 'disabled' : ''}></textarea><button onclick="sendMessage()" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; align-self: flex-end;" ${!canChat ? 'disabled' : ''}>Отправить</button></div>`; const msgContainer = document.getElementById('messages-container'); if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight; if (canChat) document.getElementById('message-input')?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }); }
+        function renderMessages(messages) { if (!messages?.length) return '<div class="loading">Нет сообщений</div>'; return messages.map(msg => `<div class="message ${msg.direction} ${msg.sender_name === 'Система' ? 'system-message' : ''}" style="max-width: 80%; margin-bottom: 8px; padding: 6px 10px; border-radius: 8px; word-wrap: break-word; font-size: 12px; ${msg.direction === 'incoming' ? 'background: white; align-self: flex-start; border-left: 2px solid #3498db;' : 'background: #3498db; color: white; align-self: flex-end;'}"><div>${escapeHtml(msg.message_text)}</div><div class="message-meta" style="font-size: 9px; margin-top: 3px; color: ${msg.direction === 'outgoing' ? 'rgba(255,255,255,0.7)' : '#7f8c8d'};">${msg.direction === 'outgoing' ? 'Вы' : (msg.sender_name || 'Клиент')} • ${new Date(msg.created_at).toLocaleString('ru-RU', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' })}</div></div>`).join(''); }
         async function sendMessage() { if (currentOrderStatus !== 'processing' && currentOrderStatus !== 'new') { alert('Чат доступен только для заказов в работе'); return; } const input = document.getElementById('message-input'); const text = input.value.trim(); if (!text) return; if (!currentRecipient?.id) { alert('Нет получателя'); return; } const token = checkAuth(); const btn = document.querySelector('.chat-input button'); btn.disabled = true; btn.textContent = 'Отправка...'; try { const res = await fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ order_id: currentOrderId, channel: currentRecipient.channel, recipient_id: currentRecipient.id, message_text: text }) }); if (res.ok) { input.value = ''; await loadChat(currentOrderId); await loadChats(); } else alert('Ошибка'); } catch(e) { alert(e); } finally { btn.disabled = false; btn.textContent = 'Отправить'; } }
         async function loadChatByOrderNumber(num) { const token = checkAuth(); try { const res = await fetch(`/api/manager/order-by-number/${num}`, { headers: { 'Authorization': `Bearer ${token}` } }); const data = await res.json(); if (data.orderId) loadChat(data.orderId); } catch(e) { console.error(e); } }
         function escapeHtml(s) { if (!s) return ''; const div = document.createElement('div'); div.textContent = s; return div.innerHTML; }
