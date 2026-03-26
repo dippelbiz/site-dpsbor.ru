@@ -54,10 +54,13 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            width: 100%;
         }
         .telegram-login iframe {
             max-width: 100% !important;
             height: auto !important;
+            display: block;
+            margin: 0 auto !important;
         }
         .error {
             color: #dc3545;
@@ -113,7 +116,6 @@
     </div>
 
     <script>
-        // Функция авторизации
         async function onTelegramAuth(user) {
             console.log('Telegram user:', user);
             
@@ -154,7 +156,6 @@
             }
         }
         
-        // Проверка существующего токена
         async function checkExistingToken() {
             const token = localStorage.getItem('manager_token');
             if (token) {
