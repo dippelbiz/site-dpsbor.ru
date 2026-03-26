@@ -219,9 +219,6 @@
             margin-top: 3px;
             color: #7f8c8d;
         }
-        .message.outgoing .message-meta {
-            color: rgba(255,255,255,0.7);
-        }
         .chat-input {
             background: white;
             padding: 10px;
@@ -262,9 +259,7 @@
             justify-content: center;
             color: #7f8c8d;
         }
-        .order-info-panel, .complete-order-btn {
-            /* стили из предыдущей версии */
-        }
+        .order-info-panel, .complete-order-btn { /* стили остаются как есть */ }
         .order-info-panel {
             background: white;
             border-radius: 12px;
@@ -298,14 +293,6 @@
         }
         .order-detail-value {
             color: #2c3e50;
-        }
-        .status-processing {
-            color: #f39c12;
-            font-weight: bold;
-        }
-        .status-completed {
-            color: #27ae60;
-            font-weight: bold;
         }
         .order-items {
             flex-direction: column;
@@ -372,7 +359,6 @@
     <div class="main-chat" id="main-chat">
         <div class="no-chat-selected">Выберите диалог</div>
     </div>
-
     <script>
         let currentOrderId = null, currentRecipient = null, currentOrderStatus = null, currentOldOrders = [], currentTab = 'active', allChats = { active: [], completed: [] }, pollInterval = null;
         const sidebarChats = document.getElementById('sidebarChats');
