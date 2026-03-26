@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>DP SBOR — Чат с покупателем</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,52 +15,110 @@
         }
         .chat-header {
             background: white;
-            padding: 15px 20px;
+            padding: 10px 15px;
             border-bottom: 1px solid #ecf0f1;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .order-info {
             font-weight: bold;
             color: #2c3e50;
+            font-size: 14px;
         }
         .close-btn {
             background: #e74c3c;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 12px;
         }
         .info-bar {
             background: #f8f9fa;
-            padding: 8px 15px;
-            font-size: 12px;
+            padding: 5px 12px;
+            font-size: 11px;
             color: #666;
             border-bottom: 1px solid #ecf0f1;
+        }
+        .order-info-panel {
+            background: white;
+            border-radius: 8px;
+            margin: 6px 8px;
+            padding: 8px 10px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            font-size: 11px;
+            border-left: 3px solid #3498db;
+        }
+        .order-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .order-detail-row {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .order-detail-label {
+            font-weight: 500;
+            color: #7f8c8d;
+            min-width: 100px;
+        }
+        .order-detail-value {
+            color: #2c3e50;
+        }
+        .status-processing {
+            color: #f39c12;
+            font-weight: 500;
+        }
+        .status-completed {
+            color: #27ae60;
+            font-weight: 500;
+        }
+        .order-header-with-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .order-header-with-btn .order-detail-title {
+            font-weight: bold;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+        .complete-order-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
         }
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 15px;
+            padding: 10px;
             display: flex;
             flex-direction: column;
             background: #e9ecef;
         }
         .message {
             max-width: 85%;
-            margin-bottom: 10px;
-            padding: 8px 12px;
+            margin-bottom: 8px;
+            padding: 6px 10px;
             border-radius: 10px;
             word-wrap: break-word;
-            font-size: 13px;
+            font-size: 12px;
         }
         .message.incoming {
             background: white;
             align-self: flex-start;
-            border-left: 3px solid #3498db;
+            border-left: 2px solid #3498db;
         }
         .message.outgoing {
             background: #3498db;
@@ -68,8 +126,8 @@
             align-self: flex-end;
         }
         .message-meta {
-            font-size: 10px;
-            margin-top: 4px;
+            font-size: 9px;
+            margin-top: 3px;
             color: #7f8c8d;
         }
         .message.outgoing .message-meta {
@@ -78,39 +136,36 @@
         .system-message {
             background: #f8f9fa;
             color: #2c3e50;
-            border-left: 3px solid #f39c12;
+            border-left: 2px solid #f39c12;
             font-style: italic;
         }
         .chat-input {
             background: white;
-            padding: 12px;
+            padding: 8px 10px;
             border-top: 1px solid #ecf0f1;
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
         .chat-input textarea {
             flex: 1;
-            padding: 10px;
+            padding: 8px;
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 6px;
             resize: none;
             font-family: inherit;
-            font-size: 13px;
-            height: 60px;
+            font-size: 12px;
+            height: 50px;
         }
         .chat-input button {
             background: #28a745;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 12px;
             align-self: flex-end;
-        }
-        .chat-input button:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
         }
         .loading {
             text-align: center;
@@ -120,124 +175,29 @@
         .order-completed-badge {
             background: #27ae60;
             color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 10px;
-            display: inline-block;
-            margin-left: 8px;
-        }
-        .order-info-panel {
-            background: white;
-            border-radius: 12px;
-            margin: 10px 12px;
-            padding: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            font-size: 12px;
-            border-left: 4px solid #3498db;
-        }
-        .order-details {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .order-detail-title {
-            font-weight: bold;
-            font-size: 14px;
-            color: #2c3e50;
-            margin-bottom: 4px;
-        }
-        .order-detail-row {
-            display: flex;
-            gap: 12px;
-            align-items: baseline;
-            flex-wrap: wrap;
-        }
-        .order-detail-label {
-            font-weight: 500;
-            color: #7f8c8d;
-            min-width: 110px;
-        }
-        .order-detail-value {
-            color: #2c3e50;
-        }
-        .status-processing {
-            color: #f39c12;
-            font-weight: bold;
-        }
-        .status-completed {
-            color: #27ae60;
-            font-weight: bold;
-        }
-        .order-items {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        .order-items-list {
-            margin-top: 4px;
-            padding-left: 8px;
-            border-left: 2px solid #ecf0f1;
-        }
-        .order-items-list div {
-            margin-bottom: 2px;
-        }
-        .order-header-with-btn {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .complete-order-btn {
-            background: #27ae60;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background 0.2s;
-        }
-        .complete-order-btn:hover {
-            background: #2ecc71;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 9px;
+            margin-left: 6px;
         }
         @media (max-width: 768px) {
-            .chat-header {
-                padding: 10px 15px;
-            }
-            .order-info {
-                font-size: 14px;
-            }
-            .close-btn {
-                padding: 6px 12px;
-                font-size: 12px;
-            }
-            .info-bar {
-                font-size: 11px;
-                padding: 6px 12px;
+            .order-detail-label {
+                min-width: 80px;
             }
             .order-info-panel {
-                margin: 8px 10px;
-                padding: 10px;
+                margin: 4px 6px;
+                padding: 6px 8px;
             }
-            .order-detail-row {
-                flex-direction: column;
-                gap: 4px;
+            .order-header-with-btn .order-detail-title {
+                font-size: 12px;
             }
-            .order-detail-label {
-                min-width: auto;
+            .complete-order-btn {
+                font-size: 10px;
+                padding: 3px 8px;
             }
             .message {
                 max-width: 90%;
-                font-size: 12px;
-            }
-            .chat-input textarea {
-                font-size: 12px;
-                height: 50px;
-            }
-            .chat-input button {
-                padding: 8px 16px;
-                font-size: 12px;
+                font-size: 11px;
             }
         }
     </style>
@@ -333,37 +293,30 @@
                 const contact = order.contact;
                 const items = order.items;
                 
+                // Компактная панель
                 const orderInfoHtml = `
                     <div class="order-details">
                         <div class="order-header-with-btn">
-                            <div class="order-detail-title">📋 Заказ №${order.order_number}</div>
-                            ${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить заказ</button>' : ''}
+                            <div class="order-detail-title">Заказ №${order.order_number}</div>
+                            ${order.status === 'processing' ? '<button class="complete-order-btn" onclick="completeOrder()">✅ Завершить</button>' : ''}
                         </div>
                         <div class="order-detail-row">
                             <span class="order-detail-label">Статус:</span>
                             <span class="order-detail-value status-${order.status}">${order.status === 'processing' ? 'В работе' : (order.status === 'completed' ? 'Завершён' : order.status)}</span>
-                        </div>
-                        <div class="order-detail-row">
                             <span class="order-detail-label">Сумма:</span>
                             <span class="order-detail-value">${order.total} руб.</span>
+                            <span class="order-detail-label">Оплата:</span>
+                            <span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span>
                         </div>
                         <div class="order-detail-row">
                             <span class="order-detail-label">Способ получения:</span>
                             <span class="order-detail-value">${contact.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка'}</span>
-                        </div>
-                        <div class="order-detail-row">
                             <span class="order-detail-label">Адрес:</span>
                             <span class="order-detail-value">${contact.address}</span>
                         </div>
-                        <div class="order-detail-row">
-                            <span class="order-detail-label">Оплата:</span>
-                            <span class="order-detail-value">${contact.paymentMethod === 'cash' ? 'Наличными' : 'Перевод по номеру'}</span>
-                        </div>
                         <div class="order-detail-row order-items">
                             <span class="order-detail-label">Состав:</span>
-                            <div class="order-items-list">
-                                ${items.map(item => `<div>${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.</div>`).join('')}
-                            </div>
+                            <span class="order-detail-value">${items.map(item => `${item.name} (${item.variantName?.replace('Упаковка', 'Уп.') || ''}) x${item.quantity} = ${item.price * item.quantity} руб.`).join(', ')}</span>
                         </div>
                     </div>
                 `;
