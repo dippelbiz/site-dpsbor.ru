@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>DP SBOR — Чат с покупателем</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -50,7 +50,7 @@
             background: #e9ecef;
         }
         .message {
-            max-width: 75%;
+            max-width: 85%;
             margin-bottom: 10px;
             padding: 8px 12px;
             border-radius: 10px;
@@ -150,6 +150,7 @@
             display: flex;
             gap: 12px;
             align-items: baseline;
+            flex-wrap: wrap;
         }
         .order-detail-label {
             font-weight: 500;
@@ -184,6 +185,8 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         .complete-order-btn {
             background: #27ae60;
@@ -197,6 +200,45 @@
         }
         .complete-order-btn:hover {
             background: #2ecc71;
+        }
+        @media (max-width: 768px) {
+            .chat-header {
+                padding: 10px 15px;
+            }
+            .order-info {
+                font-size: 14px;
+            }
+            .close-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            .info-bar {
+                font-size: 11px;
+                padding: 6px 12px;
+            }
+            .order-info-panel {
+                margin: 8px 10px;
+                padding: 10px;
+            }
+            .order-detail-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+            .order-detail-label {
+                min-width: auto;
+            }
+            .message {
+                max-width: 90%;
+                font-size: 12px;
+            }
+            .chat-input textarea {
+                font-size: 12px;
+                height: 50px;
+            }
+            .chat-input button {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
