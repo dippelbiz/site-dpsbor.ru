@@ -2,14 +2,16 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>DP SBOR — Заказы</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f5f5f5;
+            overflow-x: hidden;
         }
+        /* Десктопная версия */
         .sidebar {
             position: fixed;
             left: 0;
@@ -19,6 +21,8 @@
             background: #2c3e50;
             color: white;
             padding: 20px 0;
+            transition: transform 0.3s ease;
+            z-index: 1000;
         }
         .logo {
             padding: 0 20px 20px;
@@ -42,9 +46,80 @@
             background: #28a745;
             color: white;
         }
+        .badge {
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 8px;
+            font-size: 12px;
+            margin-left: auto;
+        }
         .main-content {
             margin-left: 260px;
             padding: 20px;
+            transition: margin-left 0.3s ease;
+        }
+        .menu-toggle {
+            display: none;
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            font-size: 24px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 1100;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 80%;
+                max-width: 280px;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 60px 15px 20px 15px;
+            }
+            .menu-toggle {
+                display: block;
+            }
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filters select, .filters button {
+                width: 100%;
+                margin-bottom: 5px;
+            }
+            .orders-table {
+                overflow-x: auto;
+            }
+            table {
+                font-size: 12px;
+            }
+            th, td {
+                padding: 8px;
+            }
+            .action-buttons {
+                flex-direction: column;
+                gap: 5px;
+            }
         }
         .header {
             background: white;
@@ -134,28 +209,22 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
         .row-processing {
             background: rgba(52, 152, 219, 0.1);
             border-left: 4px solid #3498db;
         }
-        .row-processing:hover {
-            background: rgba(52, 152, 219, 0.2);
-        }
-        
-        .row-completed:hover,
-        .row-cancelled:hover {
-            background: #f8f9fa;
-        }
     </style>
 </head>
 <body>
-    <div class="sidebar">
+    <button class="menu-toggle" id="menuToggle">☰</button>
+    <div class="overlay" id="overlay"></div>
+
+    <div class="sidebar" id="sidebar">
         <div class="logo">DP <span>SBOR</span></div>
         <a href="/manager/dashboard.html" class="nav-item">📊 Дашборд</a>
         <a href="/manager/orders.html" class="nav-item active">📦 Заказы</a>
         <a href="/manager/warehouse.html" class="nav-item">🏪 Склад</a>
-      
+        <!-- Заявки и выплаты удалены -->
     </div>
     
     <div class="main-content">
@@ -188,17 +257,33 @@
                         <th>Сумма</th>
                         <th>Статус</th>
                         <th>Действия</th>
-                    </thead>
+                    </tr>
+                </thead>
                 <tbody id="orders-list">
                     <tr><td colspan="6" style="text-align: center;">Загрузка...</td></tr>
                 </tbody>
-             </table>
+            </table>
         </div>
     </div>
 
     <script>
         let currentUserRole = '';
-        
+        // Гамбургер-меню
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        function toggleMenu() {
+            sidebar.classList.toggle('open');
+            overlay.style.display = sidebar.classList.contains('open') ? 'block' : 'none';
+        }
+        menuToggle.addEventListener('click', toggleMenu);
+        overlay.addEventListener('click', toggleMenu);
+        document.querySelectorAll('.nav-item').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 768) toggleMenu();
+            });
+        });
+
         function checkAuth() {
             const token = localStorage.getItem('manager_token');
             if (!token) { window.location.href = '/manager/'; return false; }
@@ -309,7 +394,6 @@
         
         loadUser();
         loadOrders();
-        
         setInterval(loadOrders, 30000);
     </script>
 </body>
