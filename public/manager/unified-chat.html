@@ -22,6 +22,7 @@
             flex-shrink: 0;
             transition: transform 0.3s ease;
             z-index: 1000;
+            overflow: hidden;
         }
         .sidebar-header {
             padding: 12px 15px;
@@ -46,7 +47,6 @@
             padding: 0;
             line-height: 1;
         }
-        /* Закрепляем вкладки вверху */
         .tabs {
             display: flex;
             border-bottom: 1px solid #ecf0f1;
@@ -366,7 +366,6 @@
             background-color: rgba(0,0,0,0.5);
             z-index: 999;
         }
-        /* Мобильная адаптация */
         @media (max-width: 768px) {
             .sidebar-chats {
                 position: fixed;
