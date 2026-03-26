@@ -15,14 +15,14 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             padding: 16px;
         }
         .login-card {
             background: white;
-            border-radius: 24px;
-            padding: 32px 24px;
+            border-radius: 28px;
+            padding: 40px 28px;
             text-align: center;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
             width: 100%;
@@ -50,20 +50,19 @@
             line-height: 1.4;
         }
         .telegram-login {
-            margin: 20px 0 16px;
-            min-height: 60px;
+            margin: 20px 0 0;
+            min-height: 70px;
             display: flex;
             justify-content: center;
             align-items: center;
         }
-        /* Стили для виджета Telegram (чтобы адаптировался) */
         .telegram-login iframe {
             max-width: 100% !important;
             height: auto !important;
         }
         .error {
             color: #dc3545;
-            margin-top: 16px;
+            margin-top: 20px;
             font-size: 0.85rem;
             display: none;
             background: #fff0f0;
@@ -72,33 +71,14 @@
         }
         .loading {
             display: none;
-            margin-top: 16px;
+            margin-top: 20px;
             color: #666;
             font-size: 0.85rem;
         }
-        button {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 14px 20px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            margin-top: 16px;
-            width: 100%;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #218838;
-        }
-        button:active {
-            transform: scale(0.98);
-        }
         @media (max-width: 480px) {
             .login-card {
-                padding: 28px 20px;
-                border-radius: 28px;
+                padding: 32px 20px;
+                border-radius: 32px;
             }
             .logo {
                 font-size: 1.9rem;
@@ -110,14 +90,10 @@
                 font-size: 0.85rem;
                 margin-bottom: 24px;
             }
-            button {
-                padding: 12px 16px;
-                font-size: 0.95rem;
-            }
         }
         @media (max-width: 360px) {
             .login-card {
-                padding: 24px 16px;
+                padding: 28px 16px;
             }
             .logo {
                 font-size: 1.7rem;
@@ -135,11 +111,10 @@
         
         <div id="error" class="error"></div>
         <div id="loading" class="loading">Проверка доступа...</div>
-        
-        <button onclick="manualCheck()" style="background: #6c757d;">Проверить авторизацию</button>
     </div>
 
     <script>
+        // Функция авторизации
         async function onTelegramAuth(user) {
             console.log('Telegram user:', user);
             
@@ -180,7 +155,8 @@
             }
         }
         
-        async function manualCheck() {
+        // Проверка существующего токена
+        async function checkExistingToken() {
             const token = localStorage.getItem('manager_token');
             if (token) {
                 try {
@@ -190,23 +166,16 @@
                     if (response.ok) {
                         window.location.href = '/manager/dashboard.html';
                     } else {
-                        alert('Токен недействителен, войдите заново');
                         localStorage.removeItem('manager_token');
                     }
                 } catch (err) {
-                    console.error('Check error:', err);
+                    console.error('Token check error:', err);
                 }
-            } else {
-                alert('Нет токена, войдите через Telegram');
             }
         }
         
         window.onTelegramAuth = onTelegramAuth;
-        
-        const existingToken = localStorage.getItem('manager_token');
-        if (existingToken) {
-            manualCheck();
-        }
+        checkExistingToken();
     </script>
     
     <script async
