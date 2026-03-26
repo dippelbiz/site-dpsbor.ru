@@ -17,99 +17,79 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-direction: column;
             padding: 20px;
         }
-        .login-card {
+        .login-container {
             background: white;
             border-radius: 32px;
-            padding: 40px 28px;
+            padding: 32px 24px;
             text-align: center;
             box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            max-width: 320px;
             width: 100%;
-            max-width: 400px;
         }
         .logo {
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: bold;
             color: #28a745;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
         }
         .logo span {
             color: #ff8f00;
         }
         h2 {
             color: #333;
-            margin-bottom: 8px;
-            font-size: 1.6rem;
-        }
-        p {
-            color: #666;
-            margin-bottom: 28px;
-            font-size: 0.9rem;
-            line-height: 1.4;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
         }
         .telegram-login {
-            margin: 20px auto 0;
             display: flex;
             justify-content: center;
-            align-items: center;
-            width: 100%;
+            margin: 10px 0;
         }
         /* Принудительное центрирование iframe виджета */
         .telegram-login iframe {
             display: block !important;
             margin: 0 auto !important;
+            width: auto !important;
+            max-width: 100% !important;
             float: none !important;
         }
         .error {
             color: #dc3545;
-            margin-top: 20px;
+            margin-top: 15px;
             font-size: 0.85rem;
             display: none;
             background: #fff0f0;
-            padding: 10px;
-            border-radius: 12px;
+            padding: 8px;
+            border-radius: 10px;
         }
         .loading {
             display: none;
-            margin-top: 20px;
+            margin-top: 15px;
             color: #666;
             font-size: 0.85rem;
         }
         @media (max-width: 480px) {
-            .login-card {
-                padding: 32px 20px;
-                border-radius: 36px;
-            }
-            .logo {
-                font-size: 1.9rem;
-            }
-            h2 {
-                font-size: 1.4rem;
-            }
-            p {
-                font-size: 0.85rem;
-                margin-bottom: 24px;
-            }
-        }
-        @media (max-width: 360px) {
-            .login-card {
-                padding: 28px 16px;
+            .login-container {
+                padding: 24px 16px;
             }
             .logo {
                 font-size: 1.7rem;
+            }
+            h2 {
+                font-size: 1.2rem;
+                margin-bottom: 16px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="login-card">
+    <div class="login-container">
         <div class="logo">ДП <span>СБОР</span></div>
         <h2>Панель управления</h2>
-        <p>Войдите через Telegram для доступа</p>
-        
         <div id="telegram-login" class="telegram-login"></div>
-        
         <div id="error" class="error"></div>
         <div id="loading" class="loading">Проверка доступа...</div>
     </div>
@@ -117,13 +97,10 @@
     <script>
         async function onTelegramAuth(user) {
             console.log('Telegram user:', user);
-            
             const loadingEl = document.getElementById('loading');
             const errorEl = document.getElementById('error');
-            
             loadingEl.style.display = 'block';
             errorEl.style.display = 'none';
-            
             try {
                 const response = await fetch('/api/manager/auth', {
                     method: 'POST',
@@ -134,9 +111,7 @@
                         username: user.username
                     })
                 });
-                
                 const data = await response.json();
-                
                 if (response.ok && data.success) {
                     localStorage.setItem('manager_token', data.token);
                     localStorage.setItem('manager_name', data.name);
@@ -154,7 +129,6 @@
                 errorEl.innerHTML = '❌ Ошибка сервера: ' + err.message;
             }
         }
-        
         async function checkExistingToken() {
             const token = localStorage.getItem('manager_token');
             if (token) {
@@ -172,11 +146,9 @@
                 }
             }
         }
-        
         window.onTelegramAuth = onTelegramAuth;
         checkExistingToken();
     </script>
-    
     <script async
         src="https://telegram.org/js/telegram-widget.js?22"
         data-telegram-login="dpsbor_site_bot"
