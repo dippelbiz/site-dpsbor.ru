@@ -39,16 +39,6 @@
             font-size: 16px;
             margin: 0;
         }
-        .mobile-menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            line-height: 1;
-        }
         /* Вкладки – всегда видны в верхней части левой панели */
         .tabs {
             display: flex;
@@ -147,6 +137,7 @@
             flex-direction: column;
             background: #e9ecef;
             min-width: 0;
+            position: relative;
         }
         .chat-header {
             background: white;
@@ -321,7 +312,22 @@
             cursor: pointer;
             font-size: 12px;
         }
-        /* Мобильная адаптация: левая панель скрыта, показывается по кнопке */
+        /* Кнопка бургер-меню (только на мобильных) */
+        .burger-btn {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            font-size: 24px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 1100;
+        }
+        /* Мобильная адаптация */
         @media (max-width: 768px) {
             .sidebar-chats {
                 position: fixed;
@@ -335,14 +341,16 @@
             .sidebar-chats.open {
                 transform: translateX(0);
             }
-            .mobile-menu-toggle {
-                display: block;
-            }
             .main-chat {
                 margin-left: 0;
             }
+            .burger-btn {
+                display: block;
+            }
+            .sidebar-header .mobile-menu-toggle {
+                display: none; /* скрываем старую кнопку внутри */
+            }
         }
-        /* Оверлей для затемнения */
         .overlay {
             display: none;
             position: fixed;
@@ -356,10 +364,10 @@
     </style>
 </head>
 <body>
+    <button class="burger-btn" id="burgerBtn">☰</button>
     <div class="sidebar-chats" id="sidebarChats">
         <div class="sidebar-header">
             <h2>💬 Диалоги</h2>
-            <button class="mobile-menu-toggle" id="mobileMenuToggle">☰</button>
         </div>
         <div class="tabs">
             <button class="tab active" id="tabActive" onclick="switchTab('active')">Активные</button>
@@ -377,14 +385,14 @@
     <script>
         let currentOrderId = null, currentRecipient = null, currentOrderStatus = null, currentOldOrders = [], currentTab = 'active', allChats = { active: [], completed: [] }, pollInterval = null;
         const sidebarChats = document.getElementById('sidebarChats');
-        const mobileToggle = document.getElementById('mobileMenuToggle');
+        const burgerBtn = document.getElementById('burgerBtn');
         const overlay = document.getElementById('overlay');
         
         function toggleSidebar() {
             sidebarChats.classList.toggle('open');
             overlay.style.display = sidebarChats.classList.contains('open') ? 'block' : 'none';
         }
-        mobileToggle.addEventListener('click', toggleSidebar);
+        burgerBtn.addEventListener('click', toggleSidebar);
         overlay.addEventListener('click', toggleSidebar);
         
         function checkAuth() { const token = localStorage.getItem('manager_token'); if (!token) { window.location.href = '/manager/'; return false; } return token; }
