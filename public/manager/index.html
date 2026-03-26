@@ -27,7 +27,6 @@
             box-shadow: 0 20px 40px rgba(0,0,0,0.2);
             width: 100%;
             max-width: 400px;
-            transition: all 0.2s;
         }
         .logo {
             font-size: 2.2rem;
@@ -50,18 +49,17 @@
             line-height: 1.4;
         }
         .telegram-login {
-            margin: 20px 0 0;
+            margin: 20px auto 0;
             display: flex;
             justify-content: center;
             align-items: center;
             width: 100%;
         }
+        /* Принудительное центрирование iframe виджета */
         .telegram-login iframe {
-            max-width: 100% !important;
-            width: auto !important;
-            height: auto !important;
             display: block !important;
             margin: 0 auto !important;
+            float: none !important;
         }
         .error {
             color: #dc3545;
