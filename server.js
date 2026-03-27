@@ -326,7 +326,7 @@ app.get('/api/products', async (req, res) => {
 });
 
 app.get('/api/cart/:userId', async (req, res) => {
-  const userId = parseInt(req.params.userId, 10);
+  const userId = req.params.userId; // строка
   try {
     const result = await pool.query(`
       SELECT 
@@ -358,10 +358,13 @@ app.get('/api/cart/:userId', async (req, res) => {
 
 app.post('/api/cart/add', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
-  const numUserId = parseInt(userId, 10);
   const numProductId = parseInt(productId, 10);
   const numVariantId = parseInt(variantId, 10);
   const numQuantity = parseInt(quantity, 10);
+
+  if (isNaN(numProductId) || isNaN(numVariantId) || isNaN(numQuantity)) {
+    return res.status(400).json({ error: 'Invalid parameters' });
+  }
 
   try {
     const variant = await pool.query(
@@ -377,7 +380,7 @@ app.post('/api/cart/add', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (user_id, product_id, variant_id)
       DO UPDATE SET quantity = carts.quantity + EXCLUDED.quantity
-    `, [numUserId, numProductId, numVariantId, numQuantity, price]);
+    `, [userId, numProductId, numVariantId, numQuantity, price]);
 
     res.json({ success: true });
   } catch (err) {
@@ -388,24 +391,25 @@ app.post('/api/cart/add', async (req, res) => {
 
 app.post('/api/cart/update', async (req, res) => {
   const { userId, productId, variantId, quantity } = req.body;
-  const numUserId = parseInt(userId, 10);
   const numProductId = parseInt(productId, 10);
   const numVariantId = parseInt(variantId, 10);
   const numQuantity = parseInt(quantity, 10);
 
-  if (numQuantity < 0) return res.status(400).json({ error: 'Quantity must be non-negative' });
+  if (isNaN(numProductId) || isNaN(numVariantId) || isNaN(numQuantity) || numQuantity < 0) {
+    return res.status(400).json({ error: 'Invalid parameters' });
+  }
 
   try {
     if (numQuantity === 0) {
       await pool.query(
         'DELETE FROM carts WHERE user_id = $1 AND product_id = $2 AND variant_id = $3',
-        [numUserId, numProductId, numVariantId]
+        [userId, numProductId, numVariantId]
       );
     } else {
       await pool.query(`
         UPDATE carts SET quantity = $1
         WHERE user_id = $2 AND product_id = $3 AND variant_id = $4
-      `, [numQuantity, numUserId, numProductId, numVariantId]);
+      `, [numQuantity, userId, numProductId, numVariantId]);
     }
     res.json({ success: true });
   } catch (err) {
@@ -429,7 +433,7 @@ app.delete('/api/cart/remove', async (req, res) => {
 });
 
 app.get('/api/orders/:userId', async (req, res) => {
-  const userId = parseInt(req.params.userId, 10);
+  const userId = req.params.userId;
   try {
     const result = await pool.query(
       'SELECT * FROM orders WHERE user_telegram_id = $1 ORDER BY id DESC',
@@ -553,8 +557,8 @@ app.post('/api/order', async (req, res) => {
     const contactJson = JSON.stringify(contact);
 
     let userTelegramId = null;
-    if (contact.telegram_id && !isNaN(parseInt(contact.telegram_id)) && parseInt(contact.telegram_id) > 0) {
-      userTelegramId = parseInt(contact.telegram_id);
+    if (contact.telegram_id) {
+      userTelegramId = contact.telegram_id; // сохраняем как строку
     }
 
     console.log(`👤 Сохраняем user_telegram_id: ${userTelegramId}`);
@@ -2490,6 +2494,7 @@ app.post('/api/manager/push-unsubscribe', checkManagerAuth, async (req, res) => 
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Проверить, подписан ли пользователь
 app.get('/api/manager/push-subscriptions/check', checkManagerAuth, async (req, res) => {
     const userId = req.userId;
@@ -2504,6 +2509,7 @@ app.get('/api/manager/push-subscriptions/check', checkManagerAuth, async (req, r
         res.status(500).json({ error: 'Database error' });
     }
 });
+
 // Делаем функции уведомлений доступными глобально для других модулей
 global.sendPushNotificationToSeller = sendPushNotificationToSeller;
 global.sendPushNotificationToRole = sendPushNotificationToRole;
