@@ -2490,7 +2490,20 @@ app.post('/api/manager/push-unsubscribe', checkManagerAuth, async (req, res) => 
     res.status(500).json({ error: 'Database error' });
   }
 });
-
+// Проверить, подписан ли пользователь
+app.get('/api/manager/push-subscriptions/check', checkManagerAuth, async (req, res) => {
+    const userId = req.userId;
+    try {
+        const result = await pool.query(
+            'SELECT COUNT(*) > 0 as subscribed FROM push_subscriptions WHERE user_id = $1',
+            [userId]
+        );
+        res.json({ subscribed: result.rows[0].subscribed });
+    } catch (err) {
+        console.error('Check subscription error:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
 // Делаем функции уведомлений доступными глобально для других модулей
 global.sendPushNotificationToSeller = sendPushNotificationToSeller;
 global.sendPushNotificationToRole = sendPushNotificationToRole;
