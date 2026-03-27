@@ -116,6 +116,11 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        .notify-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
         .notify-btn {
             background: #3498db;
             color: white;
@@ -406,7 +411,11 @@
                 font-size: 10px;
                 padding: 3px 6px;
             }
-            .logout-btn, .notify-btn {
+            .logout-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            .notify-btn {
                 padding: 6px 12px;
                 font-size: 12px;
             }
@@ -475,9 +484,12 @@
             <div class="user-info">
                 <span class="user-name" id="user-name">Загрузка...</span>
                 <span class="user-role" id="user-role"></span>
-                <button id="notify-btn" class="notify-btn" style="display: none;" onclick="enableNotifications()">🔔 Включить уведомления</button>
                 <button class="logout-btn" onclick="logout()">Выйти</button>
             </div>
+        </div>
+
+        <div class="notify-container">
+            <button id="notify-btn" class="notify-btn" style="display: none;" onclick="enableNotifications()">🔔 Включить уведомления</button>
         </div>
         
         <h1>Дашборд</h1>
