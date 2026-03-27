@@ -4,6 +4,19 @@ const { Pool } = require('pg');
 const telegramBot = require('./telegram-bot');
 const vkHandler = require('./vk-handler');
 const maxHandler = require('./max-handler');
+const webpush = require('web-push');
+
+// Настройка VAPID для push-уведомлений
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:admin@dpsbor.ru',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  console.log('✅ Web Push настроен');
+} else {
+  console.log('⚠️ VAPID ключи не заданы, уведомления не будут работать');
+}
 
 const app = express();
 app.use(express.json());
@@ -43,7 +56,8 @@ pool.connect((err, client, release) => {
     release();
   }
 });
-// Создание недостающих таблиц, если их нет
+
+// ==================== МИГРАЦИИ ====================
 pool.query(`
   CREATE TABLE IF NOT EXISTS hub_stock (
     product_id INTEGER PRIMARY KEY REFERENCES products(id),
@@ -110,7 +124,7 @@ pool.query(`
     created_at TIMESTAMP DEFAULT NOW()
   );
 `).catch(err => console.error('Migration error (warehouse_operations):', err));
-// === МИГРАЦИИ ДЛЯ ДОЛГА И ВЫПЛАТ === (только здесь, все миграции в одном месте)
+
 pool.query(`
   DO $$
   BEGIN
@@ -134,6 +148,16 @@ pool.query(`
     note TEXT
   );
 `).catch(err => console.error('Migration error (payout_requests):', err));
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    subscription JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  );
+`).catch(err => console.error('Migration error (push_subscriptions):', err));
 
 pool.query(`
   DO $$
@@ -213,7 +237,6 @@ pool.query(`
   FOR EACH ROW
   EXECUTE FUNCTION update_variants_seller_price_on_product_change();
 `).catch(err => console.error('Migration error (trigger on products):', err));
-// ==================== КОНЕЦ МИГРАЦИЙ ====================
 
 // ==================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ ====================
 let BASE_URL = process.env.SITE_URL;
@@ -559,6 +582,13 @@ app.post('/api/order', async (req, res) => {
     
     res.status(200).json({ orderNumber: order_number, id: orderId });
 
+    // ===== УВЕДОМЛЕНИЕ О НОВОМ ЗАКАЗЕ =====
+    if (contact.deliveryType === 'pickup' && seller_id) {
+      await sendPushNotificationToSeller(seller_id, `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Самовывоз`, '/manager/orders.html');
+    } else {
+      await sendPushNotificationToRole('admin', `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Доставка`, '/manager/orders.html');
+    }
+
   } catch (err) {
     console.error('❌ Ошибка в /api/order:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -783,7 +813,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
     const userRole = req.userRole;
     const userId = req.userId;
 
-    // Активные чаты (в работе)
     let activeQuery = `
       SELECT DISTINCT 
         o.id as order_id,
@@ -817,7 +846,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
         AND EXISTS (SELECT 1 FROM chat_messages WHERE order_id = o.id)
     `;
 
-    // Завершённые чаты – группируем по recipient_id (telegram_id, vk_id, max_id)
     let completedQuery = `
       WITH recipient_info AS (
         SELECT 
@@ -880,7 +908,6 @@ app.get('/api/manager/chats-list', checkManagerAuth, async (req, res) => {
       FROM last_completed_orders lco
     `;
 
-    // Если пользователь не администратор, добавляем фильтр по seller_id
     if (userRole !== 'admin') {
       activeQuery += ` AND o.seller_id = $1`;
       completedQuery += ` WHERE lco.seller_id = $1`;
@@ -1519,6 +1546,9 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
         `, [sellerId, neg.variant_id, `Отрицательный остаток по товару "${neg.product_name} (${neg.variant_name})" после заказа №${order.order_number}. Было: ${neg.current_stock}, списано: ${neg.quantity}, стало: ${neg.new_stock}`]);
       }
       console.error(`⚠️ При завершении заказа №${order.order_number} обнаружены отрицательные остатки:`, negativeStockItems);
+      
+      // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРУ О ЗАДАЧЕ ИНВЕНТАРИЗАЦИИ =====
+      await sendPushNotificationToRole('admin', 'Задача инвентаризации', `Отрицательные остатки по заказу №${order.order_number}`, '/manager/dashboard.html');
     }
 
     await pool.query(
@@ -1526,6 +1556,7 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       ['completed', id]
     );
 
+    // Уведомление покупателю
     if (recipientId && recipientChannel === 'telegram' && telegramBot.isInitialized() && recipientId !== '1') {
       const message = `✅ Ваш заказ №${order.order_number} завершен!\n\nСпасибо, что выбрали DP SBOR!\n\nОформить новый заказ:\nПерейдите на сайт dpsbor.ru\n\nБудем рады видеть вас снова!`;
       try {
@@ -1727,7 +1758,6 @@ app.get('/api/manager/seller-stock/:sellerId', checkManagerAuth, async (req, res
 
   res.json({ stock: result.rows });
 });
-
 
 app.get('/api/manager/hub-stock', checkManagerAuth, async (req, res) => {
   try {
@@ -1984,6 +2014,9 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     `, [req.userId, variant_id, quantity]);
     
     await pool.query('COMMIT');
+    
+    // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРУ О НОВОЙ ЗАДАЧЕ =====
+    await sendPushNotificationToRole('admin', 'Новая задача на складе', `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name}`, '/manager/dashboard.html');
     
     res.json({ 
       success: true, 
@@ -2340,6 +2373,95 @@ app.post('/api/manager/payout-requests/:id/reject', checkManagerAuth, async (req
     res.json({ success: true });
   } catch (err) {
     console.error('Reject payout error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// ==================== PUSH-УВЕДОМЛЕНИЯ ====================
+async function sendPushNotification(userId, title, body, url = '/') {
+  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+
+  try {
+    const subscriptions = await pool.query(
+      'SELECT subscription FROM push_subscriptions WHERE user_id = $1',
+      [userId]
+    );
+    for (const row of subscriptions.rows) {
+      const subscription = row.subscription;
+      const payload = JSON.stringify({
+        title,
+        body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        data: { url }
+      });
+      try {
+        await webpush.sendNotification(subscription, payload);
+        console.log(`✅ Уведомление отправлено пользователю ${userId}`);
+      } catch (err) {
+        if (err.statusCode === 410) {
+          await pool.query('DELETE FROM push_subscriptions WHERE subscription = $1', [JSON.stringify(subscription)]);
+        } else {
+          console.error('Ошибка отправки уведомления:', err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Ошибка при отправке уведомлений:', err);
+  }
+}
+
+async function sendPushNotificationToRole(role, title, body, url = '/') {
+  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+  try {
+    const users = await pool.query(`
+      SELECT u.id FROM users u
+      JOIN push_subscriptions ps ON u.id = ps.user_id
+      WHERE u.role = $1
+    `, [role]);
+    for (const user of users.rows) {
+      await sendPushNotification(user.id, title, body, url);
+    }
+  } catch (err) {
+    console.error('Ошибка отправки уведомлений по роли:', err);
+  }
+}
+
+async function sendPushNotificationToSeller(sellerId, title, body, url = '/') {
+  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+  await sendPushNotification(sellerId, title, body, url);
+}
+
+// Сохранить подписку
+app.post('/api/manager/push-subscribe', checkManagerAuth, async (req, res) => {
+  const { subscription } = req.body;
+  const userId = req.userId;
+
+  if (!subscription) {
+    return res.status(400).json({ error: 'No subscription data' });
+  }
+
+  try {
+    await pool.query('DELETE FROM push_subscriptions WHERE user_id = $1', [userId]);
+    await pool.query(
+      'INSERT INTO push_subscriptions (user_id, subscription) VALUES ($1, $2)',
+      [userId, JSON.stringify(subscription)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Push subscribe error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Удалить подписку
+app.post('/api/manager/push-unsubscribe', checkManagerAuth, async (req, res) => {
+  const userId = req.userId;
+  try {
+    await pool.query('DELETE FROM push_subscriptions WHERE user_id = $1', [userId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Push unsubscribe error:', err);
     res.status(500).json({ error: 'Database error' });
   }
 });
