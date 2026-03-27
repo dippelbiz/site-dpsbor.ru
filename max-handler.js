@@ -102,7 +102,7 @@ async function bindOrderMAX(maxId, orderNumber, senderName) {
     const contact = typeof orderRow.contact === 'string' ? JSON.parse(orderRow.contact) : orderRow.contact;
     const items = typeof orderRow.items === 'string' ? JSON.parse(orderRow.items) : orderRow.items;
 
-    let messageText = `✅ Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
+    let messageText = `Заказ №${orderRow.order_number} принят в работу! Менеджер скоро свяжется с Вами.\n\n`;
     if (contact.deliveryType === 'pickup') {
         messageText += `Самовывоз: ${contact.address}\n`;
     } else if (contact.deliveryType === 'courier') {
@@ -215,7 +215,6 @@ async function handleMAXWebhook(req, res) {
                 return res.send('ok');
             }
 
-
             let orderId = null;
             const orderResult = await pool.query(
                 `SELECT id FROM orders WHERE contact->>'max_id' = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -272,6 +271,18 @@ async function handleMAXWebhook(req, res) {
                     [orderId, 'max', String(message.body.mid), String(userId), userName, text, 'incoming', 'delivered']
                 );
                 console.log(`✅ Сообщение MAX сохранено от пользователя ${userId}`);
+
+                // Отправка push-уведомления менеджеру
+                try {
+                    const orderInfo = await pool.query('SELECT seller_id, order_number FROM orders WHERE id = $1', [orderId]);
+                    const sellerId = orderInfo.rows[0]?.seller_id;
+                    const orderNumber = orderInfo.rows[0]?.order_number;
+                    if (sellerId && global.sendPushNotificationToSeller) {
+                        await global.sendPushNotificationToSeller(sellerId, 'Новое сообщение', `В заказе №${orderNumber}`, `/manager/chat.html?id=${orderId}`);
+                    }
+                } catch (pushErr) {
+                    console.error('Ошибка отправки push-уведомления:', pushErr);
+                }
             }
         }
 
