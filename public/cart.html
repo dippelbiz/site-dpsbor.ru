@@ -141,10 +141,20 @@
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        function getUserId() {
+            const tg = window.Telegram.WebApp;
+            if (tg?.initDataUnsafe?.user?.id) {
+                return tg.initDataUnsafe.user.id;
+            }
+            let userId = localStorage.getItem('site_user_id');
+            if (!userId) {
+                userId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+                localStorage.setItem('site_user_id', userId);
+            }
+            return userId;
+        }
 
-        const userId = tg.initDataUnsafe?.user?.id || 1;
+        const userId = getUserId();
 
         let products = [];
         let cart = { items: [] };
