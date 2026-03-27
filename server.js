@@ -4,21 +4,22 @@ const { Pool } = require('pg');
 const telegramBot = require('./telegram-bot');
 const vkHandler = require('./vk-handler');
 const maxHandler = require('./max-handler');
-const webpush = require('web-push');
+let webpush = null;
 
-// Настройка VAPID для push-уведомлений
+// Настройка VAPID для push-уведомлений (только если ключи заданы)
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   try {
-    webpush.setVapidDetails(
+    const webpushLib = require('web-push');
+    webpushLib.setVapidDetails(
       'mailto:admin@dpsbor.ru',
       process.env.VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );
+    webpush = webpushLib;
     console.log('✅ Web Push настроен');
   } catch (err) {
     console.error('❌ Ошибка настройки Web Push (возможно, неверные ключи):', err.message);
     console.log('⚠️ Уведомления отключены');
-    // Обнуляем webpush, чтобы дальнейшие вызовы не ломались
     webpush = null;
   }
 } else {
@@ -591,10 +592,12 @@ app.post('/api/order', async (req, res) => {
     res.status(200).json({ orderNumber: order_number, id: orderId });
 
     // ===== УВЕДОМЛЕНИЕ О НОВОМ ЗАКАЗЕ =====
-    if (contact.deliveryType === 'pickup' && seller_id) {
-      await sendPushNotificationToSeller(seller_id, `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Самовывоз`, '/manager/orders.html');
-    } else {
-      await sendPushNotificationToRole('admin', `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Доставка`, '/manager/orders.html');
+    if (webpush) {
+      if (contact.deliveryType === 'pickup' && seller_id) {
+        await sendPushNotificationToSeller(seller_id, `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Самовывоз`, '/manager/orders.html');
+      } else {
+        await sendPushNotificationToRole('admin', `Новый заказ №${order_number}`, `Сумма: ${total_sum} руб. Доставка`, '/manager/orders.html');
+      }
     }
 
   } catch (err) {
@@ -1556,7 +1559,9 @@ app.put('/api/manager/order/:id/complete', checkManagerAuth, async (req, res) =>
       console.error(`⚠️ При завершении заказа №${order.order_number} обнаружены отрицательные остатки:`, negativeStockItems);
       
       // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРУ О ЗАДАЧЕ ИНВЕНТАРИЗАЦИИ =====
-      await sendPushNotificationToRole('admin', 'Задача инвентаризации', `Отрицательные остатки по заказу №${order.order_number}`, '/manager/dashboard.html');
+      if (webpush) {
+        await sendPushNotificationToRole('admin', 'Задача инвентаризации', `Отрицательные остатки по заказу №${order.order_number}`, '/manager/dashboard.html');
+      }
     }
 
     await pool.query(
@@ -2024,7 +2029,9 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     await pool.query('COMMIT');
     
     // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРУ О НОВОЙ ЗАДАЧЕ =====
-    await sendPushNotificationToRole('admin', 'Новая задача на складе', `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name}`, '/manager/dashboard.html');
+    if (webpush) {
+      await sendPushNotificationToRole('admin', 'Новая задача на складе', `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name}`, '/manager/dashboard.html');
+    }
     
     res.json({ 
       success: true, 
@@ -2387,7 +2394,7 @@ app.post('/api/manager/payout-requests/:id/reject', checkManagerAuth, async (req
 
 // ==================== PUSH-УВЕДОМЛЕНИЯ ====================
 async function sendPushNotification(userId, title, body, url = '/') {
-  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+  if (!webpush) return;
 
   try {
     const subscriptions = await pool.query(
@@ -2420,7 +2427,7 @@ async function sendPushNotification(userId, title, body, url = '/') {
 }
 
 async function sendPushNotificationToRole(role, title, body, url = '/') {
-  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+  if (!webpush) return;
   try {
     const users = await pool.query(`
       SELECT u.id FROM users u
@@ -2436,7 +2443,7 @@ async function sendPushNotificationToRole(role, title, body, url = '/') {
 }
 
 async function sendPushNotificationToSeller(sellerId, title, body, url = '/') {
-  if (!webpush || !process.env.VAPID_PUBLIC_KEY) return;
+  if (!webpush) return;
   await sendPushNotification(sellerId, title, body, url);
 }
 
