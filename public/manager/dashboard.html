@@ -598,7 +598,6 @@
     </div>
 
     <script>
-        // === ОСНОВНЫЕ ФУНКЦИИ (скопированы из предыдущей версии, чтобы всё работало) ===
         let currentUserRole = '';
         let allProducts = [];
         let currentSaleItems = [];
@@ -625,7 +624,6 @@
             });
         });
 
-        // ========== ЗАГРУЗКА ДАННЫХ ==========
         async function loadDashboard() {
             const token = checkAuth();
             try {
@@ -652,13 +650,154 @@
                     await loadSellers();
                 }
 
+                // Проверка статуса уведомлений
                 await checkNotificationStatus();
             } catch (err) {
                 console.error('Ошибка загрузки дашборда:', err);
             }
         }
 
-        // ========== ФУНКЦИИ ДЛЯ СТАТИСТИКИ И ЗАДАЧ ==========
+        // ========== PUSH-УВЕДОМЛЕНИЯ ==========
+        if ('serviceWorker' in navigator && 'Notification' in window) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(() => console.log('Service Worker зарегистрирован'))
+                .catch(err => console.error('Ошибка регистрации SW:', err));
+        }
+
+        function urlBase64ToUint8Array(base64String) {
+            // Добавляем недостающие '=' если нужно
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        async function subscribeToPush() {
+            const token = localStorage.getItem('manager_token');
+            if (!token) return;
+            if (Notification.permission !== 'granted') return;
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                // ВАШ ПУБЛИЧНЫЙ КЛЮЧ VAPID – замените на свой, если он другой
+                const vapidPublicKey = 'BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN';
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+                });
+                const response = await fetch('/api/manager/push-subscribe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ subscription })
+                });
+                if (response.ok) {
+                    console.log('Подписка на уведомления сохранена');
+                    return true;
+                } else {
+                    console.error('Ошибка сохранения подписки:', await response.text());
+                    return false;
+                }
+            } catch (err) {
+                console.error('Ошибка подписки:', err);
+                return false;
+            }
+        }
+
+        async function checkNotificationStatus() {
+            const btn = document.getElementById('notify-btn');
+            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                btn.textContent = '❌ Не поддерживается';
+                btn.disabled = true;
+                btn.classList.add('disabled');
+                btn.style.display = 'inline-block';
+                return;
+            }
+            
+            if (Notification.permission === 'denied') {
+                btn.textContent = '🔕 Уведомления заблокированы';
+                btn.disabled = true;
+                btn.classList.add('disabled');
+                btn.style.display = 'inline-block';
+                return;
+            }
+            
+            if (Notification.permission === 'granted') {
+                const token = localStorage.getItem('manager_token');
+                if (token) {
+                    try {
+                        const response = await fetch('/api/manager/push-subscriptions/check', {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const data = await response.json();
+                        if (data.subscribed) {
+                            btn.textContent = '✅ Уведомления включены';
+                            btn.disabled = true;
+                            btn.classList.add('disabled');
+                        } else {
+                            btn.textContent = '🔔 Включить уведомления';
+                            btn.disabled = false;
+                            btn.classList.remove('disabled');
+                        }
+                    } catch (err) {
+                        btn.textContent = '🔔 Включить уведомления';
+                        btn.disabled = false;
+                        btn.classList.remove('disabled');
+                    }
+                } else {
+                    btn.textContent = '🔔 Включить уведомления';
+                    btn.disabled = false;
+                    btn.classList.remove('disabled');
+                }
+            } else {
+                btn.textContent = '🔔 Включить уведомления';
+                btn.disabled = false;
+                btn.classList.remove('disabled');
+            }
+            btn.style.display = 'inline-block';
+        }
+
+        async function enableNotifications() {
+            if (!('Notification' in window)) {
+                alert('Ваш браузер не поддерживает уведомления');
+                return;
+            }
+            
+            if (Notification.permission === 'denied') {
+                alert('Уведомления заблокированы. Измените настройки браузера, чтобы разрешить их.');
+                return;
+            }
+            
+            if (Notification.permission === 'granted') {
+                const success = await subscribeToPush();
+                if (success) {
+                    await checkNotificationStatus();
+                } else {
+                    alert('Не удалось включить уведомления. Проверьте консоль.');
+                }
+                return;
+            }
+            
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                const success = await subscribeToPush();
+                if (success) {
+                    await checkNotificationStatus();
+                } else {
+                    alert('Не удалось включить уведомления. Проверьте консоль.');
+                }
+            } else {
+                alert('Уведомления не разрешены. Вы не будете получать оповещения.');
+            }
+            checkNotificationStatus();
+        }
+
+        // ========== ОСТАЛЬНЫЕ ФУНКЦИИ ==========
         async function loadDebt() {
             const token = checkAuth();
             try {
@@ -702,7 +841,6 @@
             }
         }
 
-        // ========== ПРЯМАЯ ПРОДАЖА ==========
         function openDirectSaleModal() {
             currentSaleItems = [];
             document.getElementById('direct-sale-items-container').innerHTML = '';
@@ -853,7 +991,6 @@
             }
         }
 
-        // ========== ЗАВЕРШЁННЫЕ ПРОДАЖИ ==========
         async function openCompletedSales(sellerId = null) {
             const token = checkAuth();
             let url = '/api/manager/direct-sales';
@@ -900,7 +1037,6 @@
             document.getElementById('completed-sales-modal').style.display = 'none';
         }
 
-        // ========== ВЫПЛАТА ==========
         function openPayoutModal() {
             document.getElementById('payout-amount').value = '';
             document.getElementById('payout-modal').style.display = 'block';
@@ -940,7 +1076,6 @@
             }
         }
 
-        // ========== ЗАДАЧИ (перемещение, выплаты, инвентаризация) ==========
         async function loadTasks() {
             if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
             const token = checkAuth();
@@ -1153,145 +1288,6 @@
         function logout() {
             localStorage.removeItem('manager_token');
             window.location.href = '/manager/';
-        }
-
-        // ========== PUSH-УВЕДОМЛЕНИЯ ==========
-        if ('serviceWorker' in navigator && 'Notification' in window) {
-            navigator.serviceWorker.register('/sw.js')
-                .then(() => console.log('Service Worker зарегистрирован'))
-                .catch(err => console.error('Ошибка регистрации SW:', err));
-        }
-
-        function urlBase64ToUint8Array(base64String) {
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) {
-                outputArray[i] = rawData.charCodeAt(i);
-            }
-            return outputArray;
-        }
-
-        // ВСТАВЬТЕ СВОЙ ПУБЛИЧНЫЙ КЛЮЧ VAPID (из Render)
-        const VAPID_PUBLIC_KEY = 'BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN';
-
-        async function subscribeToPush() {
-            const token = localStorage.getItem('manager_token');
-            if (!token) return false;
-            if (Notification.permission !== 'granted') return false;
-            try {
-                const registration = await navigator.serviceWorker.ready;
-                const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array('BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN')
-                });
-                const response = await fetch('/api/manager/push-subscribe', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ subscription })
-                });
-                if (response.ok) {
-                    console.log('Подписка на уведомления сохранена');
-                    return true;
-                } else {
-                    console.error('Ошибка сохранения подписки:', await response.text());
-                    return false;
-                }
-            } catch (err) {
-                console.error('Ошибка подписки:', err);
-                return false;
-            }
-        }
-
-        async function checkNotificationStatus() {
-            const btn = document.getElementById('notify-btn');
-            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-                btn.textContent = '❌ Не поддерживается';
-                btn.disabled = true;
-                btn.classList.add('disabled');
-                btn.style.display = 'inline-block';
-                return;
-            }
-            
-            if (Notification.permission === 'denied') {
-                btn.textContent = '🔕 Уведомления заблокированы';
-                btn.disabled = true;
-                btn.classList.add('disabled');
-                btn.style.display = 'inline-block';
-                return;
-            }
-            
-            if (Notification.permission === 'granted') {
-                const token = localStorage.getItem('manager_token');
-                if (token) {
-                    try {
-                        const response = await fetch('/api/manager/push-subscriptions/check', {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const data = await response.json();
-                        if (data.subscribed) {
-                            btn.textContent = '✅ Уведомления включены';
-                            btn.disabled = true;
-                            btn.classList.add('disabled');
-                        } else {
-                            btn.textContent = '🔔 Включить уведомления';
-                            btn.disabled = false;
-                            btn.classList.remove('disabled');
-                        }
-                    } catch (err) {
-                        btn.textContent = '🔔 Включить уведомления';
-                        btn.disabled = false;
-                        btn.classList.remove('disabled');
-                    }
-                } else {
-                    btn.textContent = '🔔 Включить уведомления';
-                    btn.disabled = false;
-                    btn.classList.remove('disabled');
-                }
-            } else {
-                btn.textContent = '🔔 Включить уведомления';
-                btn.disabled = false;
-                btn.classList.remove('disabled');
-            }
-            btn.style.display = 'inline-block';
-        }
-
-        async function enableNotifications() {
-            if (!('Notification' in window)) {
-                alert('Ваш браузер не поддерживает уведомления');
-                return;
-            }
-            
-            if (Notification.permission === 'denied') {
-                alert('Уведомления заблокированы. Измените настройки браузера, чтобы разрешить их.');
-                return;
-            }
-            
-            if (Notification.permission === 'granted') {
-                const success = await subscribeToPush();
-                if (success) {
-                    await checkNotificationStatus();
-                } else {
-                    alert('Не удалось включить уведомления. Проверьте консоль.');
-                }
-                return;
-            }
-            
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                const success = await subscribeToPush();
-                if (success) {
-                    await checkNotificationStatus();
-                } else {
-                    alert('Не удалось включить уведомления. Проверьте консоль.');
-                }
-            } else {
-                alert('Уведомления не разрешены. Вы не будете получать оповещения.');
-            }
         }
 
         if (checkAuth()) {
