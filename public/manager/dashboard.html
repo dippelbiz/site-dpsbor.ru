@@ -689,7 +689,7 @@
             try {
                 const registration = await navigator.serviceWorker.ready;
                 // Публичный ключ VAPID – замените на ваш, если необходимо
-                const vapidPublicKey = 'BNJmswJ6gVxVa1u73Bo-gzllJioyu_OxENHNI0qsMz8mjAbDdCTYqm1lU0P35XIdQXbKw1J1hbqnUKQoZsSDBQY';
+                const vapidPublicKey = 'BPbkIBtebQpJ8n-PX_LBhY2Z1a0oZRrO3oSUSp07dO8O0VUv1C4QfCjJzY1mLVGqVqQTc1yFd8B-Jy6K1Y6fL9U';
                 const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
                 if (!applicationServerKey) {
                     throw new Error('Не удалось преобразовать публичный ключ');
