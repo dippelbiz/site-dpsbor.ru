@@ -1184,7 +1184,7 @@
                 const registration = await navigator.serviceWorker.ready;
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                    applicationServerKey: urlBase64ToUint8Array('BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN')
                 });
                 const response = await fetch('/api/manager/push-subscribe', {
                     method: 'POST',
