@@ -598,6 +598,7 @@
     </div>
 
     <script>
+        // === ОСНОВНЫЕ ФУНКЦИИ (скопированы из предыдущей версии, чтобы всё работало) ===
         let currentUserRole = '';
         let allProducts = [];
         let currentSaleItems = [];
@@ -624,6 +625,7 @@
             });
         });
 
+        // ========== ЗАГРУЗКА ДАННЫХ ==========
         async function loadDashboard() {
             const token = checkAuth();
             try {
@@ -650,11 +652,507 @@
                     await loadSellers();
                 }
 
-                // Проверка статуса уведомлений
                 await checkNotificationStatus();
             } catch (err) {
                 console.error('Ошибка загрузки дашборда:', err);
             }
+        }
+
+        // ========== ФУНКЦИИ ДЛЯ СТАТИСТИКИ И ЗАДАЧ ==========
+        async function loadDebt() {
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/debt', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                document.getElementById('debt').textContent = data.debt.toFixed(2) + ' ₽';
+            } catch (err) {
+                console.error('Error loading debt:', err);
+                document.getElementById('debt').textContent = 'Ошибка';
+            }
+        }
+
+        async function loadDirectProducts() {
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/direct-products', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                allProducts = data;
+            } catch (err) {
+                console.error('Error loading direct products:', err);
+            }
+        }
+
+        async function loadSellers() {
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/sellers-list', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const select = document.getElementById('seller-filter');
+                select.innerHTML = '<option value="">Все продавцы</option>' + 
+                    data.sellers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                document.getElementById('seller-filter-container').style.display = 'flex';
+            } catch (err) {
+                console.error('Error loading sellers:', err);
+            }
+        }
+
+        // ========== ПРЯМАЯ ПРОДАЖА ==========
+        function openDirectSaleModal() {
+            currentSaleItems = [];
+            document.getElementById('direct-sale-items-container').innerHTML = '';
+            addDirectSaleItem();
+            document.getElementById('direct-sale-summary').style.display = 'none';
+            document.getElementById('confirm-direct-sale-btn').disabled = true;
+            document.getElementById('direct-sale-modal').style.display = 'block';
+        }
+
+        function closeDirectSaleModal() {
+            document.getElementById('direct-sale-modal').style.display = 'none';
+        }
+
+        function addDirectSaleItem() {
+            const container = document.getElementById('direct-sale-items-container');
+            const idx = Date.now() + '_' + Math.random();
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'sale-item';
+            itemDiv.id = `sale-item-${idx}`;
+            itemDiv.setAttribute('data-idx', idx);
+            itemDiv.innerHTML = `
+                <button class="remove-item-btn" onclick="removeDirectSaleItem('${idx}')">✖</button>
+                <select class="sale-product" data-idx="${idx}" onchange="updateSaleItemInfo('${idx}')">
+                    <option value="">Выберите товар</option>
+                    ${allProducts.map(p => `<option value="${p.product_id}" data-variant-id="${p.variant_id}" data-price="${p.price}" data-product-name="${p.product_name}" data-variant-name="${p.variant_name}">${p.product_name} (${p.variant_name}) - ${p.price} руб.</option>`).join('')}
+                </select>
+                <input type="number" class="sale-quantity" id="sale-quantity-${idx}" placeholder="Количество (шт)" step="1" min="1" oninput="updateDirectSaleSummary()">
+                <div class="price-info" id="price-info-${idx}" style="font-size: 12px; color: #666; margin-top: 4px;"></div>
+            `;
+            container.appendChild(itemDiv);
+            updateDirectSaleSummary();
+        }
+
+        function removeDirectSaleItem(idx) {
+            const itemDiv = document.getElementById(`sale-item-${idx}`);
+            if (itemDiv) itemDiv.remove();
+            updateDirectSaleSummary();
+        }
+
+        function updateSaleItemInfo(idx) {
+            const select = document.querySelector(`#sale-item-${idx} .sale-product`);
+            const selectedOption = select.options[select.selectedIndex];
+            const price = selectedOption ? selectedOption.dataset.price : 0;
+            const priceDiv = document.getElementById(`price-info-${idx}`);
+            if (priceDiv) {
+                priceDiv.textContent = `Цена: ${price} руб. за шт.`;
+            }
+            updateDirectSaleSummary();
+        }
+
+        function updateDirectSaleSummary() {
+            const items = [];
+            const itemDivs = document.querySelectorAll('.sale-item');
+            let total = 0;
+
+            itemDivs.forEach(div => {
+                const select = div.querySelector('.sale-product');
+                const quantityInput = div.querySelector('.sale-quantity');
+                const selectedOption = select.options[select.selectedIndex];
+                if (selectedOption && selectedOption.value) {
+                    const productId = selectedOption.value;
+                    const productName = selectedOption.dataset.productName;
+                    const variantId = selectedOption.dataset.variantId;
+                    const variantName = selectedOption.dataset.variantName;
+                    const price = parseFloat(selectedOption.dataset.price);
+                    const quantity = parseInt(quantityInput.value);
+                    if (quantity > 0) {
+                        items.push({
+                            product_id: parseInt(productId),
+                            product_name: productName,
+                            variant_id: parseInt(variantId),
+                            variant_name: variantName,
+                            quantity: quantity,
+                            price: price
+                        });
+                        total += price * quantity;
+                    }
+                }
+            });
+
+            currentSaleItems = items;
+
+            const summaryDiv = document.getElementById('direct-sale-summary');
+            const confirmBtn = document.getElementById('confirm-direct-sale-btn');
+
+            if (items.length === 0) {
+                summaryDiv.style.display = 'none';
+                confirmBtn.disabled = true;
+                return;
+            }
+
+            const itemsHtml = items.map(item => `
+                <div class="summary-item">
+                    <span>${item.product_name} (${item.variant_name}) × ${item.quantity} шт</span>
+                    <span>${item.price * item.quantity} руб.</span>
+                </div>
+            `).join('');
+
+            summaryDiv.innerHTML = `
+                <h4>Состав продажи</h4>
+                <div class="summary-items">
+                    ${itemsHtml}
+                </div>
+                <div class="summary-total">Итого: ${total} руб.</div>
+            `;
+            summaryDiv.style.display = 'block';
+            confirmBtn.disabled = false;
+        }
+
+        async function confirmDirectSale() {
+            if (currentSaleItems.length === 0) {
+                alert('Добавьте хотя бы один товар');
+                return;
+            }
+
+            const total = currentSaleItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            if (!confirm(`Подтвердить продажу на сумму ${total} руб.?`)) return;
+
+            const token = checkAuth();
+            const confirmBtn = document.getElementById('confirm-direct-sale-btn');
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Отправка...';
+
+            try {
+                const response = await fetch('/api/manager/direct-sale', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ items: currentSaleItems, total })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`✅ Продажа зафиксирована!\nНомер заказа: ${data.orderNumber}`);
+                    closeDirectSaleModal();
+                    loadDashboard();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (err) {
+                console.error('Direct sale error:', err);
+                alert('Ошибка при создании продажи');
+            } finally {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Подтвердить продажу';
+            }
+        }
+
+        // ========== ЗАВЕРШЁННЫЕ ПРОДАЖИ ==========
+        async function openCompletedSales(sellerId = null) {
+            const token = checkAuth();
+            let url = '/api/manager/direct-sales';
+            if (sellerId) {
+                url += `?seller_id=${sellerId}`;
+            }
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const container = document.getElementById('completed-sales-list');
+                if (!data.sales || data.sales.length === 0) {
+                    container.innerHTML = '<div class="no-tasks">Нет завершённых прямых продаж</div>';
+                } else {
+                    container.innerHTML = data.sales.map(sale => {
+                        const itemsHtml = sale.items.map(item => `
+                            <div>${item.name} (${item.variantName || item.variant_name}) × ${item.quantity} = ${item.price * item.quantity} руб.</div>
+                        `).join('');
+                        const sellerInfo = currentUserRole === 'admin' ? `<div style="font-size: 11px; color: #7f8c8d;">Продавец: ${sale.seller_name || '—'}</div>` : '';
+                        return `
+                            <div class="sale-item" style="border-left-color: #27ae60;">
+                                <div style="font-weight: bold;">📋 Заказ №${sale.order_number}</div>
+                                ${sellerInfo}
+                                <div style="font-size: 11px; color: #7f8c8d;">📅 ${new Date(sale.completed_at).toLocaleString()}</div>
+                                <div style="margin-top: 5px; padding-left: 10px;">${itemsHtml}</div>
+                                <div style="margin-top: 8px; font-weight: bold; text-align: right;">Итого: ${sale.total} руб.</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+                document.getElementById('completed-sales-modal').style.display = 'block';
+            } catch (err) {
+                console.error('Error loading sales:', err);
+                alert('Ошибка загрузки продаж');
+            }
+        }
+
+        function filterSalesBySeller(sellerId) {
+            openCompletedSales(sellerId || null);
+        }
+
+        function closeCompletedSalesModal() {
+            document.getElementById('completed-sales-modal').style.display = 'none';
+        }
+
+        // ========== ВЫПЛАТА ==========
+        function openPayoutModal() {
+            document.getElementById('payout-amount').value = '';
+            document.getElementById('payout-modal').style.display = 'block';
+        }
+
+        function closePayoutModal() {
+            document.getElementById('payout-modal').style.display = 'none';
+        }
+
+        async function requestPayout() {
+            const amount = parseFloat(document.getElementById('payout-amount').value);
+            if (!amount || amount <= 0) {
+                alert('Введите корректную сумму');
+                return;
+            }
+            const token = checkAuth();
+            try {
+                const response = await fetch('/api/manager/request-payout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ amount })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`✅ Запрос на выплату ${amount} руб. отправлен!`);
+                    closePayoutModal();
+                    loadDebt();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (err) {
+                console.error('Request payout error:', err);
+                alert('Ошибка при отправке запроса');
+            }
+        }
+
+        // ========== ЗАДАЧИ (перемещение, выплаты, инвентаризация) ==========
+        async function loadTasks() {
+            if (currentUserRole !== 'admin' && currentUserRole !== 'warehouse_seller') return;
+            const token = checkAuth();
+            const tasksSection = document.getElementById('tasks-section');
+            tasksSection.style.display = 'block';
+            try {
+                const transferResponse = await fetch('/api/manager/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
+                const transferData = await transferResponse.json();
+                
+                let payoutRequests = [];
+                if (currentUserRole === 'admin') {
+                    const payoutResponse = await fetch('/api/manager/payout-requests', { headers: { 'Authorization': `Bearer ${token}` } });
+                    const payoutData = await payoutResponse.json();
+                    payoutRequests = payoutData.requests || [];
+                }
+                
+                const tasksCount = transferData.tasks.length + payoutRequests.length;
+                const badge = document.getElementById('tasks-badge');
+                if (tasksCount > 0) {
+                    badge.textContent = tasksCount;
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+                
+                const container = document.getElementById('tasks-list');
+                if (transferData.tasks.length === 0 && payoutRequests.length === 0) {
+                    container.innerHTML = '<div class="no-tasks">Нет активных задач</div>';
+                } else {
+                    let html = '';
+                    html += transferData.tasks.map(task => `
+                        <div class="task-card" data-id="${task.id}" data-type="transfer">
+                            <div class="task-info">
+                                <div class="task-seller">👤 ${task.seller_name}</div>
+                                <div class="task-product">📦 ${task.product_name} (${task.variant_name})</div>
+                                <div class="task-quantity">📊 Количество: ${task.quantity} шт</div>
+                                <div class="task-date">📅 ${new Date(task.created_at).toLocaleString()}</div>
+                            </div>
+                            <div class="task-buttons">
+                                <button class="approve-btn" onclick="approveTask(${task.id})">✅ Подтвердить</button>
+                                <button class="reject-btn" onclick="rejectTask(${task.id})">❌ Отклонить</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    html += payoutRequests.map(req => `
+                        <div class="task-card" data-id="${req.id}" data-type="payout">
+                            <div class="task-info">
+                                <div class="task-seller">👤 ${req.seller_name}</div>
+                                <div class="task-product">💰 Выплата: ${req.amount} руб.</div>
+                                <div class="task-date">📅 ${new Date(req.created_at).toLocaleString()}</div>
+                            </div>
+                            <div class="task-buttons">
+                                <button class="approve-btn" onclick="approvePayout(${req.id})">✅ Подтвердить</button>
+                                <button class="reject-btn" onclick="rejectPayout(${req.id})">❌ Отклонить</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    container.innerHTML = html;
+                }
+            } catch (err) { console.error('Tasks error:', err); }
+        }
+
+        async function approvePayout(requestId) {
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/payout-requests/${requestId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    alert('✅ Выплата подтверждена');
+                    loadTasks();
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + error.error);
+                }
+            } catch (err) {
+                console.error('Approve payout error:', err);
+                alert('Ошибка соединения');
+            }
+        }
+
+        async function rejectPayout(requestId) {
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/payout-requests/${requestId}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    alert('❌ Выплата отклонена');
+                    loadTasks();
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + error.error);
+                }
+            } catch (err) {
+                console.error('Reject payout error:', err);
+                alert('Ошибка соединения');
+            }
+        }
+
+        async function loadInventoryTasks() {
+            if (currentUserRole !== 'admin') return;
+            const token = checkAuth();
+            const section = document.getElementById('inventory-tasks-section');
+            section.style.display = 'block';
+            try {
+                const response = await fetch('/api/manager/inventory-tasks', { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await response.json();
+                const container = document.getElementById('inventory-tasks-list');
+                if (!data.tasks || data.tasks.length === 0) {
+                    container.innerHTML = '<div class="no-tasks">Нет задач инвентаризации</div>';
+                } else {
+                    container.innerHTML = data.tasks.map(task => `
+                        <div class="task-card" data-id="${task.id}">
+                            <div class="task-info">
+                                <div class="task-seller">👤 ${task.seller_name}</div>
+                                <div class="task-product">📦 ${task.product_name} (${task.variant_name})</div>
+                                <div class="task-quantity">⚠️ ${task.reason}</div>
+                                <div class="task-date">📅 ${new Date(task.created_at).toLocaleString()}</div>
+                            </div>
+                            <div class="task-buttons">
+                                <button class="approve-btn" onclick="resolveInventoryTask(${task.id})">✅ Выполнено</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) { console.error('Inventory tasks error:', err); }
+        }
+
+        async function resolveInventoryTask(taskId) {
+            if (!confirm('Отметить задачу как выполненную?')) return;
+            const token = checkAuth();
+            try {
+                const response = await fetch(`/api/manager/inventory-tasks/${taskId}/resolve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    alert('✅ Задача отмечена как выполненная');
+                    loadInventoryTasks();
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + (error.error || 'Неизвестная ошибка'));
+                }
+            } catch (err) { alert('Ошибка соединения'); }
+        }
+
+        async function approveTask(taskId) {
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/tasks/${taskId}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                alert('✅ Заявка подтверждена');
+                loadDashboard();
+            } else {
+                const error = await response.json();
+                alert('Ошибка: ' + error.error);
+            }
+        }
+
+        async function rejectTask(taskId) {
+            const token = checkAuth();
+            const response = await fetch(`/api/manager/tasks/${taskId}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                alert('❌ Заявка отклонена');
+                loadDashboard();
+            } else {
+                const error = await response.json();
+                alert('Ошибка: ' + error.error);
+            }
+        }
+
+        async function openCompletedTasks() {
+            const token = checkAuth();
+            const response = await fetch('/api/manager/tasks/completed', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await response.json();
+            const container = document.getElementById('completed-tasks-list');
+            if (data.tasks.length === 0) {
+                container.innerHTML = '<div class="no-tasks">Нет завершённых задач</div>';
+            } else {
+                container.innerHTML = data.tasks.map(task => {
+                    const statusText = task.status === 'approved' ? '✅ Подтверждена' : '❌ Отклонена';
+                    const statusClass = task.status === 'approved' ? 'status-approved' : 'status-rejected';
+                    return `
+                        <div class="completed-task-item">
+                            <strong>👤 ${task.seller_name}</strong>
+                            <span class="completed-task-status ${statusClass}">${statusText}</span>
+                            <div>📦 ${task.product_name} (${task.variant_name}) — ${task.quantity} шт</div>
+                            <div class="task-date">📅 ${new Date(task.updated_at).toLocaleString()}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            document.getElementById('completed-modal').style.display = 'block';
+        }
+
+        function closeCompletedModal() {
+            document.getElementById('completed-modal').style.display = 'none';
+        }
+
+        function logout() {
+            localStorage.removeItem('manager_token');
+            window.location.href = '/manager/';
         }
 
         // ========== PUSH-УВЕДОМЛЕНИЯ ==========
@@ -675,15 +1173,18 @@
             return outputArray;
         }
 
+        // ВСТАВЬТЕ СВОЙ ПУБЛИЧНЫЙ КЛЮЧ VAPID (из Render)
+        const VAPID_PUBLIC_KEY = 'BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN';
+
         async function subscribeToPush() {
             const token = localStorage.getItem('manager_token');
-            if (!token) return;
-            if (Notification.permission !== 'granted') return;
+            if (!token) return false;
+            if (Notification.permission !== 'granted') return false;
             try {
                 const registration = await navigator.serviceWorker.ready;
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array('BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN')  // замените на ваш реальный публичный ключ
+                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
                 });
                 const response = await fetch('/api/manager/push-subscribe', {
                     method: 'POST',
@@ -693,9 +1194,16 @@
                     },
                     body: JSON.stringify({ subscription })
                 });
-                if (response.ok) console.log('Подписка на уведомления сохранена');
+                if (response.ok) {
+                    console.log('Подписка на уведомления сохранена');
+                    return true;
+                } else {
+                    console.error('Ошибка сохранения подписки:', await response.text());
+                    return false;
+                }
             } catch (err) {
                 console.error('Ошибка подписки:', err);
+                return false;
             }
         }
 
@@ -764,47 +1272,27 @@
             }
             
             if (Notification.permission === 'granted') {
-                await subscribeToPush();
-                checkNotificationStatus();
+                const success = await subscribeToPush();
+                if (success) {
+                    await checkNotificationStatus();
+                } else {
+                    alert('Не удалось включить уведомления. Проверьте консоль.');
+                }
                 return;
             }
             
             const permission = await Notification.requestPermission();
             if (permission === 'granted') {
-                await subscribeToPush();
+                const success = await subscribeToPush();
+                if (success) {
+                    await checkNotificationStatus();
+                } else {
+                    alert('Не удалось включить уведомления. Проверьте консоль.');
+                }
             } else {
                 alert('Уведомления не разрешены. Вы не будете получать оповещения.');
             }
-            checkNotificationStatus();
         }
-
-        // Остальные функции (загрузка товаров, модальные окна, задачи и т.д.) остаются без изменений
-        async function loadDebt() { /* ... */ }
-        async function loadDirectProducts() { /* ... */ }
-        async function loadSellers() { /* ... */ }
-        function openDirectSaleModal() { /* ... */ }
-        function closeDirectSaleModal() { /* ... */ }
-        function addDirectSaleItem() { /* ... */ }
-        function removeDirectSaleItem(idx) { /* ... */ }
-        function updateSaleItemInfo(idx) { /* ... */ }
-        function updateDirectSaleSummary() { /* ... */ }
-        async function confirmDirectSale() { /* ... */ }
-        async function openCompletedSales(sellerId = null) { /* ... */ }
-        function filterSalesBySeller(sellerId) { /* ... */ }
-        function closeCompletedSalesModal() { /* ... */ }
-        function openPayoutModal() { /* ... */ }
-        function closePayoutModal() { /* ... */ }
-        async function requestPayout() { /* ... */ }
-        async function loadTasks() { /* ... */ }
-        async function approvePayout(requestId) { /* ... */ }
-        async function rejectPayout(requestId) { /* ... */ }
-        async function loadInventoryTasks() { /* ... */ }
-        async function resolveInventoryTask(taskId) { /* ... */ }
-        async function approveTask(taskId) { /* ... */ }
-        async function rejectTask(taskId) { /* ... */ }
-        async function openCompletedTasks() { /* ... */ }
-        function closeCompletedModal() { /* ... */ }
-        function logout() { /* ... */ }
 
         if (checkAuth()) {
             loadDashboard();
