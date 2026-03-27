@@ -256,6 +256,18 @@ async function handleVKWebhook(req, res) {
                     [orderId, 'vk', String(message.id), String(userId), senderName, text, 'incoming', 'delivered']
                 );
                 console.log(`✅ Сообщение ВК сохранено от пользователя ${userId}`);
+
+                // Отправка push-уведомления менеджеру
+                try {
+                    const orderInfo = await pool.query('SELECT seller_id, order_number FROM orders WHERE id = $1', [orderId]);
+                    const sellerId = orderInfo.rows[0]?.seller_id;
+                    const orderNumber = orderInfo.rows[0]?.order_number;
+                    if (sellerId && global.sendPushNotificationToSeller) {
+                        await global.sendPushNotificationToSeller(sellerId, 'Новое сообщение', `В заказе №${orderNumber}`, `/manager/chat.html?id=${orderId}`);
+                    }
+                } catch (pushErr) {
+                    console.error('Ошибка отправки push-уведомления:', pushErr);
+                }
             }
         }
         res.send('ok');
@@ -264,7 +276,6 @@ async function handleVKWebhook(req, res) {
         res.status(500).send('error');
     }
 }
-
 function isInitialized() {
     return !!(VK_ACCESS_TOKEN && VK_GROUP_ID && pool);
 }
