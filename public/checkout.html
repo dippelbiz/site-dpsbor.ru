@@ -330,10 +330,24 @@
     </div>
 
     <script>
+        function getUserId() {
+            const tg = window.Telegram.WebApp;
+            if (tg?.initDataUnsafe?.user?.id) {
+                return tg.initDataUnsafe.user.id;
+            }
+            let userId = localStorage.getItem('site_user_id');
+            if (!userId) {
+                userId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+                localStorage.setItem('site_user_id', userId);
+            }
+            return userId;
+        }
+
+        const userId = getUserId();
+
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        const userId = tg.initDataUnsafe?.user?.id || 1;
         const requestId = crypto.randomUUID();
 
         let cart = null;
@@ -524,9 +538,10 @@
                 }
 
                 const user = tg.initDataUnsafe?.user;
-                const userName = user?.first_name 
-                    ? (user.first_name + (user.last_name ? ' ' + user.last_name : ''))
-                    : 'Покупатель';
+                let userName = 'Покупатель';
+                if (user?.first_name) {
+                    userName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+                }
                 const telegramId = user?.id ? String(user.id) : null;
 
                 const contact = {
