@@ -2480,7 +2480,9 @@ app.post('/api/manager/push-unsubscribe', checkManagerAuth, async (req, res) => 
     res.status(500).json({ error: 'Database error' });
   }
 });
-
+// Делаем функции уведомлений доступными глобально для других модулей
+global.sendPushNotificationToSeller = sendPushNotificationToSeller;
+global.sendPushNotificationToRole = sendPushNotificationToRole;
 // ==================== ЗАПУСК СЕРВЕРА ====================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
