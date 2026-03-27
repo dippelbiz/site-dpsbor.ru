@@ -209,7 +209,6 @@ async function handleTelegramWebhook(req, res) {
             }
 
             // 4. Проверка, не является ли текст номером заказа (буква+цифры)
-            //    (для удобства, если команда не сработала)
             if (/^[A-Za-zА-Яа-я]+\d+$/.test(text)) {
                 const orderNumber = text;
                 console.log(`🔍 Распознан номер заказа в Telegram: ${orderNumber}`);
@@ -254,6 +253,20 @@ async function handleTelegramWebhook(req, res) {
                 ]
             );
             console.log(`✅ Сообщение сохранено в БД от ${messageData.senderName} (ID: ${messageData.senderId})`);
+
+            // Отправка push-уведомления менеджеру
+            if (orderId) {
+                try {
+                    const orderInfo = await pool.query('SELECT seller_id, order_number FROM orders WHERE id = $1', [orderId]);
+                    const sellerId = orderInfo.rows[0]?.seller_id;
+                    const orderNumber = orderInfo.rows[0]?.order_number;
+                    if (sellerId && global.sendPushNotificationToSeller) {
+                        await global.sendPushNotificationToSeller(sellerId, 'Новое сообщение', `В заказе №${orderNumber}`, `/manager/chat.html?id=${orderId}`);
+                    }
+                } catch (pushErr) {
+                    console.error('Ошибка отправки push-уведомления:', pushErr);
+                }
+            }
         }
         res.sendStatus(200);
     } catch (err) {
@@ -261,7 +274,6 @@ async function handleTelegramWebhook(req, res) {
         res.sendStatus(500);
     }
 }
-
 function isInitialized() {
     return botInitialized;
 }
