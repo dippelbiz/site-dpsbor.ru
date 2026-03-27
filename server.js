@@ -2028,9 +2028,10 @@ app.post('/api/manager/transfer-request', checkManagerAuth, async (req, res) => 
     
     await pool.query('COMMIT');
     
-    // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРУ О НОВОЙ ЗАДАЧЕ =====
+    // ===== УВЕДОМЛЕНИЕ АДМИНИСТРАТОРАМ И КЛАДОВЩИКАМ =====
     if (webpush) {
       await sendPushNotificationToRole('admin', 'Новая задача на складе', `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name}`, '/manager/dashboard.html');
+      await sendPushNotificationToRole('warehouse_seller', 'Новая задача на складе', `Заявка на перемещение ${quantity} шт ${variantInfo.rows[0].name}`, '/manager/dashboard.html');
     }
     
     res.json({ 
@@ -2313,6 +2314,15 @@ app.post('/api/manager/request-payout', checkManagerAuth, async (req, res) => {
       RETURNING id
     `, [sellerId, amount]);
 
+    // Получаем имя менеджера для уведомления
+    const managerRes = await pool.query('SELECT name FROM users WHERE id = $1', [sellerId]);
+    const managerName = managerRes.rows[0]?.name || 'Менеджер';
+
+    // Уведомление администраторам о новом запросе на выплату
+    if (webpush) {
+      await sendPushNotificationToRole('admin', 'Запрос на выплату', `${managerName} запросил выплату ${amount} руб.`, '/manager/dashboard.html');
+    }
+
     res.json({ success: true, requestId: result.rows[0].id });
   } catch (err) {
     console.error('Request payout error:', err);
@@ -2480,9 +2490,11 @@ app.post('/api/manager/push-unsubscribe', checkManagerAuth, async (req, res) => 
     res.status(500).json({ error: 'Database error' });
   }
 });
+
 // Делаем функции уведомлений доступными глобально для других модулей
 global.sendPushNotificationToSeller = sendPushNotificationToSeller;
 global.sendPushNotificationToRole = sendPushNotificationToRole;
+
 // ==================== ЗАПУСК СЕРВЕРА ====================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
