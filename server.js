@@ -8,14 +8,22 @@ const webpush = require('web-push');
 
 // Настройка VAPID для push-уведомлений
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    'mailto:admin@dpsbor.ru',
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-  console.log('✅ Web Push настроен');
+  try {
+    webpush.setVapidDetails(
+      'mailto:admin@dpsbor.ru',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+    console.log('✅ Web Push настроен');
+  } catch (err) {
+    console.error('❌ Ошибка настройки Web Push (возможно, неверные ключи):', err.message);
+    console.log('⚠️ Уведомления отключены');
+    // Обнуляем webpush, чтобы дальнейшие вызовы не ломались
+    webpush = null;
+  }
 } else {
   console.log('⚠️ VAPID ключи не заданы, уведомления не будут работать');
+  webpush = null;
 }
 
 const app = express();
