@@ -684,10 +684,19 @@
                 const registration = await navigator.serviceWorker.ready;
                 // ВАШ ПУБЛИЧНЫЙ КЛЮЧ VAPID – замените на свой, если он другой
                 const vapidPublicKey = 'BM9bwN0t9yWq0v_zy1L5ZvPqjXgK7JkL6fG8hQ3sR2dF4gH5jK1lZ0xCf6VbN';
-                const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-                });
+                // Исправляем ключ: добавляем padding, заменяем символы
+const base64 = vapidPublicKey.replace(/-/g, '+').replace(/_/g, '/');
+const padding = '='.repeat((4 - base64.length % 4) % 4);
+const validBase64 = base64 + padding;
+const binaryString = window.atob(validBase64);
+const applicationServerKey = new Uint8Array(binaryString.length);
+for (let i = 0; i < binaryString.length; i++) {
+    applicationServerKey[i] = binaryString.charCodeAt(i);
+}
+const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey
+});
                 const response = await fetch('/api/manager/push-subscribe', {
                     method: 'POST',
                     headers: {
