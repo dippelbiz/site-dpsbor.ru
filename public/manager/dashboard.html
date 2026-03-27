@@ -688,7 +688,8 @@
             if (Notification.permission !== 'granted') return;
             try {
                 const registration = await navigator.serviceWorker.ready;
-               const vapidPublicKey = 'BP5_6fYh7vK9nQ2wE8rT4yU1iOpL3xZ5cV7bN9mQ2wE8rT4yU1iOpL3xZ5cV7bN9mQ2wE8rT4yU1iOpL3xZ5cV7bN9mQ';
+                // Публичный ключ VAPID – замените на ваш, если необходимо
+                const vapidPublicKey = 'BPbkIBtebQpJ8n-PX_LBhY2Z1a0oZRrO3oSUSp07dO8O0VUv1C4QfCjJzY1mLVGqVqQTc1yFd8B-Jy6K1Y6fL9U';
                 const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
                 if (!applicationServerKey) {
                     throw new Error('Не удалось преобразовать публичный ключ');
