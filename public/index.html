@@ -6,7 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Магазин - Каталог</title>
     <style>
-        /* ВСЕ СТИЛИ ОСТАЮТСЯ ТОЧНО ТАКИМИ ЖЕ, КАК В ВАШЕМ ОРИГИНАЛЕ */
+        /* ВСЕ СТИЛИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -191,6 +191,29 @@
             text-align: center;
             width: 100%;
         }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 20px;
+            text-align: center;
+        }
+        .retry-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
@@ -217,99 +240,82 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        const userId = tg.initDataUnsafe?.user?.id || 1;
+        // Определяем userId: из Telegram, либо сохраняем временный в localStorage
+        let userId = tg.initDataUnsafe?.user?.id;
+        if (!userId) {
+            let storedId = localStorage.getItem('temp_user_id');
+            if (!storedId) {
+                storedId = 'temp_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('temp_user_id', storedId);
+            }
+            userId = storedId;
+        }
         console.log('Current userId:', userId);
 
         let products = [];
         let cart = { items: [] };
+        let isLoading = false;
 
-        // --- РЕЗЕРВНЫЕ ДАННЫЕ (используются только если API недоступен) ---
-        const MOCK_PRODUCTS = [
-            {
-                id: 1,
-                name: "Миндаль",
-                description: "Отборный миндаль, богатый витамином E.",
-                category: "Орехи",
-                image: "https://via.placeholder.com/250?text=Миндаль",
-                variants: [
-                    { id: 101, name: "250 г", price: 350, is_active: true },
-                    { id: 102, name: "500 г", price: 650, is_active: true },
-                    { id: 103, name: "1 кг", price: 1200, is_active: true }
-                ]
-            },
-            {
-                id: 2,
-                name: "Грецкий орех",
-                description: "Крупный грецкий орех, очищенный.",
-                category: "Орехи",
-                image: "https://via.placeholder.com/250?text=Грецкий+орех",
-                variants: [
-                    { id: 201, name: "250 г", price: 280, is_active: true },
-                    { id: 202, name: "500 г", price: 530, is_active: true }
-                ]
-            },
-            {
-                id: 3,
-                name: "Курага",
-                description: "Сушеные абрикосы, без добавок.",
-                category: "Сухофрукты",
-                image: "https://via.placeholder.com/250?text=Курага",
-                variants: [
-                    { id: 301, name: "300 г", price: 240, is_active: true },
-                    { id: 302, name: "600 г", price: 450, is_active: true }
-                ]
-            },
-            {
-                id: 4,
-                name: "Чернослив",
-                description: "Вяленые сливы с косточкой.",
-                category: "Сухофрукты",
-                image: "https://via.placeholder.com/250?text=Чернослив",
-                variants: [
-                    { id: 401, name: "300 г", price: 220, is_active: true },
-                    { id: 402, name: "600 г", price: 420, is_active: true }
-                ]
-            }
-        ];
-
-        // Универсальная функция запроса с таймаутом и резервными данными
-        async function fetchWithFallback(url, fallbackData) {
+        // Вспомогательная функция запроса с таймаутом
+        async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд
-                const response = await fetch(url, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                const response = await fetch(url, { ...options, signal: controller.signal });
+                clearTimeout(id);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                console.log(`✅ Успешно загружено: ${url}`);
-                return data;
+                return await response.json();
             } catch (err) {
-                console.warn(`⚠️ Ошибка загрузки ${url}: ${err.message}. Используем резервные данные.`);
-                return fallbackData;
+                clearTimeout(id);
+                throw err;
             }
         }
 
         async function loadData() {
-            // Загружаем товары (если API не ответит, используем MOCK_PRODUCTS)
-            products = await fetchWithFallback('/api/products', MOCK_PRODUCTS);
-            if (!Array.isArray(products)) products = MOCK_PRODUCTS;
+            if (isLoading) return;
+            isLoading = true;
+            const container = document.getElementById('products');
+            container.innerHTML = '<div class="loading">Загрузка каталога...</div>';
 
-            // Загружаем корзину (если API не ответит, используем пустую)
-            const cartData = await fetchWithFallback(`/api/cart/${userId}`, { items: [] });
-            cart = cartData;
-            if (!cart.items) cart = { items: [] };
-
-            renderProducts();
-            updateCartCount();
+            try {
+                // Загружаем товары
+                products = await fetchWithTimeout('/api/products');
+                if (!Array.isArray(products)) throw new Error('Некорректный формат товаров');
+                
+                // Загружаем корзину
+                const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
+                cart = cartData;
+                if (!cart.items) cart = { items: [] };
+                
+                renderProducts();
+                updateCartCount();
+            } catch (err) {
+                console.error('Ошибка загрузки данных:', err);
+                container.innerHTML = `
+                    <div class="error-message">
+                        Не удалось загрузить каталог. Проверьте соединение.<br>
+                        <button class="retry-button" onclick="location.reload()">Повторить</button>
+                    </div>
+                `;
+                // Если товары не загрузились, не отображаем корзину, но счётчик оставляем 0
+                updateCartCount();
+            } finally {
+                isLoading = false;
+            }
         }
 
-        async function loadProducts() {
-            // Не используется напрямую, оставлено для совместимости с оригинальным кодом
-            // (но теперь loadData уже загружает продукты)
-        }
-
-        async function loadCart() {
-            // Не используется напрямую, оставлено для совместимости
+        async function loadCartFromServer() {
+            try {
+                const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
+                cart = cartData;
+                if (!cart.items) cart = { items: [] };
+                renderProducts(); // обновляем отображение кнопок
+                updateCartCount();
+            } catch (err) {
+                console.warn('Не удалось обновить корзину с сервера, используем локальную копию');
+                // При ошибке оставляем текущую cart (она уже может быть изменена локально)
+                updateCartCount();
+            }
         }
 
         function updateCartCount() {
@@ -320,6 +326,11 @@
         function renderProducts() {
             const container = document.getElementById('products');
             container.innerHTML = '';
+
+            if (!products.length) {
+                container.innerHTML = '<div class="error-message">Нет товаров для отображения</div>';
+                return;
+            }
 
             const categories = {};
             products.forEach(product => {
@@ -353,15 +364,13 @@
                 productDiv.setAttribute('data-product-id', product.id);
 
                 const imageUrl = product.image || 'https://via.placeholder.com/250?text=Нет+фото';
-
-                // Фильтруем варианты: исключаем "Россыпь"
                 const variantsToShow = product.variants.filter(v => v.name !== 'Россыпь');
 
                 let variantsHtml = '';
                 variantsToShow.forEach(variant => {
                     const cartItem = cart.items.find(item => item.productId === product.id && item.variantId === variant.id);
                     const quantity = cartItem ? cartItem.quantity : 0;
-                    const isActive = variant.is_active; // true/false
+                    const isActive = variant.is_active;
 
                     let controlsHtml = '';
                     if (!isActive) {
@@ -379,7 +388,7 @@
                     variantsHtml += `
                         <div class="variant-row" data-product-id="${product.id}" data-variant-id="${variant.id}">
                             <div class="variant-info">
-                                <div class="variant-name">${variant.name}</div>
+                                <div class="variant-name">${escapeHtml(variant.name)}</div>
                                 <div class="variant-price">${variant.price} руб.</div>
                             </div>
                             <div class="variant-controls">
@@ -390,10 +399,10 @@
                 });
 
                 productDiv.innerHTML = `
-                    <img src="${imageUrl}" class="product-image" alt="${product.name}">
+                    <img src="${escapeHtml(imageUrl)}" class="product-image" alt="${escapeHtml(product.name)}">
                     <div class="product-info">
-                        <h3>${product.name}</h3>
-                        <p>${product.description}</p>
+                        <h3>${escapeHtml(product.name)}</h3>
+                        <p>${escapeHtml(product.description)}</p>
                         <div class="variants-container">
                             ${variantsHtml}
                         </div>
@@ -403,22 +412,37 @@
             });
         }
 
+        // Простая защита от XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
         async function addToCart(productId, variantId) {
             try {
-                await fetch('/api/cart/add', {
+                await fetchWithTimeout('/api/cart/add', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId, productId, variantId, quantity: 1 })
                 });
-                await loadCartFromServer(); // обновляем корзину
+                await loadCartFromServer();
             } catch (err) {
-                console.error('Ошибка добавления в корзину:', err);
-                // Если запрос не удался, хотя бы локально обновим корзину для визуального отклика
+                console.error('Ошибка добавления в корзину, сохраняем локально:', err);
+                // Локальное обновление
                 const existing = cart.items.find(i => i.productId === productId && i.variantId === variantId);
-                if (existing) existing.quantity++;
-                else cart.items.push({ productId, variantId, quantity: 1 });
+                if (existing) {
+                    existing.quantity++;
+                } else {
+                    cart.items.push({ productId, variantId, quantity: 1 });
+                }
                 renderProducts();
                 updateCartCount();
+                // Попытаемся отправить позже (можно добавить очередь, но для простоты оставим так)
             }
         }
 
@@ -426,13 +450,13 @@
             if (newQuantity < 0) return;
             try {
                 if (newQuantity === 0) {
-                    await fetch('/api/cart/remove', {
+                    await fetchWithTimeout('/api/cart/remove', {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId, productId, variantId })
                     });
                 } else {
-                    await fetch('/api/cart/update', {
+                    await fetchWithTimeout('/api/cart/update', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId, productId, variantId, quantity: newQuantity })
@@ -440,8 +464,7 @@
                 }
                 await loadCartFromServer();
             } catch (err) {
-                console.error('Ошибка обновления корзины:', err);
-                // Локальное обновление для отзывчивости
+                console.error('Ошибка обновления корзины, применяем локально:', err);
                 const item = cart.items.find(i => i.productId === productId && i.variantId === variantId);
                 if (item) {
                     if (newQuantity === 0) {
@@ -455,14 +478,6 @@
                 renderProducts();
                 updateCartCount();
             }
-        }
-
-        async function loadCartFromServer() {
-            const cartData = await fetchWithFallback(`/api/cart/${userId}`, { items: [] });
-            cart = cartData;
-            if (!cart.items) cart = { items: [] };
-            renderProducts();
-            updateCartCount();
         }
 
         // Запускаем загрузку
