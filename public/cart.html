@@ -6,7 +6,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Корзина</title>
     <style>
-        /* Ваши стили для корзины */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -139,7 +138,6 @@
 
         async function loadData() {
             try {
-                // Загружаем каталог для отображения названий
                 products = await fetchWithTimeout('/api/products');
                 if (!Array.isArray(products)) products = [];
             } catch (err) {
@@ -246,8 +244,8 @@
         }
 
         function checkout() {
-            alert('Функция оформления заказа');
-            // Здесь можно отправить заказ на сервер
+            // Переход на страницу оформления заказа
+            window.location.href = 'checkout.html';
         }
 
         loadData();
