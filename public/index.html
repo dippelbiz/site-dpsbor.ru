@@ -6,7 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Магазин - Каталог</title>
     <style>
-        /* ВСЕ СТИЛИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ */
+        /* ВСЕ СТИЛИ ОСТАЮТСЯ ТОЧНО ТАКИМИ ЖЕ, КАК В ВАШЕМ ОРИГИНАЛЕ */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -240,7 +240,7 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Определяем userId: из Telegram, либо сохраняем временный в localStorage
+        // Определяем userId
         let userId = tg.initDataUnsafe?.user?.id;
         if (!userId) {
             let storedId = localStorage.getItem('temp_user_id');
@@ -255,6 +255,25 @@
         let products = [];
         let cart = { items: [] };
         let isLoading = false;
+
+        // Ключ для localStorage
+        const CART_STORAGE_KEY = `cart_${userId}`;
+
+        // Сохранить корзину в localStorage
+        function saveCartToLocalStorage() {
+            localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.items));
+        }
+
+        // Загрузить корзину из localStorage
+        function loadCartFromLocalStorage() {
+            const stored = localStorage.getItem(CART_STORAGE_KEY);
+            if (stored) {
+                try {
+                    const items = JSON.parse(stored);
+                    cart.items = items;
+                } catch (e) {}
+            }
+        }
 
         // Вспомогательная функция запроса с таймаутом
         async function fetchWithTimeout(url, options = {}, timeout = 8000) {
@@ -271,6 +290,30 @@
             }
         }
 
+        // Синхронизация локальной корзины с сервером (отправка всех изменений)
+        async function syncCartWithServer() {
+            if (!cart.items.length) return;
+            try {
+                // Для каждого элемента отправляем update или add
+                for (const item of cart.items) {
+                    await fetchWithTimeout('/api/cart/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId,
+                            productId: item.productId,
+                            variantId: item.variantId,
+                            quantity: item.quantity
+                        })
+                    });
+                }
+                console.log('Корзина синхронизирована с сервером');
+                // После успешной синхронизации можно оставить как есть
+            } catch (err) {
+                console.warn('Не удалось синхронизировать корзину', err);
+            }
+        }
+
         async function loadData() {
             if (isLoading) return;
             isLoading = true;
@@ -282,22 +325,33 @@
                 products = await fetchWithTimeout('/api/products');
                 if (!Array.isArray(products)) throw new Error('Некорректный формат товаров');
                 
-                // Загружаем корзину
-                const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
-                cart = cartData;
-                if (!cart.items) cart = { items: [] };
+                // Загружаем корзину с сервера
+                try {
+                    const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
+                    cart = cartData;
+                    if (!cart.items) cart = { items: [] };
+                    // Сохраняем в localStorage как актуальную версию
+                    saveCartToLocalStorage();
+                } catch (err) {
+                    console.warn('Не удалось загрузить корзину с сервера, используем локальную');
+                    loadCartFromLocalStorage();
+                }
                 
                 renderProducts();
                 updateCartCount();
+
+                // Фоновая синхронизация локальных изменений с сервером
+                syncCartWithServer();
             } catch (err) {
-                console.error('Ошибка загрузки данных:', err);
+                console.error('Ошибка загрузки товаров:', err);
                 container.innerHTML = `
                     <div class="error-message">
                         Не удалось загрузить каталог. Проверьте соединение.<br>
                         <button class="retry-button" onclick="location.reload()">Повторить</button>
                     </div>
                 `;
-                // Если товары не загрузились, не отображаем корзину, но счётчик оставляем 0
+                // При ошибке загрузки товаров всё равно пытаемся показать корзину из localStorage
+                loadCartFromLocalStorage();
                 updateCartCount();
             } finally {
                 isLoading = false;
@@ -309,11 +363,13 @@
                 const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
                 cart = cartData;
                 if (!cart.items) cart = { items: [] };
-                renderProducts(); // обновляем отображение кнопок
+                saveCartToLocalStorage();
+                renderProducts();
                 updateCartCount();
             } catch (err) {
-                console.warn('Не удалось обновить корзину с сервера, используем локальную копию');
+                console.warn('Не удалось обновить корзину с сервера, используем локальную');
                 // При ошибке оставляем текущую cart (она уже может быть изменена локально)
+                saveCartToLocalStorage(); // всё равно сохраняем локально
                 updateCartCount();
             }
         }
@@ -412,7 +468,6 @@
             });
         }
 
-        // Простая защита от XSS
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/[&<>]/g, function(m) {
@@ -440,9 +495,9 @@
                 } else {
                     cart.items.push({ productId, variantId, quantity: 1 });
                 }
+                saveCartToLocalStorage();
                 renderProducts();
                 updateCartCount();
-                // Попытаемся отправить позже (можно добавить очередь, но для простоты оставим так)
             }
         }
 
@@ -475,6 +530,7 @@
                 } else if (newQuantity > 0) {
                     cart.items.push({ productId, variantId, quantity: newQuantity });
                 }
+                saveCartToLocalStorage();
                 renderProducts();
                 updateCartCount();
             }
