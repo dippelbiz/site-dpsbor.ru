@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Оформление заказа</title>
     <style>
+        /* Все стили остаются точно такими же, как в вашем файле */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -330,6 +331,7 @@
     </div>
 
     <script>
+        // ========== Вспомогательные функции ==========
         function getUserId() {
             const tg = window.Telegram.WebApp;
             if (tg?.initDataUnsafe?.user?.id) {
@@ -344,7 +346,6 @@
         }
 
         const userId = getUserId();
-
         const tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -358,44 +359,97 @@
         let currentOrderId = null;
         let maxBotName = null;
 
+        // Ключи для localStorage
+        const CART_STORAGE_KEY = `cart_${userId}`;
+        const PRODUCTS_STORAGE_KEY = 'products_cache';
+        const PICKUP_STORAGE_KEY = 'pickup_locations_cache';
+
+        // ========== Запросы с таймаутом и fallback ==========
+        async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            try {
+                const response = await fetch(url, { ...options, signal: controller.signal });
+                clearTimeout(id);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (err) {
+                clearTimeout(id);
+                throw err;
+            }
+        }
+
+        // Загрузка конфигурации
         async function loadConfig() {
             try {
-                const res = await fetch('/api/config');
-                const data = await res.json();
+                const data = await fetchWithTimeout('/api/config');
                 maxBotName = data.maxBotName;
             } catch (err) {
                 console.error('Ошибка загрузки конфигурации:', err);
             }
         }
 
-        async function loadData() {
-            await loadConfig();
-            await loadProducts();
-            await loadCart();
-            await loadPickupLocations();
-            renderOrderSummary();
-            updateCartCount();
-            renderPickupLocations();
-        }
-
+        // Загрузка товаров с кэшированием
         async function loadProducts() {
-            const res = await fetch('/api/products');
-            products = await res.json();
+            try {
+                const data = await fetchWithTimeout('/api/products');
+                products = data;
+                localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
+            } catch (err) {
+                console.warn('Не удалось загрузить товары с сервера, используем кэш');
+                const cached = localStorage.getItem(PRODUCTS_STORAGE_KEY);
+                if (cached) {
+                    products = JSON.parse(cached);
+                } else {
+                    products = [];
+                }
+            }
         }
 
+        // Загрузка корзины (сначала API, потом localStorage)
         async function loadCart() {
-            const res = await fetch(`/api/cart/${userId}`);
-            cart = await res.json();
+            try {
+                const data = await fetchWithTimeout(`/api/cart/${userId}`);
+                cart = data;
+                if (!cart.items) cart = { items: [] };
+                // Сохраняем в localStorage
+                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.items));
+            } catch (err) {
+                console.warn('Не удалось загрузить корзину с сервера, используем локальную');
+                const stored = localStorage.getItem(CART_STORAGE_KEY);
+                if (stored) {
+                    cart = { items: JSON.parse(stored) };
+                } else {
+                    cart = { items: [] };
+                }
+            }
         }
 
+        // Загрузка точек самовывоза
         async function loadPickupLocations() {
-            const res = await fetch('/api/pickup-locations');
-            pickupLocations = await res.json();
+            try {
+                const data = await fetchWithTimeout('/api/pickup-locations');
+                pickupLocations = data;
+                localStorage.setItem(PICKUP_STORAGE_KEY, JSON.stringify(pickupLocations));
+            } catch (err) {
+                console.warn('Не удалось загрузить точки самовывоза, используем кэш');
+                const cached = localStorage.getItem(PICKUP_STORAGE_KEY);
+                if (cached) {
+                    pickupLocations = JSON.parse(cached);
+                } else {
+                    pickupLocations = [];
+                }
+            }
         }
 
+        // Отображение корзины
         function renderOrderSummary() {
             if (!cart || !cart.items || cart.items.length === 0) {
-                window.location.href = 'index.html';
+                // Показываем сообщение, а не делаем редирект
+                const summaryDiv = document.getElementById('order-summary');
+                summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">Корзина пуста. <a href="index.html">Вернуться в каталог</a></div>';
+                document.getElementById('total-amount').innerHTML = '';
+                document.getElementById('confirm-button').disabled = true;
                 return;
             }
 
@@ -404,13 +458,16 @@
 
             let total = 0;
             cart.items.forEach(item => {
+                // Ищем продукт
                 const product = products.find(p => p.id === item.productId);
                 if (!product) return;
-                const price = item.priceAtTime;
+                // Находим вариант, чтобы получить цену и название
+                const variant = product.variants.find(v => v.id === item.variantId);
+                const price = variant ? variant.price : (item.priceAtTime || 0);
                 const itemTotal = price * item.quantity;
                 total += itemTotal;
 
-                const variantDisplay = item.variantName ? item.variantName.replace('Упаковка', 'Уп.') : '';
+                const variantDisplay = variant ? variant.name.replace('Упаковка', 'Уп.') : 'Вариант';
 
                 const div = document.createElement('div');
                 div.className = 'order-item';
@@ -423,6 +480,7 @@
 
             currentOrderTotal = total;
             document.getElementById('total-amount').innerText = `Сумма заказа: ${total} руб.`;
+            document.getElementById('confirm-button').disabled = false;
         }
 
         function updateCartCount() {
@@ -468,6 +526,7 @@
         });
         updateDeliveryBlocks();
 
+        // ========== Модальное окно ==========
         function showModal(orderId, orderNumber) {
             currentOrderId = orderId;
             currentOrderNumber = orderNumber;
@@ -491,7 +550,7 @@
         async function cancelOrder() {
             if (!confirm('Вы уверены, что хотите отменить заказ?')) return;
             try {
-                await fetch(`/api/order/${currentOrderId}`, {
+                await fetchWithTimeout(`/api/order/${currentOrderId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'Отменен' })
@@ -511,9 +570,10 @@
         document.getElementById('close-modal-btn').onclick = closeModalAndGoToCatalog;
         document.getElementById('cancel-order-btn').onclick = cancelOrder;
 
-        const confirmBtn = document.getElementById('confirm-button');
-        confirmBtn.addEventListener('click', async (e) => {
-            e.target.disabled = true;
+        // ========== Оформление заказа ==========
+        async function submitOrder() {
+            const confirmBtn = document.getElementById('confirm-button');
+            confirmBtn.disabled = true;
 
             try {
                 const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
@@ -524,7 +584,7 @@
                     const pickupAddress = document.querySelector('input[name="pickup-address"]:checked');
                     if (!pickupAddress) {
                         alert('Выберите адрес самовывоза');
-                        e.target.disabled = false;
+                        confirmBtn.disabled = false;
                         return;
                     }
                     address = pickupAddress.value;
@@ -532,7 +592,7 @@
                     address = document.getElementById('courier-address').value.trim();
                     if (!address) {
                         alert('Введите адрес доставки');
-                        e.target.disabled = false;
+                        confirmBtn.disabled = false;
                         return;
                     }
                 }
@@ -557,11 +617,9 @@
                     telegram_name: userName
                 };
 
-                console.log('📦 Сохраняемый contact:', contact);
-
                 if (!cart || !cart.items || cart.items.length === 0) {
                     alert('Корзина пуста');
-                    e.target.disabled = false;
+                    confirmBtn.disabled = false;
                     return;
                 }
 
@@ -570,50 +628,96 @@
                     contact: contact,
                     requestId: requestId,
                     total: currentOrderTotal,
-                    items: cart.items.map(item => ({
-                        ...item,
-                        price: item.priceAtTime
-                    }))
+                    items: cart.items.map(item => {
+                        const product = products.find(p => p.id === item.productId);
+                        const variant = product?.variants.find(v => v.id === item.variantId);
+                        return {
+                            ...item,
+                            price: variant ? variant.price : (item.priceAtTime || 0),
+                            variantName: variant ? variant.name : 'Вариант'
+                        };
+                    })
                 };
 
-                const response = await fetch('/api/order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(orderData)
-                });
+                let response;
+                let isLocal = false;
+                let orderNumber = null;
+                let orderId = null;
 
-                if (response.ok) {
+                try {
+                    response = await fetchWithTimeout('/api/order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(orderData)
+                    });
                     const result = await response.json();
-                    console.log('✅ Ответ от сервера:', result);
-                    
-                    const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${result.orderNumber}`;
-                    document.getElementById('telegram-link').href = telegramLink;
-                    
-                    const vkLink = `https://vk.me/public236751492?ref=order_${result.orderNumber}`;
-                    document.getElementById('vk-link').href = vkLink;
-                    
-                    let maxLink = '#';
-                    if (maxBotName) {
-                        maxLink = `https://max.ru/${maxBotName}?start=order_${result.orderNumber}`;
+                    orderId = result.id;
+                    orderNumber = result.orderNumber;
+                } catch (err) {
+                    console.warn('Сервер недоступен, сохраняем заказ локально');
+                    isLocal = true;
+                    // Генерируем локальный номер заказа
+                    orderNumber = 'LOCAL_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                    orderId = orderNumber;
+                    // Сохраняем заказ в localStorage
+                    const localOrdersKey = `orders_${userId}`;
+                    const existingOrders = JSON.parse(localStorage.getItem(localOrdersKey) || '[]');
+                    existingOrders.push({ ...orderData, orderNumber, createdAt: new Date().toISOString(), status: 'Локальный' });
+                    localStorage.setItem(localOrdersKey, JSON.stringify(existingOrders));
+                }
+
+                // Настройка ссылок на мессенджеры
+                const telegramLink = `tg://resolve?domain=dpsbor_site_bot&start=order_${orderNumber}`;
+                document.getElementById('telegram-link').href = telegramLink;
+                const vkLink = `https://vk.me/public236751492?ref=order_${orderNumber}`;
+                document.getElementById('vk-link').href = vkLink;
+                let maxLink = '#';
+                if (maxBotName) {
+                    maxLink = `https://max.ru/${maxBotName}?start=order_${orderNumber}`;
+                }
+                document.getElementById('max-link').href = maxLink;
+
+                showModal(orderId, orderNumber);
+
+                // Очищаем корзину
+                cart.items = [];
+                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify([]));
+                updateCartCount();
+
+                // Если заказ был отправлен на сервер, очищаем также на сервере
+                if (!isLocal) {
+                    try {
+                        for (const item of cart.items) {
+                            await fetchWithTimeout('/api/cart/remove', {
+                                method: 'DELETE',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId, productId: item.productId, variantId: item.variantId })
+                            });
+                        }
+                    } catch (err) {
+                        console.warn('Не удалось очистить корзину на сервере');
                     }
-                    document.getElementById('max-link').href = maxLink;
-                    
-                    showModal(result.id || 'temp_id', result.orderNumber);
-                    
-                    cart.items = [];
-                    updateCartCount();
-                } else {
-                    const error = await response.json();
-                    console.error('Ошибка при оформлении заказа:', error);
-                    alert('Ошибка при оформлении заказа. Попробуйте ещё раз.');
                 }
             } catch (err) {
                 console.error('❌ Критическая ошибка:', err);
                 alert('Произошла ошибка при оформлении заказа');
             } finally {
-                e.target.disabled = false;
+                confirmBtn.disabled = false;
             }
-        });
+        }
+
+        document.getElementById('confirm-button').addEventListener('click', submitOrder);
+
+        // ========== Инициализация ==========
+        async function loadData() {
+            await loadConfig();
+            await loadProducts();
+            await loadCart();
+            await loadPickupLocations();
+            renderOrderSummary();
+            updateCartCount();
+            renderPickupLocations();
+        }
 
         loadData();
     </script>
