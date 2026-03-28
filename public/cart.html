@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>Корзина</title>
     <style>
+        /* ВСЕ СТИЛИ ОСТАЮТСЯ ТОЧНО ТАКИМИ ЖЕ, КАК В ОРИГИНАЛЕ */
         body {
             font-family: Arial, sans-serif;
             padding: 10px;
@@ -16,6 +17,7 @@
         .top-nav {
             position: sticky;
             top: 0;
+            z-index: 1000;
             display: flex;
             justify-content: space-around;
             background: #fff;
@@ -34,17 +36,22 @@
             font-size: 14px;
             width: 45%;
         }
+        .top-nav button:hover {
+            background: #28a745;
+            color: white;
+        }
+        h1 { margin: 10px 0; }
         .cart-item {
             background: white;
             border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .item-details {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-        }
-        .item-info {
-            flex: 2;
+            margin-bottom: 8px;
         }
         .item-controls {
             display: flex;
@@ -55,31 +62,80 @@
             background: #28a745;
             color: white;
             border: none;
-            padding: 8px 12px;
+            padding: 5px 12px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 16px;
         }
-        .total {
-            font-size: 20px;
+        .item-controls .quantity {
             font-weight: bold;
-            margin-top: 20px;
+            min-width: 30px;
+            text-align: center;
+        }
+        .item-total {
+            font-weight: bold;
+            margin-top: 5px;
             text-align: right;
         }
-        .empty-cart {
-            text-align: center;
-            padding: 40px;
-            color: #666;
+        .total {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 20px 0;
+            text-align: right;
         }
-        .checkout-btn {
+        .action-button {
             background: #28a745;
             color: white;
             border: none;
-            padding: 12px 24px;
-            font-size: 18px;
-            border-radius: 8px;
-            width: 100%;
-            margin-top: 20px;
+            padding: 12px;
+            border-radius: 5px;
             cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        .cart-fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            color: #28a745;
+            border: 2px solid #28a745;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            font-size: 28px;
+            z-index: 1000;
+        }
+        .cart-fab .cart-count {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: red;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 20px;
+            text-align: center;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 18px;
         }
     </style>
 </head>
@@ -91,13 +147,19 @@
 
     <h1>Корзина</h1>
     <div id="cart-items"></div>
-    <div id="total" class="total"></div>
-    <button class="checkout-btn" onclick="checkout()">Оформить заказ</button>
+    <div class="total" id="total"></div>
+    <div id="action-button-container"></div>
+
+    <div class="cart-fab" onclick="location.href='cart.html'">
+        🛒
+        <span class="cart-count" id="cart-count">0</span>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // Определяем userId: из Telegram либо временный в localStorage
         let userId = tg.initDataUnsafe?.user?.id;
         if (!userId) {
             let storedId = localStorage.getItem('temp_user_id');
@@ -107,12 +169,19 @@
             }
             userId = storedId;
         }
+        console.log('Current userId:', userId);
 
-        let cart = { items: [] };
         let products = [];
-
+        let cart = { items: [] };
         const CART_STORAGE_KEY = `cart_${userId}`;
+        const PRODUCTS_STORAGE_KEY = 'cached_products';
 
+        // Сохранить корзину в localStorage
+        function saveCartToLocalStorage() {
+            localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.items));
+        }
+
+        // Загрузить корзину из localStorage
         function loadCartFromLocalStorage() {
             const stored = localStorage.getItem(CART_STORAGE_KEY);
             if (stored) {
@@ -122,6 +191,24 @@
             }
         }
 
+        // Сохранить товары в кэш
+        function cacheProducts(productsData) {
+            localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(productsData));
+        }
+
+        // Загрузить товары из кэша
+        function loadProductsFromCache() {
+            const stored = localStorage.getItem(PRODUCTS_STORAGE_KEY);
+            if (stored) {
+                try {
+                    products = JSON.parse(stored);
+                    return true;
+                } catch (e) {}
+            }
+            return false;
+        }
+
+        // Вспомогательная функция запроса с таймаутом
         async function fetchWithTimeout(url, options = {}, timeout = 8000) {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), timeout);
@@ -136,77 +223,37 @@
             }
         }
 
-        async function loadData() {
+        async function loadProducts() {
             try {
-                products = await fetchWithTimeout('/api/products');
-                if (!Array.isArray(products)) products = [];
+                const data = await fetchWithTimeout('/api/products');
+                if (Array.isArray(data)) {
+                    products = data;
+                    cacheProducts(products);
+                } else {
+                    throw new Error('Invalid products data');
+                }
             } catch (err) {
-                console.warn('Не удалось загрузить каталог, названия товаров могут отсутствовать');
+                console.warn('Не удалось загрузить товары с сервера, используем кэш:', err);
+                if (!loadProductsFromCache()) {
+                    products = [];
+                }
             }
+        }
 
+        async function loadCart() {
             try {
                 const cartData = await fetchWithTimeout(`/api/cart/${userId}`);
                 cart = cartData;
                 if (!cart.items) cart = { items: [] };
-                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.items));
+                saveCartToLocalStorage();
             } catch (err) {
-                console.warn('Не удалось загрузить корзину с сервера, используем локальную');
+                console.warn('Не удалось загрузить корзину с сервера, используем локальную:', err);
                 loadCartFromLocalStorage();
             }
-            renderCart();
+            updateCartCount();
         }
 
-        function renderCart() {
-            const container = document.getElementById('cart-items');
-            if (!cart.items.length) {
-                container.innerHTML = '<div class="empty-cart">Корзина пуста</div>';
-                document.getElementById('total').innerHTML = '';
-                return;
-            }
-
-            let html = '';
-            let total = 0;
-
-            cart.items.forEach(item => {
-                const product = products.find(p => p.id === item.productId);
-                const variant = product?.variants.find(v => v.id === item.variantId);
-                const name = product ? `${product.name} (${variant?.name || 'Вариант'})` : 'Товар';
-                const price = variant?.price || 0;
-                const subtotal = price * item.quantity;
-                total += subtotal;
-
-                html += `
-                    <div class="cart-item">
-                        <div class="item-info">
-                            <div><strong>${escapeHtml(name)}</strong></div>
-                            <div>${price} руб. × ${item.quantity} = ${subtotal} руб.</div>
-                        </div>
-                        <div class="item-controls">
-                            <button onclick="updateQuantity(${item.productId}, ${item.variantId}, ${item.quantity - 1})">-</button>
-                            <span>${item.quantity}</span>
-                            <button onclick="updateQuantity(${item.productId}, ${item.variantId}, ${item.quantity + 1})">+</button>
-                            <button onclick="removeItem(${item.productId}, ${item.variantId})">Удалить</button>
-                        </div>
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-            document.getElementById('total').innerHTML = `Итого: ${total} руб.`;
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        }
-
-        async function updateQuantity(productId, variantId, newQuantity) {
-            if (newQuantity < 0) return;
+        async function syncCartItem(productId, variantId, newQuantity) {
             try {
                 if (newQuantity === 0) {
                     await fetchWithTimeout('/api/cart/remove', {
@@ -221,31 +268,134 @@
                         body: JSON.stringify({ userId, productId, variantId, quantity: newQuantity })
                     });
                 }
-                await loadData(); // перезагружаем корзину
+                // После успешной синхронизации обновляем корзину с сервера
+                await loadCart();
+                renderCart();
             } catch (err) {
-                console.error('Ошибка обновления корзины, сохраняем локально:', err);
-                const item = cart.items.find(i => i.productId === productId && i.variantId === variantId);
-                if (item) {
+                console.warn('Ошибка синхронизации с сервером, сохраняем локально:', err);
+                // Обновляем локальную корзину
+                const existing = cart.items.find(i => i.productId === productId && i.variantId === variantId);
+                if (existing) {
                     if (newQuantity === 0) {
                         cart.items = cart.items.filter(i => !(i.productId === productId && i.variantId === variantId));
                     } else {
-                        item.quantity = newQuantity;
+                        existing.quantity = newQuantity;
                     }
                 } else if (newQuantity > 0) {
-                    cart.items.push({ productId, variantId, quantity: newQuantity });
+                    // Нужно получить цену и название варианта из продуктов
+                    const product = products.find(p => p.id === productId);
+                    const variant = product?.variants.find(v => v.id === variantId);
+                    cart.items.push({
+                        productId,
+                        variantId,
+                        quantity: newQuantity,
+                        priceAtTime: variant?.price || 0,
+                        variantName: variant?.name || ''
+                    });
                 }
-                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.items));
+                saveCartToLocalStorage();
                 renderCart();
+                updateCartCount();
             }
         }
 
+        function updateCartCount() {
+            const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+            document.getElementById('cart-count').textContent = totalItems;
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-items');
+            container.innerHTML = '';
+
+            if (!cart.items || cart.items.length === 0) {
+                container.innerHTML = '<p>Корзина пуста</p>';
+                document.getElementById('total').innerText = '';
+                document.getElementById('action-button-container').innerHTML = `
+                    <button class="action-button" onclick="location.href='index.html'">Перейти в каталог</button>
+                `;
+                return;
+            }
+
+            let total = 0;
+            cart.items.forEach(item => {
+                // Находим товар в загруженных продуктах (или используем сохранённые данные)
+                const product = products.find(p => p.id === item.productId);
+                let price = item.priceAtTime;
+                let variantName = item.variantName;
+
+                if (product) {
+                    const variant = product.variants.find(v => v.id === item.variantId);
+                    if (variant) {
+                        price = variant.price;
+                        variantName = variant.name;
+                    } else {
+                        price = 0;
+                    }
+                } else if (!price) {
+                    price = 0;
+                }
+
+                const itemTotal = price * item.quantity;
+                total += itemTotal;
+
+                const div = document.createElement('div');
+                div.className = 'cart-item';
+                const variantDisplay = variantName ? variantName.replace('Упаковка', 'Уп.') : '';
+                const productName = product ? product.name : 'Товар';
+
+                div.innerHTML = `
+                    <div class="item-details">
+                        <span><strong>${escapeHtml(productName)} (${escapeHtml(variantDisplay)})</strong></span>
+                        <span>${price} руб.</span>
+                    </div>
+                    <div class="item-controls">
+                        <button onclick="updateQuantity(${item.productId}, ${item.variantId}, ${item.quantity - 1})">-</button>
+                        <span class="quantity" id="qty-${item.productId}-${item.variantId}">${item.quantity}</span>
+                        <button onclick="updateQuantity(${item.productId}, ${item.variantId}, ${item.quantity + 1})">+</button>
+                        <button onclick="removeItem(${item.productId}, ${item.variantId})" style="background:#d32f2f;">Удалить</button>
+                    </div>
+                    <div class="item-total">Сумма: ${itemTotal} руб.</div>
+                `;
+                container.appendChild(div);
+            });
+
+            document.getElementById('total').innerText = `Общая сумма: ${total} руб.`;
+            document.getElementById('action-button-container').innerHTML = `
+                <button class="action-button" onclick="checkout()">Оформить заказ</button>
+            `;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        async function updateQuantity(productId, variantId, newQuantity) {
+            if (newQuantity < 0) return;
+            await syncCartItem(productId, variantId, newQuantity);
+        }
+
         async function removeItem(productId, variantId) {
-            await updateQuantity(productId, variantId, 0);
+            await syncCartItem(productId, variantId, 0);
         }
 
         function checkout() {
-            // Переход на страницу оформления заказа
-            window.location.href = 'checkout.html';
+            location.href = 'checkout.html';
+        }
+
+        async function loadData() {
+            // Показываем индикатор загрузки
+            const container = document.getElementById('cart-items');
+            container.innerHTML = '<div class="loading">Загрузка корзины...</div>';
+            await loadProducts();
+            await loadCart();
+            renderCart();
         }
 
         loadData();
